@@ -12,18 +12,26 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout source
+      uses: actions/checkout@v4
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: 8.0.x
+        dotnet-version: '8.0.x'
 
-    - name: Restore
-      run: dotnet restore
+    - name: Restore WMS.Tests
+      run: dotnet restore WMS.Tests/WMS.Tests.csproj
 
-    - name: Build
-      run: dotnet build --configuration Release --no-restore
+    - name: Build WMS.Tests
+      run: dotnet build WMS.Tests/WMS.Tests.csproj --configuration Release --no-restore
 
-    - name: Test
-      run: dotnet test --configuration Release --no-build
+    - name: Run NUnit Tests
+      run: dotnet test WMS.Tests/WMS.Tests.csproj --configuration Release --no-build --logger trx
+
+    - name: Upload Test Results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: TestResults
+        path: '**/*.trx'
