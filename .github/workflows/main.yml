@@ -26,7 +26,7 @@ jobs:
     - name: Build WMS.Tests
       run: dotnet build WMS.Tests/WMS.Tests.csproj --configuration Release --no-restore
 
-    - name: Run NUnit Tests
+    - name: Run Tests
       run: dotnet test WMS.Tests/WMS.Tests.csproj --configuration Release --no-build --logger trx
 
     - name: Upload Test Results
