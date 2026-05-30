@@ -1,0 +1,343 @@
+@model WMS.ViewModels.InventoryMapPageViewModel
+@{
+    ViewData["Title"] = "Sơ đồ tồn kho";
+    var stockPayload = Model.Zones
+        .SelectMany(z => z.Aisles)
+        .SelectMany(a => a.Racks)
+        .SelectMany(r => r.Locations)
+        .ToDictionary(l => l.LocationId.ToString(), l => l.StockLines);
+    string Percent(decimal value) => value.ToString("N1");
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Sơ đồ tồn kho</h1>
+        <p class="page-subtitle">Bản đồ vận hành theo khu, lối đi, kệ, tầng và ô vị trí để kiểm tra sức chứa và tồn kho nhanh.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Reports" asp-action="Inventory" class="btn btn-secondary"><i class="fas fa-clipboard-list"></i> Xem tồn kho</a>
+        <a asp-controller="Warehouses" asp-action="Index" class="btn btn-secondary"><i class="fas fa-sliders"></i> Cấu hình kho</a>
+    </div>
+</div>
+
+<div class="inventory-map-kpis">
+    <div class="inventory-map-kpi">
+        <span><i class="fas fa-warehouse"></i></span>
+        <div><strong>@Model.TotalLocations</strong><small>Tổng vị trí</small></div>
+    </div>
+    <div class="inventory-map-kpi success">
+        <span><i class="fas fa-boxes-stacked"></i></span>
+        <div><strong>@Model.OccupiedLocations</strong><small>Đang có hàng</small></div>
+    </div>
+    <div class="inventory-map-kpi warning">
+        <span><i class="fas fa-triangle-exclamation"></i></span>
+        <div><strong>@(Model.WarningLocations + Model.CriticalLocations)</strong><small>Gần đầy / quá tải</small></div>
+    </div>
+    <div class="inventory-map-kpi hold">
+        <span><i class="fas fa-shield-halved"></i></span>
+        <div><strong>@Model.HoldLocations</strong><small>QC / giữ hàng</small></div>
+    </div>
+    <div class="inventory-map-kpi info">
+        <span><i class="fas fa-gauge-high"></i></span>
+        <div><strong>@Percent(Model.UtilizationPercent)%</strong><small>Sử dụng sức chứa</small></div>
+    </div>
+</div>
+
+<div class="inventory-map-warehouse-strip">
+    @foreach (var warehouse in Model.Warehouses)
+    {
+        var active = Model.SelectedWarehouseId == warehouse.WarehouseId;
+        <a class="inventory-map-warehouse @(active ? "active" : "")" asp-controller="Warehouses" asp-action="InventoryMap" asp-route-id="@warehouse.WarehouseId">
+            <i class="fas fa-warehouse"></i>
+            <span>
+                <strong>@warehouse.WarehouseCode</strong>
+                <small>@warehouse.WarehouseName</small>
+            </span>
+        </a>
+    }
+</div>
+
+@if (!Model.HasWarehouse)
+{
+    <div class="card">
+        <div class="empty-state">
+            <div class="empty-icon"><i class="fas fa-warehouse"></i></div>
+            <div class="empty-text">Chưa có kho để hiển thị sơ đồ</div>
+            <div class="empty-sub">Tạo kho và vị trí trước khi xem bản đồ tồn kho.</div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="inventory-map-toolbar">
+        <label class="inventory-map-search">
+            <i class="fas fa-search"></i>
+            <input id="inventoryMapSearch" type="search" placeholder="Tìm vị trí, mã vật tư, tên vật tư..." />
+        </label>
+        <select id="inventoryZoneFilter" class="form-control">
+            <option value="">Tất cả khu</option>
+            @foreach (var zone in Model.Zones)
+            {
+                <option value="@zone.ZoneCode">@zone.ZoneCode - @zone.ZoneName</option>
+            }
+        </select>
+        <select id="inventoryStatusFilter" class="form-control">
+            <option value="">Tất cả trạng thái</option>
+            <option value="empty">Trống</option>
+            <option value="normal">Đang dùng</option>
+            <option value="warning">Gần đầy</option>
+            <option value="critical">Đầy / quá tải</option>
+            <option value="hold">QC / giữ hàng</option>
+        </select>
+        <select id="inventoryVoucherFilter" class="form-control">
+            <option value="">Kiểm tra theo phiếu...</option>
+            @foreach (var voucher in Model.RecentVouchers)
+            {
+                <option value="@voucher.VoucherId">[@voucher.VoucherCode] @voucher.VoucherDate.ToString("dd/MM") - @(voucher.IsPosted ? "Đã ghi sổ" : voucher.StatusDisplay)</option>
+            }
+        </select>
+        <button type="button" class="btn btn-secondary" id="inventoryClearFilters"><i class="fas fa-rotate-left"></i> Xóa lọc</button>
+    </div>
+
+    <div class="inventory-map-legend">
+        <span><i class="legend-dot empty"></i> Trống</span>
+        <span><i class="legend-dot normal"></i> Đang dùng</span>
+        <span><i class="legend-dot warning"></i> Gần đầy</span>
+        <span><i class="legend-dot critical"></i> Đầy / quá tải</span>
+        <span><i class="legend-dot hold"></i> QC / giữ hàng</span>
+    </div>
+
+    <div class="inventory-map-shell">
+        @foreach (var zone in Model.Zones)
+        {
+            <section class="inventory-zone" data-zone="@zone.ZoneCode">
+                <header class="inventory-zone-header">
+                    <div>
+                        <span class="inventory-zone-code">@zone.ZoneCode</span>
+                        <h2>@zone.ZoneName</h2>
+                        <p>@zone.ZoneTypeName · @zone.LocationCount vị trí · @zone.OccupiedCount đang có hàng</p>
+                    </div>
+                    <div class="inventory-zone-meter">
+                        <strong>@Percent(zone.UtilizationPercent)%</strong>
+                        <span>Sử dụng</span>
+                    </div>
+                </header>
+
+                <div class="inventory-aisle-grid">
+                    @foreach (var aisle in zone.Aisles)
+                    {
+                        <div class="inventory-aisle">
+                            <div class="inventory-aisle-title"><i class="fas fa-road"></i> @aisle.AisleCode</div>
+                            <div class="inventory-rack-grid">
+                                @foreach (var rack in aisle.Racks)
+                                {
+                                    <article class="inventory-rack">
+                                        <div class="inventory-rack-title">
+                                            <span>@rack.RackCode</span>
+                                            <small>@rack.Locations.Count ô</small>
+                                        </div>
+                                        <div class="inventory-location-grid">
+                                            @foreach (var tile in rack.Locations)
+                                            {
+                                                var fill = Math.Min(tile.FillPercent, 100m).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+                                                var searchText = $"{tile.LocationCode} {tile.PrimaryItemCode} {tile.PrimaryItemName} {tile.RackCode} {tile.ShelfCode} {tile.BinCode}";
+                                                <button type="button"
+                                                        class="inventory-location-tile @tile.StatusKey"
+                                                        data-location-id="@tile.LocationId"
+                                                        data-location="@tile.LocationCode"
+                                                        data-zone="@zone.ZoneCode"
+                                                        data-status="@tile.StatusKey"
+                                                        data-fill="@fill"
+                                                        data-search="@searchText">
+                                                    <span class="tile-topline">
+                                                        <strong>@tile.LocationCode</strong>
+                                                        @if (tile.IsGoldenZone)
+                                                        {
+                                                            <i class="fas fa-star" title="Golden zone"></i>
+                                                        }
+                                                    </span>
+                                                    <span class="tile-meta">Kệ @tile.RackCode · Tầng @tile.ShelfCode · Ô @tile.BinCode</span>
+                                                    <span class="tile-item">@(string.IsNullOrWhiteSpace(tile.PrimaryItemCode) ? "Trống" : tile.PrimaryItemCode)</span>
+                                                    <span class="tile-progress"><i></i></span>
+                                                    <span class="tile-footer">
+                                                        <b>@Percent(tile.FillPercent)%</b>
+                                                        <small>@tile.StatusLabel</small>
+                                                    </span>
+                                                </button>
+                                            }
+                                        </div>
+                                    </article>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </section>
+        }
+    </div>
+}
+
+<aside class="inventory-location-drawer" id="inventoryLocationDrawer" aria-hidden="true">
+    <div class="inventory-location-drawer-header">
+        <div>
+            <span id="drawerStatus" class="badge badge-secondary">Trống</span>
+            <h2 id="drawerLocationCode">Vị trí</h2>
+            <p id="drawerLocationMeta">Chọn một ô trên sơ đồ để xem chi tiết.</p>
+        </div>
+        <button type="button" class="modal-close" id="inventoryDrawerClose" aria-label="Đóng chi tiết">&times;</button>
+    </div>
+    <div class="inventory-location-drawer-body">
+        <div class="detail-grid">
+            <div class="detail-item"><div class="detail-label">Sức chứa</div><div class="detail-value" id="drawerCapacity">--</div></div>
+            <div class="detail-item"><div class="detail-label">Đang dùng</div><div class="detail-value" id="drawerLoad">--</div></div>
+            <div class="detail-item"><div class="detail-label">Giữ chỗ</div><div class="detail-value" id="drawerReserved">--</div></div>
+            <div class="detail-item"><div class="detail-label">SKU</div><div class="detail-value" id="drawerSku">--</div></div>
+        </div>
+        <div class="table-container flat">
+            <table>
+                <thead>
+                    <tr><th>Mã vật tư</th><th>Tên vật tư</th><th>Lô/HSD</th><th class="cell-right">Tồn</th><th>Trạng thái</th></tr>
+                </thead>
+                <tbody id="drawerStockRows">
+                    <tr><td colspan="5" class="text-center text-muted">Chưa chọn vị trí.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</aside>
+
+@section Scripts {
+<script>
+const inventoryStockByLocation = @Html.Raw(Json.Serialize(stockPayload));
+const inventoryTileLookup = {};
+
+function formatNumber(value) {
+    return Number(value || 0).toLocaleString('vi-VN');
+}
+
+function applyInventoryMapFilters() {
+    const search = (document.getElementById('inventoryMapSearch')?.value || '').trim().toLocaleLowerCase('vi');
+    const zone = document.getElementById('inventoryZoneFilter')?.value || '';
+    const status = document.getElementById('inventoryStatusFilter')?.value || '';
+    document.querySelectorAll('.inventory-location-tile').forEach(tile => {
+        const matchesSearch = !search || (tile.dataset.search || '').toLocaleLowerCase('vi').includes(search);
+        const matchesZone = !zone || tile.dataset.zone === zone;
+        const matchesStatus = !status || tile.dataset.status === status;
+        tile.hidden = !(matchesSearch && matchesZone && matchesStatus);
+    });
+    document.querySelectorAll('.inventory-rack, .inventory-aisle, .inventory-zone').forEach(node => {
+        node.hidden = !node.querySelector('.inventory-location-tile:not([hidden])');
+    });
+}
+
+function clearInventoryMapFilters() {
+    document.getElementById('inventoryMapSearch').value = '';
+    document.getElementById('inventoryZoneFilter').value = '';
+    document.getElementById('inventoryStatusFilter').value = '';
+    document.getElementById('inventoryVoucherFilter').value = '';
+    document.querySelectorAll('.inventory-location-tile').forEach(tile => {
+        tile.classList.remove('voucher-highlight');
+        tile.hidden = false;
+    });
+    document.querySelectorAll('.inventory-rack, .inventory-aisle, .inventory-zone').forEach(node => node.hidden = false);
+}
+
+function openInventoryDrawer(tile) {
+    const drawer = document.getElementById('inventoryLocationDrawer');
+    const stock = inventoryStockByLocation[tile.dataset.locationId] || [];
+    const meta = inventoryTileLookup[tile.dataset.locationId] || {};
+    document.getElementById('drawerLocationCode').textContent = tile.dataset.location || 'Vị trí';
+    document.getElementById('drawerLocationMeta').textContent = tile.querySelector('.tile-meta')?.textContent || '';
+    document.getElementById('drawerStatus').textContent = tile.querySelector('.tile-footer small')?.textContent || '';
+    document.getElementById('drawerStatus').className = 'badge badge-secondary inventory-drawer-status ' + (tile.dataset.status || '');
+    document.getElementById('drawerCapacity').textContent = formatNumber(meta.maxCapacity) + ' tải';
+    document.getElementById('drawerLoad').textContent = formatNumber(meta.currentLoad) + ' tải';
+    document.getElementById('drawerReserved').textContent = formatNumber(meta.reservedLoad) + ' tải';
+    document.getElementById('drawerSku').textContent = formatNumber(meta.skuCount);
+
+    const rows = document.getElementById('drawerStockRows');
+    if (!stock.length) {
+        rows.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Vị trí này đang trống.</td></tr>';
+    } else {
+        rows.innerHTML = stock.map(line => {
+            const lot = [line.lotNumber || '', line.expiryDate ? new Date(line.expiryDate).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : ''].filter(Boolean).join(' / ') || '--';
+            return '<tr>'
+                + '<td class="td-code">' + escapeHtml(line.itemCode) + '</td>'
+                + '<td>' + escapeHtml(line.itemName) + '</td>'
+                + '<td>' + escapeHtml(lot) + '</td>'
+                + '<td class="td-number">' + formatNumber(line.quantity) + ' ' + escapeHtml(line.uom || '') + '</td>'
+                + '<td><span class="badge badge-secondary">' + escapeHtml(line.holdStatus || 'Available') + '</span></td>'
+                + '</tr>';
+        }).join('');
+    }
+    drawer.classList.add('active');
+    drawer.setAttribute('aria-hidden', 'false');
+}
+
+function closeInventoryDrawer() {
+    const drawer = document.getElementById('inventoryLocationDrawer');
+    drawer.classList.remove('active');
+    drawer.setAttribute('aria-hidden', 'true');
+}
+
+function escapeHtml(value) {
+    const div = document.createElement('div');
+    div.textContent = value == null ? '' : String(value);
+    return div.innerHTML;
+}
+
+async function highlightInventoryVoucherLocations() {
+    const voucherId = document.getElementById('inventoryVoucherFilter').value;
+    document.querySelectorAll('.inventory-location-tile').forEach(tile => tile.classList.remove('voucher-highlight'));
+    if (!voucherId) return;
+    try {
+        const voucherLocationsUrl = '@Url.Action("GetVoucherLocations", "Warehouses")';
+        const response = await fetch(voucherLocationsUrl + '?voucherId=' + encodeURIComponent(voucherId));
+        const ids = await response.json();
+        let found = 0;
+        document.querySelectorAll('.inventory-location-tile').forEach(tile => {
+            if (ids.includes(parseInt(tile.dataset.locationId, 10))) {
+                tile.classList.add('voucher-highlight');
+                found++;
+            }
+        });
+        if (!found) {
+            enterpriseNotify({ title: 'Không thấy vị trí', text: 'Phiếu này chưa có vị trí trong kho đang xem hoặc thuộc kho khác.', icon: 'info' });
+        }
+    } catch (error) {
+        enterpriseNotify({ title: 'Không tải được vị trí phiếu', text: error?.message || 'Vui lòng thử lại.', icon: 'error' });
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.inventory-location-tile').forEach(tile => {
+        const fill = tile.dataset.fill || '0';
+        tile.style.setProperty('--fill', fill + '%');
+        inventoryTileLookup[tile.dataset.locationId] = {
+            maxCapacity: Number(tile.dataset.capacity || 0),
+            currentLoad: Number(tile.dataset.load || 0),
+            reservedLoad: Number(tile.dataset.reserved || 0),
+            skuCount: Number(tile.dataset.sku || 0)
+        };
+        tile.addEventListener('click', () => openInventoryDrawer(tile));
+    });
+    @foreach (var tile in Model.Zones.SelectMany(z => z.Aisles).SelectMany(a => a.Racks).SelectMany(r => r.Locations))
+    {
+        <text>
+        inventoryTileLookup["@tile.LocationId"] = {
+            maxCapacity: @tile.MaxCapacity.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            currentLoad: @tile.CurrentLoad.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            reservedLoad: @tile.ReservedLoad.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            skuCount: @tile.SkuCount
+        };
+        </text>
+    }
+    document.getElementById('inventoryMapSearch')?.addEventListener('input', applyInventoryMapFilters);
+    document.getElementById('inventoryZoneFilter')?.addEventListener('change', applyInventoryMapFilters);
+    document.getElementById('inventoryStatusFilter')?.addEventListener('change', applyInventoryMapFilters);
+    document.getElementById('inventoryVoucherFilter')?.addEventListener('change', highlightInventoryVoucherLocations);
+    document.getElementById('inventoryClearFilters')?.addEventListener('click', clearInventoryMapFilters);
+    document.getElementById('inventoryDrawerClose')?.addEventListener('click', closeInventoryDrawer);
+});
+</script>
+}

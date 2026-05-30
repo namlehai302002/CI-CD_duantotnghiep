@@ -1,0 +1,132 @@
+@model List<WMS.Models.WarehouseSortationConfig>
+@{
+    ViewData["Title"] = "Cấu hình phân loại đơn";
+    var warehouses = (List<WMS.Models.Warehouse>)(ViewBag.Warehouses ?? new List<WMS.Models.Warehouse>());
+    var locations = (List<WMS.Models.Location>)(ViewBag.Locations ?? new List<WMS.Models.Location>());
+    int? selectedWarehouseId = ViewBag.WarehouseId as int?;
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Cấu hình phân loại đơn</h1>
+        <p class="page-subtitle">Khai báo vị trí tập kết và vị trí phân loại để dùng quy trình lấy tổng hai bước.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Vouchers" asp-action="WavePlanning" class="btn btn-secondary"><i class="fas fa-layer-group"></i> Lập đợt lấy hàng</a>
+        <a asp-controller="Operations" asp-action="RfPicking" class="btn btn-secondary"><i class="fas fa-mobile-screen"></i> Quét lấy hàng</a>
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-circle-info"></i> Cách dùng</div>
+    <div class="user-guide-text">Mỗi kho chỉ có một cấu hình đang hoạt động. Khi tạo đợt lấy hàng bằng hồ sơ “Lấy tổng hai bước”, hệ thống sẽ dùng các vị trí này để tạo nhiệm vụ lấy tổng và phân loại.</div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select class="form-control" name="warehouseId" data-wms-submit-form="true">
+            <option value="">Chọn kho</option>
+            @foreach (var warehouse in warehouses)
+            {
+                <option value="@warehouse.WarehouseId" selected="@(selectedWarehouseId == warehouse.WarehouseId)">
+                    @warehouse.WarehouseCode - @warehouse.WarehouseName
+                </option>
+            }
+        </select>
+    </div>
+</form>
+
+@if (selectedWarehouseId.HasValue)
+{
+    <div class="enterprise-card mb-3">
+        <div class="card-header">
+            <h3 class="card-title">Lưu cấu hình</h3>
+        </div>
+        <div class="card-body">
+            <form method="post" asp-controller="Operations" asp-action="SaveSortationConfig" class="filter-bar">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="warehouseId" value="@selectedWarehouseId.Value" />
+                <div class="form-group">
+                    <label class="form-label">Vị trí tập kết</label>
+                    <select class="form-control" name="stagingLocationId" required>
+                        <option value="">Chọn vị trí tập kết</option>
+                        @foreach (var location in locations)
+                        {
+                            <option value="@location.LocationId">@location.LocationCode</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Vị trí phân loại</label>
+                    <select class="form-control" name="sortationLocationId" required>
+                        <option value="">Chọn vị trí phân loại</option>
+                        @foreach (var location in locations)
+                        {
+                            <option value="@location.LocationId">@location.LocationCode</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Ghi chú</label>
+                    <input class="form-control" name="notes" placeholder="Ví dụ: Khu phân loại đơn thương mại điện tử" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">&nbsp;</label>
+                    <button class="btn btn-primary" type="submit"><i class="fas fa-save"></i> Lưu cấu hình</button>
+                </div>
+            </form>
+        </div>
+    </div>
+}
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Kho</th>
+                <th>Vị trí tập kết</th>
+                <th>Vị trí phân loại</th>
+                <th>Trạng thái</th>
+                <th>Ghi chú</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!Model.Any())
+            {
+                <tr>
+                    <td colspan="6" class="cell-empty cell-empty-md">Chưa có cấu hình phân loại đơn.</td>
+                </tr>
+            }
+            else
+            {
+                @foreach (var config in Model)
+                {
+                    <tr>
+                        <td>@config.Warehouse?.WarehouseCode - @config.Warehouse?.WarehouseName</td>
+                        <td class="td-code">@config.StagingLocation?.LocationCode</td>
+                        <td class="td-code">@config.SortationLocation?.LocationCode</td>
+                        <td>
+                            <span class="badge @(config.IsActive ? "badge-success" : "badge-secondary")">
+                                @(config.IsActive ? "Đang dùng" : "Đã tắt")
+                            </span>
+                        </td>
+                        <td>@(config.Notes ?? "-")</td>
+                        <td>
+                            @if (config.IsActive)
+                            {
+                                <form method="post" asp-controller="Operations" asp-action="DisableSortationConfig" class="inline-post-form" data-enterprise-confirm="Tắt cấu hình phân loại đơn này?" data-enterprise-confirm-ok="Tắt cấu hình">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@config.WarehouseSortationConfigId" />
+                                    <input type="hidden" name="warehouseId" value="@selectedWarehouseId" />
+                                    <button class="btn btn-sm btn-danger" type="submit"><i class="fas fa-ban"></i> Tắt</button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>

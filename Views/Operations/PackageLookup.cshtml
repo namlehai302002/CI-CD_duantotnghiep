@@ -1,0 +1,155 @@
+@model List<WMS.ViewModels.OutboundPackageLookupRow>
+@{
+    ViewData["Title"] = "Tra cứu kiện xuất";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Tra cứu kiện xuất</h1>
+        <p class="page-subtitle">Tìm kiện đóng gói theo mã kiện, mã phiếu, mã vận đơn, mã chuyến bàn giao hoặc mã kiện tham chiếu (LPN).</p>
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-boxes-packing"></i> Quy trình tra cứu</div>
+    <div class="step-list">
+        <span class="step-chip"><i class="fas fa-qrcode"></i> 1) Quét / nhập mã kiện hoặc mã vận đơn</span>
+        <span class="step-chip"><i class="fas fa-box-open"></i> 2) Xem chi tiết đóng gói, mã kiện tham chiếu (LPN)</span>
+        <span class="step-chip"><i class="fas fa-file-lines"></i> 3) Mở phiếu xuất gốc để truy vết</span>
+    </div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select class="form-control" name="warehouseId">
+            <option value="">Tất cả</option>
+            @foreach (var w in (List<WMS.Models.Warehouse>)ViewBag.Warehouses)
+            {
+                <option value="@w.WarehouseId" selected="@(ViewBag.WarehouseId != null && (int)ViewBag.WarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group form-span-2">
+        <label class="form-label">Tìm nhanh</label>
+        <input type="text" class="form-control" name="search" value="@ViewBag.Search" placeholder="Mã kiện, phiếu, mã vận đơn, mã chuyến, LPN, người đóng..." />
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc dữ liệu</button>
+    </div>
+</form>
+
+<div class="stats-grid mb-3">
+    <div class="stat-card accent"><div class="stat-value">@Model.Count</div><div class="stat-label">Tổng kiện tìm thấy</div></div>
+    <div class="stat-card success"><div class="stat-value">@Model.Count(p => !string.IsNullOrWhiteSpace(p.TrackingNumber) || !string.IsNullOrWhiteSpace(p.CarrierTrackingNumber))</div><div class="stat-label">Đã có mã vận đơn</div></div>
+    <div class="stat-card warning"><div class="stat-value">@Model.Count(p => !string.IsNullOrWhiteSpace(p.ReferenceLpnCode))</div><div class="stat-label">Đóng từ mã kiện (LPN)</div></div>
+</div>
+
+<div class="table-container">
+    <div class="enterprise-table-tools justify-content-end">
+        <button class="btn-export" data-wms-export-table="table" data-wms-export-filename="tra_cuu_kien_xuat"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th class="sortable">Mã kiện</th>
+                <th class="sortable">Phiếu xuất</th>
+                <th>Kho</th>
+                <th>Đối tác</th>
+                <th>Nguồn</th>
+                <th>Loại kiện</th>
+                <th class="sortable cell-right">SL hàng</th>
+                <th>Mã kiện tham chiếu (LPN)</th>
+                <th class="sortable">Đóng bởi</th>
+                <th class="sortable">Ngày đóng</th>
+                <th>Mã vận đơn</th>
+                <th>Mã chuyến bàn giao</th>
+                <th>Vận đơn hãng</th>
+                <th>Cân / chuyến xe</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @if (!Model.Any())
+        {
+            <tr><td colspan="15" class="cell-empty"><div class="empty-state"><div class="empty-icon"><i class="fas fa-boxes-packing"></i></div><div class="empty-text">Chưa có kiện xuất nào</div><div class="empty-sub">Kiện xuất sẽ xuất hiện khi hoàn tất đóng gói</div></div></td></tr>
+        }
+        else
+        {
+            foreach (var row in Model)
+            {
+                <tr>
+                    <td><span class="badge badge-accent font-mono fs-sm">@row.PackageCode</span></td>
+                    <td><a asp-controller="Vouchers" asp-action="Details" asp-route-id="@row.VoucherId" class="td-code link-clean">@row.VoucherCode</a></td>
+                    <td>@row.WarehouseName</td>
+                    <td>@(row.PartnerName ?? "---")</td>
+                    <td>
+                        @if (row.SourceType == "LPN")
+                        {
+                            <span class="badge badge-info">Theo mã kiện (LPN)</span>
+                        }
+                        else
+                        {
+                            <span class="badge badge-secondary">Thủ công</span>
+                        }
+                    </td>
+                    <td>@(row.PackageType ?? "---")</td>
+                    <td class="td-number">
+                        @if (row.TotalQuantity.HasValue)
+                        {
+                            @row.TotalQuantity.Value.ToString("N2")
+                        }
+                        else
+                        {
+                            <text>---</text>
+                        }
+                        @if (row.ItemCount > 0)
+                        {
+                            <div class="text-muted fs-xs">@row.ItemCount mặt hàng</div>
+                        }
+                    </td>
+                    <td class="font-mono fs-sm">@(row.ReferenceLpnCode ?? "---")</td>
+                    <td>@row.PackedBy</td>
+                    <td>@row.PackedAt.ToString("dd/MM/yyyy HH:mm")</td>
+                    <td>
+                        @if (!string.IsNullOrWhiteSpace(row.TrackingNumber))
+                        {
+                            <span class="badge badge-success font-mono fs-xs">@row.TrackingNumber</span>
+                        }
+                        else
+                        {
+                            <span class="text-muted">---</span>
+                        }
+                    </td>
+                    <td class="font-mono fs-sm">@(string.IsNullOrWhiteSpace(row.ManifestCode) ? "---" : row.ManifestCode)</td>
+                    <td>
+                        <div>@(row.CarrierName ?? "---")</div>
+                        <span class="badge @(row.CarrierStatus == WMS.Models.CarrierShipmentStatusEnum.Failed || row.CarrierStatus == WMS.Models.CarrierShipmentStatusEnum.DeliveryFailed ? "badge-danger" : row.CarrierStatus == WMS.Models.CarrierShipmentStatusEnum.Created || row.CarrierStatus == WMS.Models.CarrierShipmentStatusEnum.Delivered ? "badge-success" : "badge-secondary")">@row.CarrierStatusLabel</span>
+                        @if (!string.IsNullOrWhiteSpace(row.CarrierTrackingNumber))
+                        {
+                            <div class="font-mono fs-xs">@row.CarrierTrackingNumber</div>
+                        }
+                    </td>
+                    <td>
+                        <div>@(row.ActualCatchWeight.HasValue ? row.ActualCatchWeight.Value.ToString("N4") : "---")</div>
+                        <div class="text-muted font-mono fs-xs">@(row.LoadCode ?? "---")</div>
+                    </td>
+                    <td>
+        <form method="post" asp-controller="Labels" asp-action="PrintPackage" class="d-inline">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="outboundPackageId" value="@row.OutboundPackageId" />
+                            <button class="btn btn-sm btn-success" type="submit"><i class="fas fa-tags"></i> In nhãn khách hàng</button>
+                        </form>
+        <form method="post" asp-controller="Labels" asp-action="PrintShippingPackage" class="d-inline">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="outboundPackageId" value="@row.OutboundPackageId" />
+                            <button class="btn btn-sm btn-primary" type="submit"><i class="fas fa-print"></i> In nhãn vận chuyển</button>
+                        </form>
+                    </td>
+                </tr>
+            }
+        }
+        </tbody>
+    </table>
+</div>

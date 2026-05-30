@@ -1,0 +1,83 @@
+﻿@model List<WMS.Models.ItemCategory>
+@{
+    ViewData["Title"] = "Danh mục vật tư";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Danh mục vật tư</h1>
+        <p class="page-subtitle">Quản lý nhóm phân loại hàng hóa, nguyên vật liệu và thành phẩm.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Categories" asp-action="Create" class="btn btn-primary"><i class="fas fa-plus"></i> Thêm danh mục</a>
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-circle-info"></i> Gợi ý sử dụng</div>
+    <div class="user-guide-text">Nên đặt mã ngắn gọn, tên rõ nghiệp vụ và dùng thứ tự sắp xếp để menu hiển thị ổn định cho người dùng mới.</div>
+</div>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Mã nhóm</th>
+                <th>Tên nhóm / danh mục</th>
+                <th class="text-center">Sắp xếp</th>
+                <th class="text-right">Thao tác</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!Model.Any())
+            {
+                <tr>
+                    <td colspan="4" class="table-empty-cell">
+                        <div class="table-empty-content">Chưa có danh mục nào. Hãy tạo danh mục trước khi khai báo vật tư.</div>
+                    </td>
+                </tr>
+            }
+            else
+            {
+                @foreach (var c in Model)
+                {
+                    <tr>
+                        <td class="td-code text-accent">@c.CategoryCode</td>
+                        <td class="td-name fw-600">@c.CategoryName</td>
+                        <td class="text-center">@c.SortOrder</td>
+                        <td class="td-actions text-right">
+                            <a asp-controller="Categories" asp-action="Edit" asp-route-id="@c.CategoryId" class="btn btn-sm btn-secondary" title="Sửa"><i class="fas fa-edit"></i></a>
+                            @if (User.IsInRole("Admin"))
+                            {
+                            <form method="post" asp-controller="Categories" asp-action="Delete" asp-route-id="@c.CategoryId" class="js-confirm-delete inline-form">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn-sm btn-danger" title="Xóa"><i class="fas fa-trash"></i></button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+@section Scripts {
+<script>
+    document.querySelectorAll('.js-confirm-delete').forEach(form => {
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            if (typeof Swal === 'undefined') { this.submit(); return; }
+            Swal.fire({
+                title: 'Xóa danh mục?',
+                text: 'Thao tác này không thể hoàn tác.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Xóa',
+                cancelButtonText: 'Hủy',
+                confirmButtonColor: '#ef4444'
+            }).then(r => { if (r.isConfirmed) this.submit(); });
+        });
+    });
+</script>
+}

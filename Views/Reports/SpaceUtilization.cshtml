@@ -1,0 +1,152 @@
+@{
+    ViewData["Title"] = "Hiệu suất không gian kho";
+    var rows = (dynamic)ViewBag.Rows;
+    var rowList = (System.Collections.IList)rows;
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Hiệu suất không gian kho</h1>
+        <p class="page-subtitle">Phân tích mức sử dụng vị trí lưu trữ theo khu vực, xác định vị trí quá tải hoặc trống để tối ưu bố trí kho.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Reports" asp-action="Analytics" class="btn btn-secondary"><i class="fas fa-chart-line"></i> Phân tích vận hành</a>
+    </div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select class="form-control" name="warehouseId">
+            <option value="">Tất cả</option>
+            @foreach (var w in (List<WMS.Models.Warehouse>)ViewBag.Warehouses)
+            {
+                <option value="@w.WarehouseId" selected="@(ViewBag.WarehouseId != null && (int)ViewBag.WarehouseId == w.WarehouseId)">
+                    @w.WarehouseCode - @w.WarehouseName
+                </option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc</button>
+    </div>
+</form>
+
+<div class="stats-grid">
+    <div class="stat-card accent"><div class="stat-value">@ViewBag.TotalLocations</div><div class="stat-label">Tổng vị trí</div></div>
+    <div class="stat-card success"><div class="stat-value">@ViewBag.OccupiedLocations</div><div class="stat-label">Đang sử dụng</div></div>
+    <div class="stat-card info"><div class="stat-value">@ViewBag.AvgUtilization%</div><div class="stat-label">TB sử dụng</div></div>
+    <div class="stat-card danger"><div class="stat-value">@ViewBag.CriticalCount</div><div class="stat-label">Quá tải (>=90%)</div></div>
+</div>
+
+@if (rowList.Count == 0)
+{
+    <div class="table-container mt-3">
+        <div class="empty-state">
+            <div class="empty-icon"><i class="fas fa-cubes"></i></div>
+            <div class="empty-text">Không có dữ liệu vị trí</div>
+            <div class="empty-sub">Chưa có vị trí nào được thiết lập trong kho đã chọn.</div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="mobile-table-card-list">
+        @foreach (dynamic r in rows)
+        {
+            decimal pct = (decimal)r.UsedPercent;
+            string status = (string)r.Status;
+            var badgeClass = status switch
+            {
+                "critical" => "badge-danger",
+                "warning" => "badge-warning",
+                "ok" => "badge-success",
+                "empty" => "badge-secondary",
+                _ => "badge-secondary"
+            };
+            var label = status switch
+            {
+                "critical" => "Quá tải",
+                "warning" => "Cao",
+                "ok" => "Bình thường",
+                "empty" => "Trống",
+                _ => "Không áp dụng"
+            };
+
+            <div class="mobile-table-card">
+                <div class="mobile-table-card-title">
+                    <div class="mobile-table-card-title-main">
+                        <span class="td-code">@r.LocationCode</span>
+                        <div>@r.ZoneCode - @r.ZoneName</div>
+                    </div>
+                    <span class="badge @badgeClass">@label</span>
+                </div>
+                <div class="mobile-table-card-row"><span class="mobile-table-card-label">Kho</span><span class="mobile-table-card-value">@r.WarehouseName</span></div>
+                <div class="mobile-table-card-row"><span class="mobile-table-card-label">Tồn / dung tích</span><span class="mobile-table-card-value">@(((decimal)r.TotalQty).ToString("N0")) / @(((decimal)r.MaxCapacity).ToString("N0"))</span></div>
+                <div class="mobile-table-card-row"><span class="mobile-table-card-label">% sử dụng</span><span class="mobile-table-card-value">@pct%</span></div>
+                <div class="mobile-table-card-row"><span class="mobile-table-card-label">Số SKU</span><span class="mobile-table-card-value">@r.ItemCount</span></div>
+            </div>
+        }
+    </div>
+
+    <div class="table-container mt-3 mobile-table-card-source">
+        <div class="mobile-table-toolbar">
+            <span class="mobile-table-toolbar-title"><i class="fas fa-map-location-dot"></i> Chi tiết vị trí lưu trữ</span>
+            <button class="btn-export" data-wms-export-table="table" data-wms-export-filename="space_utilization"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th class="sortable">Vị trí</th>
+                    <th>Khu vực</th>
+                    <th>Kho</th>
+                    <th class="cell-right sortable">Tồn kho</th>
+                    <th class="cell-right">Dung tích</th>
+                    <th class="cell-center sortable">% Sử dụng</th>
+                    <th class="cell-right">Số SKU</th>
+                    <th class="cell-center">Trạng thái</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (dynamic r in rows)
+                {
+                    decimal pct = (decimal)r.UsedPercent;
+                    string status = (string)r.Status;
+                    var badgeClass = status switch
+                    {
+                        "critical" => "badge-danger",
+                        "warning" => "badge-warning",
+                        "ok" => "badge-success",
+                        "empty" => "badge-secondary",
+                        _ => "badge-secondary"
+                    };
+                    var label = status switch
+                    {
+                        "critical" => "Quá tải",
+                        "warning" => "Cao",
+                        "ok" => "Bình thường",
+                        "empty" => "Trống",
+                        _ => "Không áp dụng"
+                    };
+
+                    <tr>
+                        <td><div class="td-code fs-body-sm">@r.LocationCode</div></td>
+                        <td><span class="fs-sm">@r.ZoneCode</span><div class="text-muted fs-xs">@r.ZoneName</div></td>
+                        <td>@r.WarehouseName</td>
+                        <td class="td-number">@(((decimal)r.TotalQty).ToString("N0"))</td>
+                        <td class="td-number">@(((decimal)r.MaxCapacity).ToString("N0"))</td>
+                        <td class="cell-center">
+                            <div class="utilization-meter">
+                                <progress class="utilization-progress" value="@pct" max="100">@pct%</progress>
+                                <span class="utilization-percent">@pct%</span>
+                            </div>
+                        </td>
+                        <td class="td-number">@r.ItemCount</td>
+                        <td class="cell-center"><span class="badge @badgeClass">@label</span></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

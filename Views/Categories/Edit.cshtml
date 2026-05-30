@@ -1,0 +1,50 @@
+@model WMS.Models.ItemCategory
+@{
+    ViewData["Title"] = "Sửa danh mục";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Sửa danh mục @Model.CategoryCode</h1>
+        <p class="page-subtitle">Điều chỉnh nhóm vật tư mà không làm mất lịch sử phiếu, tồn kho hoặc báo cáo đã ghi nhận.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Categories" asp-action="Index" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Quay lại</a>
+    </div>
+</div>
+
+<div class="enterprise-form-layout">
+    <div class="card enterprise-form-card">
+        <div class="card-header">
+            <span class="card-title"><i class="fas fa-tags text-accent"></i> Thông tin danh mục</span>
+            <span class="badge @(Model.IsActive ? "badge-success" : "badge-secondary")">@(Model.IsActive ? "Đang dùng" : "Đã ẩn")</span>
+        </div>
+        <div class="card-body">
+            @await Html.PartialAsync("_Form", Model)
+        </div>
+    </div>
+
+    <aside class="enterprise-form-aside">
+        <div class="card">
+            <div class="card-header"><span class="card-title">Lưu ý trước khi sửa</span></div>
+            <div class="card-body">
+                <ol class="audit-checklist">
+                    <li>Đổi tên danh mục sẽ đổi cách hiển thị ở báo cáo và màn vật tư.</li>
+                    <li>Đổi mã danh mục nên thực hiện ngoài giờ vận hành nếu người dùng đang tra cứu theo mã cũ.</li>
+                    <li>Nếu muốn ngừng dùng danh mục, hãy xóa mềm từ danh sách thay vì sửa tên thành nội dung khác.</li>
+                </ol>
+                <div class="soft-divider"></div>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <div class="detail-label">Mã bản ghi</div>
+                        <div class="detail-value">@Model.CategoryId</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Thứ tự</div>
+                        <div class="detail-value">@Model.SortOrder</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </aside>
+</div>

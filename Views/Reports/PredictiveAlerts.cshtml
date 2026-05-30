@@ -1,0 +1,59 @@
+@model WMS.ViewModels.PredictiveAlertsViewModel
+@{
+    ViewData["Title"] = "Cảnh báo dự báo";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Cảnh báo dự báo</h1>
+        <p class="page-subtitle">Dự báo quá tải, thiếu hàng, trễ cam kết dịch vụ và hết hạn từ dữ liệu vận hành hiện tại.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-secondary" asp-action="SemanticBi"><i class="fas fa-chart-line"></i> Báo cáo quản trị dữ liệu</a>
+    </div>
+</div>
+
+<form method="get" class="filter-panel">
+    <div>
+        <label>Kho</label>
+        <select class="form-control" name="warehouseId">
+            <option value="">Tất cả kho</option>
+            @foreach (var wh in Model.Warehouses)
+            {
+                <option value="@wh.WarehouseId" selected="@(Model.WarehouseId == wh.WarehouseId)">@wh.WarehouseCode - @wh.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc</button>
+</form>
+
+<div class="metric-grid">
+    <div class="metric-card danger"><div class="metric-value">@Model.Alerts.Count(x => x.Severity == WMS.Models.EnterpriseSeverityEnum.Critical)</div><div class="metric-label">Rủi ro cao</div></div>
+    <div class="metric-card warning"><div class="metric-value">@Model.Alerts.Count(x => x.Severity == WMS.Models.EnterpriseSeverityEnum.Warning)</div><div class="metric-label">Cần theo dõi</div></div>
+    <div class="metric-card"><div class="metric-value">@Model.Alerts.Count</div><div class="metric-label">Tổng cảnh báo</div></div>
+</div>
+
+<section class="enterprise-section">
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead><tr><th>Loại</th><th>Mức</th><th>Tiêu đề</th><th>Dự báo cho</th><th>Điểm rủi ro</th><th>Nguồn</th></tr></thead>
+            <tbody>
+                @if (!Model.Alerts.Any())
+                {
+                    <tr><td colspan="6" class="empty-state">Chưa có cảnh báo dự báo đang mở.</td></tr>
+                }
+                @foreach (var alert in Model.Alerts)
+                {
+                    <tr>
+                        <td><span class="status-badge">@alert.AlertType</span></td>
+                        <td><span class="status-badge">@alert.Severity</span></td>
+                        <td><strong>@alert.Title</strong><div class="text-muted">@alert.Message</div></td>
+                        <td>@alert.ForecastFor.ToString("dd/MM/yyyy")</td>
+                        <td class="td-number">@alert.RiskScore.ToString("N1")%</td>
+                        <td>@alert.ReferenceType #@alert.ReferenceId</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

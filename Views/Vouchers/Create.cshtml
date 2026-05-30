@@ -1,0 +1,2204 @@
+@model WMS.ViewModels.VoucherCreateViewModel
+@{
+    string typeName = Model.VoucherType switch {
+        WMS.Models.VoucherTypeEnum.NhapKho => "Nhập kho",
+        WMS.Models.VoucherTypeEnum.XuatKho => "Xuất kho",
+        WMS.Models.VoucherTypeEnum.TraNCC => "Trả nhà cung cấp",
+        WMS.Models.VoucherTypeEnum.KhachTra => "Khách trả",
+        WMS.Models.VoucherTypeEnum.DieuChinh => "Điều chỉnh",
+        WMS.Models.VoucherTypeEnum.ChuyenKho => "Chuyển kho",
+        WMS.Models.VoucherTypeEnum.NhapThanhPham => "Nhập thành phẩm",
+        WMS.Models.VoucherTypeEnum.XuatSanXuat => "Xuất sản xuất",
+        _ => ""
+    };
+    ViewData["Title"] = $"Tạo phiếu {typeName}";
+    var canSeeFinancial = (bool)(ViewBag.CanSeeFinancial ?? false);
+    var isInbound = Model.VoucherType is WMS.Models.VoucherTypeEnum.NhapKho or WMS.Models.VoucherTypeEnum.KhachTra or WMS.Models.VoucherTypeEnum.NhapThanhPham;
+    var itemAllowedSourceUomsJson = (string?)(ViewBag.ItemAllowedSourceUomsJson ?? "{}") ?? "{}";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Tạo phiếu @typeName</h1>
+        <p class="page-subtitle">Khai báo đầy đủ thông tin để hệ thống ghi nhận chính xác và dễ đối soát sau này.</p>
+    </div>
+    <a asp-controller="Vouchers" asp-action="Index" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Quay lại danh sách</a>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-circle-info"></i> Hướng dẫn nhanh trước khi tạo phiếu</div>
+    <div class="step-list">
+        <span class="step-chip"><i class="fas fa-building"></i> 1) Chọn đúng kho và đối tác liên quan</span>
+        <span class="step-chip"><i class="fas fa-box"></i> 2) Chọn vật tư, nhập số lượng và đơn vị phù hợp với vật tư đó</span>
+        @if (isInbound)
+        {
+            <span class="step-chip"><i class="fas fa-truck"></i> 3) Khai báo lịch xe đến và khung giờ nhận hàng nếu có</span>
+            <span class="step-chip"><i class="fas fa-save"></i> 4) Chọn "Lưu tạm" để bổ sung sau hoặc "Lưu và gửi duyệt" để gửi quản lý</span>
+        }
+        else
+        {
+            <span class="step-chip"><i class="fas fa-save"></i> 3) Kiểm tra lại dữ liệu rồi bấm "Hoàn tất và lưu phiếu"</span>
+        }
+    </div>
+</div>
+@if (Model.VoucherType == WMS.Models.VoucherTypeEnum.ChuyenKho)
+{
+    <div class="user-guide transfer-guide">
+        <div class="user-guide-title"><i class="fas fa-lightbulb"></i> Cách hiểu nhanh phiếu chuyển kho</div>
+        <div class="transfer-guide-text">
+            <b>Số lượng thực chuyển</b> = <b>Số lượng xuất</b> x <b>Quy đổi ra đơn vị tồn kho</b>.
+            Ví dụ: xuất 2 Bộ, quy đổi 10 Cái/Bộ thì hệ thống sẽ chuyển tồn 20 Cái.
+        </div>
+    </div>
+}
+
+<form asp-controller="Vouchers" asp-action="Create" method="post" id="voucherForm" novalidate>
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="VoucherType" value="@Model.VoucherType" />
+    <input type="hidden" name="ParentVoucherId" value="@Model.ParentVoucherId" />
+    <div asp-validation-summary="All" class="alert alert-danger validation-summary-enterprise" id="validationSummary"></div>
+
+    @if (Model.VoucherType == WMS.Models.VoucherTypeEnum.XuatKho)
+    {
+        <input type="hidden" name="ExportMode" id="ExportMode" value="1" />
+    }
+
+    <div class="card mb-3">
+        <div class="card-header"><span class="card-title">Thông tin chung</span></div>
+        <div class="card-body">
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Ngày Chứng Từ</label>
+                    <input type="text" class="form-control" value="@WMS.Common.VietnamTime.Today.ToString("dd/MM/yyyy")" disabled />
+                </div>
+                @if(Model.VoucherType == WMS.Models.VoucherTypeEnum.XuatKho)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Loại xuất</label>
+                        <select id="exportModeSelect" class="form-control" data-wms-change-call="setExportMode" data-wms-change-value="true">
+                            <option value="1" selected>Xuất nội bộ</option>
+                            <option value="2">Xuất bán / ra ngoài</option>
+                        </select>
+                    </div>
+                }
+                <input type="hidden" name="WarehouseId" value="@(Model.WarehouseId > 0 ? Model.WarehouseId : Model.Warehouses.FirstOrDefault()?.WarehouseId)" />
+                @if(Model.VoucherType == WMS.Models.VoucherTypeEnum.ChuyenKho)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Kho Đích *</label>
+                        <select name="DestWarehouseId" class="form-control" required
+                                data-wms-invalid-message="Vui lòng chọn kho đích."
+                                data-wms-clear-validity="true">
+                            <option value="">-- Chọn kho đích --</option>
+                            @foreach (var w in Model.Warehouses.Where(x => x.IsActive))
+                            {
+                                <option value="@w.WarehouseId" selected="@(w.WarehouseId == Model.DestWarehouseId ? "selected" : null)">
+                                    [@w.WarehouseCode] @w.WarehouseName
+                                </option>
+                            }
+                        </select>
+                    </div>
+                }
+                
+                @if(Model.VoucherType is WMS.Models.VoucherTypeEnum.NhapKho or WMS.Models.VoucherTypeEnum.XuatKho or WMS.Models.VoucherTypeEnum.TraNCC or WMS.Models.VoucherTypeEnum.KhachTra)
+                {
+                    <div class="form-group" id="partnerFieldDiv">
+                        <label class="form-label" asp-for="PartnerId">Đối Tác (NCC / Khách Hàng) *</label>
+                        <select name="PartnerId" class="form-control partner-select-validate">
+                            <option value="">-- Trống / Chọn Đối Tác --</option>
+                            @foreach(var p in Model.Partners) { 
+                                <option value="@p.PartnerId" selected="@(p.PartnerId == Model.PartnerId ? "selected" : null)">
+                                    [@p.PartnerCode] @p.PartnerName
+                                </option> 
+                            }
+                        </select>
+                    </div>
+                }
+                @if (Model.OwnerPartners.Any())
+                {
+                    <div class="form-group">
+                        <label class="form-label">Chủ hàng kho dịch vụ</label>
+                        <select name="OwnerPartnerId" class="form-control">
+                            <option value="">-- Internal / unowned --</option>
+                            @foreach (var owner in Model.OwnerPartners)
+                            {
+                                <option value="@owner.PartnerId" selected="@(owner.PartnerId == Model.OwnerPartnerId ? "selected" : null)">
+                                    [@owner.PartnerCode] @owner.PartnerName
+                                </option>
+                            }
+                        </select>
+                    </div>
+                }
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Số Chứng Từ Gốc</label>
+                    <input type="text" name="ReferenceNo" class="form-control" placeholder="VD: INVOICE-123" value="@Model.ReferenceNo" />
+                </div>
+                <div class="form-group form-span-2">
+                    <label class="form-label">Diễn giải / Ghi chú</label>
+                    <input type="text" name="Description" class="form-control" placeholder="Mục đích nhập/xuất" value="@Model.Description" />
+                </div>
+                @if (Model.VoucherType is WMS.Models.VoucherTypeEnum.XuatKho or WMS.Models.VoucherTypeEnum.TraNCC or WMS.Models.VoucherTypeEnum.ChuyenKho or WMS.Models.VoucherTypeEnum.XuatSanXuat)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Ngày cần hàng theo cam kết</label>
+                        <input type="date" name="RequestedDeliveryDate" class="form-control" 
+                               value="@(Model.RequestedDeliveryDate?.ToString("yyyy-MM-dd"))" 
+                               title="Ngày KH / bộ phận cần nhận hàng — hệ thống sẽ cảnh báo nếu trễ hạn" />
+                    </div>
+                }
+            </div>
+            @if (isInbound)
+            {
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Giờ xe đến dự kiến *</label>
+                        <input type="datetime-local" name="ExpectedArrivalAt" class="form-control"
+                               value="@(Model.ExpectedArrivalAt?.ToString("yyyy-MM-ddTHH:mm"))"
+                               title="Thời điểm xe hoặc nhà cung cấp dự kiến đến kho" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Giờ bắt đầu khung nhận hàng</label>
+                        <input type="datetime-local" name="DockAppointmentStart" class="form-control"
+                               value="@(Model.DockAppointmentStart?.ToString("yyyy-MM-ddTHH:mm"))"
+                               title="Khung giờ bắt đầu tiếp nhận và bốc dỡ hàng tại cửa kho" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Giờ kết thúc khung nhận hàng</label>
+                        <input type="datetime-local" name="DockAppointmentEnd" class="form-control"
+                               value="@(Model.DockAppointmentEnd?.ToString("yyyy-MM-ddTHH:mm"))"
+                               title="Khung giờ dự kiến hoàn tất bốc dỡ tại cửa kho" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Cửa nhận hàng ưu tiên</label>
+                        <input type="text" name="DockDoor" class="form-control" maxlength="20"
+                               placeholder="VD: Cửa 1, Cửa A — để trống nếu chưa biết"
+                               value="@Model.DockDoor" />
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Đơn vị vận chuyển</label>
+                        <input type="text" name="CarrierName" class="form-control" maxlength="100"
+                               placeholder="VD: Xe nội bộ / NCC / đơn vị vận tải"
+                               value="@Model.CarrierName" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Biển số xe</label>
+                        <input type="text" name="VehicleNumber" class="form-control" maxlength="30"
+                               placeholder="VD: 51D-123.45"
+                               value="@Model.VehicleNumber" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tài xế</label>
+                        <input type="text" name="DriverName" class="form-control" maxlength="100"
+                               placeholder="Tên người giao hàng / tài xế"
+                               value="@Model.DriverName" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">SĐT tài xế</label>
+                        <input type="text" name="DriverPhone" class="form-control" maxlength="20"
+                               placeholder="Số điện thoại liên hệ nhanh"
+                               value="@Model.DriverPhone" />
+                    </div>
+                </div>
+                <div class="form-help inbound-tip">
+                    <strong>💡 Mẹo:</strong> Khai báo đủ giờ xe đến và khung nhận hàng ngay từ đầu để trưởng kho duyệt nhanh. Nếu chưa biết cửa nào trống, để trống ô "Cửa nhận hàng ưu tiên" — hệ thống sẽ tự gợi ý.
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header line-items-toolbar">
+            <div class="line-items-toolbar-left">
+                <span class="card-title line-items-title">Danh sách vật tư</span>
+                <div class="barcode-input-wrap">
+                    <i class="fas fa-barcode barcode-input-icon"></i>
+                    <input type="text" id="barcodeInput" class="form-control barcode-input-field" autocomplete="off" 
+                           placeholder="Quét mã vạch hoặc nhập mã vật tư rồi nhấn Enter" 
+                           />
+                    <span id="scannerLed" class="scanner-led"></span>
+                </div>
+                <span id="scanCount" class="badge scan-count-badge">0 lượt quét</span>
+                <button type="button" class="btn btn-sm btn-secondary" data-wms-call="toggleWebcamScanner"><i class="fas fa-camera"></i> Quét bằng camera</button>
+            </div>
+            <div class="line-items-toolbar-actions">
+                @if (isInbound)
+                {
+                    <button type="button" class="btn btn-sm btn-putaway" data-wms-call="autoPutaway" title="Tự động gợi ý vị trí cất hàng phù hợp dựa trên vật tư, sức chứa và quy tắc vận hành.">
+                        <i class="fas fa-robot"></i> Gợi ý vị trí cất hàng
+                    </button>
+                }
+                <label class="btn btn-sm btn-info btn-inline-label" id="uploadDocumentBtn" for="documentFileInput">
+                    <span id="uploadDocumentBtnText"><i class="fas fa-magic"></i> Đọc chứng từ bằng AI</span>
+                </label>
+                <input type="file" id="documentFileInput" accept=".pdf,.jpg,.jpeg,.png,.webp,.docx,.pptx,.xlsx" multiple class="d-none" />
+                <label class="btn btn-sm btn-secondary btn-inline-label" id="importExcelBtn">
+                    <i class="fas fa-file-import"></i> Tải danh sách từ Excel
+                    <input type="file" id="excelFileInput" accept=".xlsx" class="d-none" />
+                </label>
+                <a class="btn btn-sm btn-ghost" asp-controller="Vouchers" asp-action="DownloadImportTemplate" title="Tải file mẫu Excel đúng cấu trúc để nhập dữ liệu nhanh và hạn chế lỗi.">
+                    <i class="fas fa-download"></i> Tải file mẫu
+                </a>
+                <button type="button" class="btn btn-sm btn-primary" data-wms-call="addRow"><i class="fas fa-plus"></i> Thêm dòng vật tư</button>
+            </div>
+        </div>
+        <!-- Scan toast notification -->
+        <div id="scanToast" class="scan-toast-enterprise"></div>
+        <div class="table-container flat voucher-mobile-line-editor">
+            <table id="linesTable" class="voucher-lines-table">
+                <thead>
+                    <tr>
+                        <th class="col-line-no">#</th>
+                        <th class="col-item">Vật Tư / Hàng Hóa *</th>
+                        <th class="col-uom">@(isInbound ? "Đơn vị nhập" : "Đơn vị xuất")</th>
+                        <th class="col-qty">@(isInbound ? "Số lượng nhập *" : "Số lượng xuất *")</th>
+                        @if (Model.VoucherType is WMS.Models.VoucherTypeEnum.NhapKho or WMS.Models.VoucherTypeEnum.KhachTra or WMS.Models.VoucherTypeEnum.NhapThanhPham or WMS.Models.VoucherTypeEnum.ChuyenKho)
+                        {
+                            <th class="col-lot">Số lô</th>
+                        }
+                        @if (Model.VoucherType == WMS.Models.VoucherTypeEnum.ChuyenKho)
+                        {
+                            <th class="col-location">Lấy từ vị trí *</th>
+                            <th class="col-location">Chuyển đến vị trí *</th>
+                        }
+                        @if (Model.VoucherType == WMS.Models.VoucherTypeEnum.DieuChinh)
+                        {
+                            <th class="col-adjust">Điều chỉnh</th>
+                        }
+                        @* Removed SL lỗi/thiếu column for simpler UX *@
+                        @if (!isInbound)
+                        {
+                            <th class="col-base-uom" title="Đơn vị tồn kho (base unit) được hệ thống tự xác định dựa trên vật tư đã chọn.">Đơn vị tồn kho <i class="fas fa-info-circle info-inline-icon"></i></th>
+                            <th class="col-conversion" title="Hệ số quy đổi: SL xuất × hệ số = SL trừ tồn kho. VD: xuất 2 Thùng × 10 Cái/Thùng = trừ 20 Cái.">Quy đổi ra đơn vị tồn <i class="fas fa-info-circle info-inline-icon"></i></th>
+                        }
+                        @if (isInbound)
+                        {
+                            <th class="col-putaway">Vị trí cất hàng</th>
+                            <th class="col-date">Ngày SX</th>
+                            <th class="col-date">Hạn SD</th>
+                        }
+                        <th class="price-col col-price">Đơn Giá (VNĐ)</th>
+                        <th class="col-remove"></th>
+                    </tr>
+                </thead>
+                <tbody id="linesContainer">
+                    @{
+                        if (Model.Lines == null || !Model.Lines.Any())
+                        {
+                            Model.Lines = new List<WMS.ViewModels.VoucherDetailLine> { new WMS.ViewModels.VoucherDetailLine { DefectQty = 0, TransactionQty = 0, UnitPrice = 0 } };
+                        }
+                    }
+                    @for (int i = 0; i < Model.Lines.Count; i++)
+                    {
+                        var line = Model.Lines[i];
+                        <tr class="line-row">
+                            <td class="line-no text-center text-muted fw-700">@(i + 1)</td>
+                            <td>
+                                <select name="Lines[@i].ItemId" class="form-control item-select" required data-wms-change-call="itemChanged" data-wms-change-self="true">
+                                    <option value="">-- Chọn vật tư --</option>
+                                    @foreach(var item in Model.Items) { 
+                                        <option value="@item.ItemId" 
+                                                data-uom="@item.BaseUomId" 
+                                                data-group="@item.BaseUom?.UomGroup"
+                                                data-cost="@(canSeeFinancial ? item.UnitCost.ToString(System.Globalization.CultureInfo.InvariantCulture) : 0)" 
+                                                data-default-loc="@item.DefaultLocationId"
+                                                data-item-type="@item.ItemType"
+                                                data-image-url="@(item.ImageUrl ?? "")"
+                                                disabled="@(item.BaseUomId <= 0 ? "disabled" : null)"
+                                                selected="@(item.ItemId == line.ItemId ? "selected" : null)">
+                                            [@item.ItemCode] @item.ItemName
+                                        </option> 
+                                    }
+                                </select>
+                            </td>
+                            <td>
+                                <select name="Lines[@i].TransactionUomId" class="form-control source-uom-select" data-placeholder-text="-- Chọn đơn vị @(isInbound ? "nhập" : "xuất") --" data-wms-change-call="sourceUomChanged" data-wms-change-self="true">
+                                    <option value="">-- Chọn đơn vị @(isInbound ? "nhập" : "xuất") --</option>
+                                    @foreach(var u in Model.Uoms) { 
+                                        <option value="@u.UomId" data-group="@u.UomGroup"
+                                                selected="@(u.UomId == line.TransactionUomId ? "selected" : null)">
+                                            @u.UomCode - @u.UomName
+                                        </option> 
+                                    }
+                                </select>
+                            </td>
+                            <td>
+                                <input type="text" name="Lines[@i].TransactionQty" class="form-control text-right qty-input" required value="@(line.TransactionQty > 0 ? line.TransactionQty.ToString("N0") : "")" data-wms-input-call="formatAndCalc" data-wms-input-self="true" />
+                            </td>
+                            @if (Model.VoucherType is WMS.Models.VoucherTypeEnum.NhapKho or WMS.Models.VoucherTypeEnum.KhachTra or WMS.Models.VoucherTypeEnum.NhapThanhPham or WMS.Models.VoucherTypeEnum.ChuyenKho)
+                            {
+                                <td>
+                                    <input type="text" name="Lines[@i].LotNumber" class="form-control lot-input" value="@line.LotNumber" placeholder="Nhập số lô từ NCC" />
+                                </td>
+                            }
+                            @if (Model.VoucherType == WMS.Models.VoucherTypeEnum.ChuyenKho)
+                            {
+                                <td>
+                                    <select name="Lines[@i].LocationId" class="form-control loc-select" required>
+                                        <option value="">-- Chọn vị trí lấy hàng --</option>
+                                        @foreach (var loc in Model.Locations.Where(l => l.IsActive))
+                                        {
+                                            <option value="@loc.LocationId" selected="@(loc.LocationId == line.LocationId ? "selected" : null)">
+                                                @loc.LocationCode
+                                            </option>
+                                        }
+                                    </select>
+                                </td>
+                                <td>
+                                    <select name="Lines[@i].DestLocationId" class="form-control dest-loc-select" required>
+                                        <option value="">-- Chọn vị trí nhận hàng --</option>
+                                        @foreach (var loc in Model.Locations.Where(l => l.IsActive))
+                                        {
+                                            <option value="@loc.LocationId" selected="@(loc.LocationId == line.DestLocationId ? "selected" : null)">
+                                                @loc.LocationCode
+                                            </option>
+                                        }
+                                    </select>
+                                </td>
+                            }
+                            @if (Model.VoucherType == WMS.Models.VoucherTypeEnum.DieuChinh)
+                            {
+                                <td>
+                                    <select name="Lines[@i].AdjustSign" class="form-control select-strong">
+                                        <option value="1" selected="@(line.AdjustSign == 1 ? "selected" : null)">Tăng</option>
+                                        <option value="-1" selected="@(line.AdjustSign == -1 ? "selected" : null)">Giảm</option>
+                                    </select>
+                                </td>
+                            }
+                            @* Removed SL lỗi/thiếu input *@
+                            @if (!isInbound)
+                            {
+                                <td>
+                                    <select class="form-control dest-uom-select" disabled>
+                                        <option value="">-- Đơn vị tồn kho --</option>
+                                        @foreach(var u in Model.Uoms) { 
+                                            <option value="@u.UomId">@u.UomCode - @u.UomName</option> 
+                                        }
+                                    </select>
+                                </td>
+                                <td>
+                                    <input type="text" name="Lines[@i].DestQty" class="form-control text-right dest-qty-input input-strong-accent" readonly title="Hệ số quy đổi được tính tự động theo bảng quy đổi hệ thống." />
+                                    @* For non-transfer vouchers, LocationId is handled via hidden field *@
+                                    @if (Model.VoucherType != WMS.Models.VoucherTypeEnum.ChuyenKho)
+                                    {
+                                        <input type="hidden" name="Lines[@i].LocationId" class="loc-input" value="@line.LocationId" />
+                                    }
+                                </td>
+                            }
+                            else
+                            {
+                                @* Inbound: hide conversion, auto-set DestQty=0 (ConversionRate=1) *@
+                                <input type="hidden" name="Lines[@i].DestQty" value="0" />
+                            }
+                            @if (isInbound)
+                            {
+                                <td>
+                                    <select name="Lines[@i].LocationId" class="form-control putaway-loc-select">
+                                        <option value="">-- Chờ hệ thống gợi ý vị trí --</option>
+                                        @foreach (var loc in Model.Locations.Where(l => l.IsActive))
+                                        {
+                                            <option value="@loc.LocationId" selected="@(loc.LocationId == line.LocationId ? "selected" : null)">@loc.LocationCode</option>
+                                        }
+                                    </select>
+                                </td>
+                                <td>
+                                    <input type="date" name="Lines[@i].ManufacturingDate" class="form-control mfg-date-input" value="@(line.ManufacturingDate?.ToString("yyyy-MM-dd"))" />
+                                </td>
+                                <td>
+                                    <input type="date" name="Lines[@i].ExpiryDate" class="form-control exp-date-input" value="@(line.ExpiryDate?.ToString("yyyy-MM-dd"))" />
+                                </td>
+                            }
+                            <input type="hidden" name="Lines[@i].DefectQty" value="0" />
+                            <td class="price-col">
+                                <input type="text" name="Lines[@i].UnitPrice" class="form-control text-right cost-input" value="@(Model.VoucherType == WMS.Models.VoucherTypeEnum.NhapKho || Model.VoucherType == WMS.Models.VoucherTypeEnum.XuatSanXuat || !canSeeFinancial ? "0" : line.UnitPrice.ToString("N0"))" @(Model.VoucherType == WMS.Models.VoucherTypeEnum.NhapKho || Model.VoucherType == WMS.Models.VoucherTypeEnum.XuatSanXuat || !canSeeFinancial ? "readonly" : "") data-wms-input-call="formatAndPrice" data-wms-input-self="true" />
+                            </td>
+                            <td class="line-row-actions">
+                                <button type="button" class="btn-delete-row" data-wms-call-self="deleteRow" title="Xóa dòng">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </td>
+
+                        </tr>
+                    }
+                </tbody>
+
+            </table>
+        </div>
+    </div>
+
+    <div class="action-bar voucher-submit-actions">
+        @if (Model.VoucherType is WMS.Models.VoucherTypeEnum.NhapKho or WMS.Models.VoucherTypeEnum.KhachTra or WMS.Models.VoucherTypeEnum.NhapThanhPham)
+        {
+            <button type="submit" class="btn btn-secondary btn-lg" name="submit" value="false" id="saveDraftBtn"><i class="fas fa-save"></i> Lưu tạm</button>
+            <button type="submit" class="btn btn-success btn-lg" name="submit" value="true" id="submitBtn"><i class="fas fa-paper-plane"></i> Lưu và gửi duyệt</button>
+        }
+        else
+        {
+            <button type="submit" class="btn btn-success btn-lg" id="submitBtn"><i class="fas fa-check"></i> Hoàn tất và lưu phiếu</button>
+        }
+    </div>
+</form>
+
+
+@section Scripts {
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+    function getSafeItemImageUrl(optionElement) {
+        const raw = (optionElement?.dataset?.imageUrl || '').trim();
+        if (!raw) return '';
+
+        if (raw.startsWith('/uploads/items/') || raw.startsWith('https://') || raw.startsWith('http://')) {
+            return raw;
+        }
+
+        return '';
+    }
+
+    function createItemThumbNode(imageUrl, altText) {
+        if (imageUrl) {
+            const img = document.createElement('img');
+            img.className = 'item-thumb';
+            img.src = imageUrl;
+            img.alt = altText || 'Ảnh vật tư';
+            img.loading = 'lazy';
+            img.decoding = 'async';
+            img.onerror = function() {
+                this.replaceWith(createItemThumbNode('', altText));
+            };
+            return img;
+        }
+
+        const fallback = document.createElement('span');
+        fallback.className = 'item-thumb item-thumb-empty';
+        fallback.setAttribute('aria-hidden', 'true');
+        const icon = document.createElement('i');
+        icon.className = 'fas fa-box';
+        fallback.appendChild(icon);
+        return fallback;
+    }
+
+    function renderItemSelectOption(option) {
+        if (!option.id || !option.element) {
+            return option.text;
+        }
+
+        const imageUrl = getSafeItemImageUrl(option.element);
+        const wrapper = document.createElement('div');
+        wrapper.className = 'item-select-option';
+        wrapper.appendChild(createItemThumbNode(imageUrl, option.text));
+
+        const copy = document.createElement('div');
+        copy.className = 'item-select-option-copy';
+
+        const title = document.createElement('span');
+        title.className = 'item-select-option-title';
+        title.textContent = option.text || '';
+        copy.appendChild(title);
+
+        const meta = document.createElement('span');
+        meta.className = 'item-select-option-meta';
+        meta.textContent = imageUrl ? 'Có ảnh nhận diện' : 'Chưa có ảnh nhận diện';
+        copy.appendChild(meta);
+
+        wrapper.appendChild(copy);
+        return $(wrapper);
+    }
+
+    function initSelect2() {
+        $('.item-select').select2({
+            width: '100%',
+            dropdownAutoWidth: true,
+            templateResult: renderItemSelectOption
+        });
+
+        $('.source-uom-select, select[name="PartnerId"]').select2({
+            width: '100%',
+            dropdownAutoWidth: true
+        });
+        
+        // Fix for Select2 search input focus inside modals or elements
+        $(document).on('select2:open', () => {
+            document.querySelector('.select2-search__field').focus();
+        });
+    }
+
+    $(document).ready(function() {
+        initSelect2();
+    });
+    // === COMMA FORMATTING UTILITIES ===
+    function parseCommaNumber(str) {
+        if (!str) return 0;
+        return parseFloat(str.toString().replace(/,/g, '')) || 0;
+    }
+    function formatWithCommas(num) {
+        if (num === '' || num === null || num === undefined) return '';
+        var n = parseFloat(num.toString().replace(/,/g, ''));
+        if (isNaN(n)) return '';
+        // Preserve decimals if present
+        var parts = num.toString().replace(/,/g, '').split('.');
+        var intPart = parseInt(parts[0]) || 0;
+        var formatted = intPart.toLocaleString('en-US');
+        if (parts.length > 1) formatted += '.' + parts[1];
+        return formatted;
+    }
+    function formatCommaInput(input) {
+        var cursorPos = input.selectionStart;
+        var oldLen = input.value.length;
+        var raw = input.value.replace(/[^0-9.\-]/g, '');
+        input.value = formatWithCommas(raw);
+        var newLen = input.value.length;
+        input.selectionStart = input.selectionEnd = cursorPos + (newLen - oldLen);
+    }
+    function formatAndCalc(input) {
+        formatCommaInput(input);
+        sourceQtyChanged(input);
+    }
+    function formatAndPrice(input) {
+        formatCommaInput(input);
+        priceChanged(input);
+    }
+    // Strip commas before form submission so server gets clean numbers
+    document.addEventListener('DOMContentLoaded', function() {
+        var form = document.getElementById('voucherForm');
+        if (form) {
+            // Normalize quantity inputs to avoid culture traps.
+            // Quy ước nhập liệu:
+            // - Nếu có 3 chữ số sau một dấu phân cách duy nhất thì xem là phân tách hàng nghìn (1,000 => 1000)
+            // - Nếu có 1-2 chữ số sau một dấu phân cách duy nhất thì xem là phần thập phân (10.50 => 10.5)
+            function normalizeQtyForPost(val) {
+                if (!val) return '';
+                let s = val.toString().trim();
+                if (!s) return '';
+                // keep digits, dot, comma, minus
+                s = s.replace(/[^0-9.,\-]/g, '');
+                if (!s) return '';
+
+                const hasDot = s.indexOf('.') >= 0;
+                const hasComma = s.indexOf(',') >= 0;
+                let normalized = s;
+
+                if (hasDot && hasComma) {
+                    // If both exist, assume the last one is decimal separator
+                    const lastDot = s.lastIndexOf('.');
+                    const lastComma = s.lastIndexOf(',');
+                    const decIsDot = lastDot > lastComma;
+                    if (decIsDot) normalized = s.replace(/,/g, '');
+                    else normalized = s.replace(/\./g, '').replace(',', '.');
+                } else if (hasDot || hasComma) {
+                    const sep = hasDot ? '.' : ',';
+                    const parts = s.split(sep);
+                    if (parts.length > 2) {
+                        // multiple separators => thousands
+                        normalized = s.replace(/[.,]/g, '');
+                    } else {
+                        const frac = parts[1] ?? '';
+                        if (frac.length === 3) {
+                            // 1,000 or 1.000 => thousands
+                            normalized = s.replace(/[.,]/g, '');
+                        } else if (frac.length === 0) {
+                            normalized = parts[0];
+                        } else if (frac.length <= 2) {
+                            // decimal
+                            normalized = parts[0] + '.' + frac;
+                        } else {
+                            // ambiguous long fraction -> treat as thousands to be safe
+                            normalized = s.replace(/[.,]/g, '');
+                        }
+                    }
+                }
+
+                normalized = normalized.replace(/(?!^)-/g, '');
+                const n = parseFloat(normalized);
+                if (isNaN(n)) return '';
+                return n.toString();
+            }
+            form.addEventListener('submit', function() {
+                // Quantities: normalize aggressively
+                form.querySelectorAll('.qty-input, .dest-qty-input, .defect-input').forEach(function(inp) {
+                    inp.value = normalizeQtyForPost(inp.value);
+                });
+                // Prices: keep old behavior (commas only) to preserve meaning of "10.000" = 10k if user ever types dots
+                form.querySelectorAll('.cost-input').forEach(function(inp) {
+                    inp.value = inp.value.replace(/,/g, '');
+                });
+            });
+        }
+    });
+    // ============================================================
+    // HỆ THỐNG QUÉT MÃ VẠCH CẤP DOANH NGHIỆP
+    // Hỗ trợ: thiết bị quét USB/Bluetooth, camera điện thoại, nhập tay
+    // ============================================================
+
+    let lineIdx = @(Model.Lines?.Count ?? 1);
+    let totalScanned = 0;
+
+    // --- WEB AUDIO BEEP (instant, no external dependency) ---
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    let _audioCtx = null;
+
+    function playBeep(frequency = 1200, duration = 150, type = 'square') {
+        try {
+            if (!_audioCtx) _audioCtx = new AudioCtx();
+            const osc = _audioCtx.createOscillator();
+            const gain = _audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.value = frequency;
+            gain.gain.value = 0.3;
+            osc.connect(gain);
+            gain.connect(_audioCtx.destination);
+            osc.start();
+            gain.gain.exponentialRampToValueAtTime(0.001, _audioCtx.currentTime + duration / 1000);
+            osc.stop(_audioCtx.currentTime + duration / 1000);
+        } catch (e) { /* Audio not supported */ }
+    }
+
+    function beepSuccess() {
+        playBeep(1200, 100, 'square');
+        setTimeout(() => playBeep(1600, 100, 'square'), 120);
+    }
+
+    function beepError() {
+        playBeep(300, 300, 'sawtooth');
+    }
+
+    function beepDuplicate() {
+        playBeep(800, 80, 'square');
+    }
+
+    // --- TOAST NOTIFICATION ---
+    function showScanToast(message, type = 'success') {
+        const toast = document.getElementById('scanToast');
+        if (!toast) return;
+        toast.textContent = message;
+        toast.classList.remove('scan-toast-success', 'scan-toast-duplicate', 'scan-toast-error');
+        toast.classList.add('is-visible', type === 'success' ? 'scan-toast-success' : (type === 'duplicate' ? 'scan-toast-duplicate' : 'scan-toast-error'));
+        clearTimeout(toast._hideTimer);
+        toast._hideTimer = setTimeout(() => {
+            toast.classList.remove('is-visible', 'scan-toast-success', 'scan-toast-duplicate', 'scan-toast-error');
+        }, 3000);
+    }
+
+    // --- SCAN COUNTER ---
+    function updateScanCount() {
+        totalScanned++;
+        const badge = document.getElementById('scanCount');
+        if (badge) {
+            badge.textContent = totalScanned + ' đã quét';
+            badge.style.display = 'inline-block';
+        }
+    }
+
+    // --- ROW MANAGEMENT ---
+    function refreshLineNumbers() {
+        const rows = document.querySelectorAll('#linesContainer .line-row');
+        rows.forEach((r, idx) => {
+            const cell = r.querySelector('.line-no');
+            if (cell) cell.textContent = (idx + 1).toString();
+        });
+    }
+
+    // Gắn sự kiện cho các dòng có sẵn
+    document.querySelectorAll('.line-row').forEach(row => {
+        const qtyInput = row.querySelector('.qty-input');
+        if (qtyInput) qtyInput.addEventListener('input', function() { formatAndCalc(this); });
+    });
+    refreshLineNumbers();
+
+    // Override addRow để gắn sự kiện cho dòng mới thêm
+    window.addRow = function() {
+        // Hủy select2 trước khi clone để tránh lỗi giao diện
+        $('.item-select, .source-uom-select, select[name="PartnerId"]').each(function() {
+            if ($(this).hasClass("select2-hidden-accessible")) {
+                $(this).select2('destroy');
+            }
+        });
+
+        const tbody = document.getElementById('linesContainer');
+        const newRow = document.querySelector('.line-row').cloneNode(true);
+        newRow.querySelectorAll('[name]').forEach(el => {
+            el.name = el.name.replace(/\[\d+\]/, `[${lineIdx}]`);
+            if (el.tagName === 'INPUT') {
+                if(el.className.includes('loc-input')) el.value = '';
+                else if(el.type === 'hidden') { /* keep hidden defaults */ }
+                else el.value = '';
+            } else if (el.tagName === 'SELECT') {
+                if(el.className.includes('item-select')) el.value = '';
+                if(el.className.includes('source-uom-select')) el.value = '';
+            }
+        });
+        // Reset dest-uom-select (no name attribute)
+        const destUom = newRow.querySelector('.dest-uom-select');
+        if (destUom) destUom.value = '';
+        const destQty = newRow.querySelector('.dest-qty-input');
+        if (destQty) destQty.value = '';
+        
+        // Gắn sự kiện cho dòng mới (with comma formatting)
+        const sourceUomSelect = newRow.querySelector('.source-uom-select');
+        if (sourceUomSelect) {
+            resetSourceUomOptions(sourceUomSelect);
+        }
+
+        tbody.appendChild(newRow);
+        lineIdx++;
+
+        // Khởi tạo lại select2 cho tất cả
+        initSelect2();
+        refreshLineNumbers();
+    };
+
+    // === DELETE ROW ===
+    window.deleteRow = function(btn) {
+        const row = btn.closest('tr');
+        const tbody = document.getElementById('linesContainer');
+        const rows = tbody.querySelectorAll('.line-row');
+        if (rows.length <= 1) {
+            Swal.fire('Cảnh Báo', 'Phải có ít nhất 1 dòng chi tiết!', 'warning');
+            return;
+        }
+        // Destroy select2 before removing
+        $('.item-select, .source-uom-select').each(function() {
+            if ($(this).hasClass('select2-hidden-accessible')) {
+                $(this).select2('destroy');
+            }
+        });
+        row.remove();
+        // Re-index remaining rows
+        const remainingRows = tbody.querySelectorAll('.line-row');
+        remainingRows.forEach((r, idx) => {
+            r.querySelectorAll('[name]').forEach(el => {
+                el.name = el.name.replace(/\[\d+\]/, `[${idx}]`);
+            });
+        });
+        lineIdx = remainingRows.length;
+        // Reinit select2
+        initSelect2();
+        refreshLineNumbers();
+    };
+
+    const itemAllowedSourceUoms = @Html.Raw(itemAllowedSourceUomsJson);
+    const allSourceUomOptions = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+        Model.Uoms.Select(u => new
+        {
+            id = u.UomId,
+            text = $"{u.UomCode} - {u.UomName}",
+            group = u.UomGroup
+        }).ToList()
+    ));
+    const isInboundVoucherJs = @(isInbound ? "true" : "false");
+    const isExportVoucherJs = @(Model.VoucherType == WMS.Models.VoucherTypeEnum.XuatKho ? "true" : "false");
+
+    function getCurrentWarehouseId() {
+        return parseInt(document.querySelector('input[name="WarehouseId"]')?.value || '0');
+    }
+
+    function buildWarehouseQuery() {
+        const warehouseId = getCurrentWarehouseId();
+        return warehouseId > 0 ? `&warehouseId=${warehouseId}` : '';
+    }
+
+    async function fetchJsonOrThrow(url, defaultMessage) {
+        const response = await fetch(url);
+        const raw = await response.text();
+        let data = null;
+
+        if (raw) {
+            try {
+                data = JSON.parse(raw);
+            } catch {
+                if (response.ok) {
+                    throw new Error(defaultMessage || 'Server trả về dữ liệu không hợp lệ.');
+                }
+            }
+        }
+
+        if (!response.ok) {
+            const message = (data && (data.message || data.error)) || raw || defaultMessage || 'Không thể tải dữ liệu.';
+            throw new Error(message);
+        }
+
+        if (data === null) {
+            throw new Error(defaultMessage || 'Server không trả về JSON hợp lệ.');
+        }
+
+        return data;
+    }
+
+    function getSourceUomPlaceholder(sourceUomSelect) {
+        return sourceUomSelect?.dataset?.placeholderText || '-- Chọn đơn vị --';
+    }
+
+    function rebuildSourceUomOptions(sourceUomSelect, allowedUomIds, selectedValue) {
+        if (!sourceUomSelect) return '';
+
+        const allowedSet = new Set((allowedUomIds || []).map(x => x.toString()));
+        const nextValue = selectedValue?.toString() || '';
+        const hadSelect2 = $(sourceUomSelect).hasClass('select2-hidden-accessible');
+        const resolvedValue = allowedSet.has(nextValue) ? nextValue : (allowedUomIds?.[0]?.toString() || '');
+
+        if (hadSelect2) {
+            $(sourceUomSelect).select2('destroy');
+        }
+
+        sourceUomSelect.innerHTML = '';
+        sourceUomSelect.appendChild(new Option(getSourceUomPlaceholder(sourceUomSelect), ''));
+
+        allSourceUomOptions
+            .filter(uom => allowedSet.has(uom.id.toString()))
+            .forEach(uom => {
+                const option = new Option(uom.text, uom.id);
+                option.dataset.group = uom.group || '';
+                sourceUomSelect.appendChild(option);
+            });
+
+        sourceUomSelect.value = resolvedValue;
+
+        if (hadSelect2) {
+            $(sourceUomSelect).select2({ width: '100%', dropdownAutoWidth: true });
+            $(sourceUomSelect).val(resolvedValue).trigger('change.select2');
+        }
+
+        return resolvedValue;
+    }
+
+    function resetSourceUomOptions(sourceUomSelect) {
+        return rebuildSourceUomOptions(sourceUomSelect, [], '');
+    }
+
+    function filterSourceUomOptions(sourceUomSelect, itemId, baseUomId) {
+        if (!sourceUomSelect) return '';
+
+        const allowedUomIds = Array.from(new Set([
+            ...((itemAllowedSourceUoms[itemId] || []).map(x => x.toString())),
+            ...(baseUomId ? [baseUomId.toString()] : [])
+        ]));
+
+        const selectedValue = allowedUomIds.includes(sourceUomSelect.value)
+            ? sourceUomSelect.value
+            : (baseUomId ? baseUomId.toString() : (allowedUomIds[0] || ''));
+
+        return rebuildSourceUomOptions(sourceUomSelect, allowedUomIds, selectedValue);
+    }
+
+    function itemChanged(select) {
+        const opt = select.selectedOptions[0];
+        const row = select.closest('tr');
+        const locSelect = row.querySelector('.loc-select');
+        if (opt.value) {
+            // Set ĐV Đích = item's base UoM (auto-select, disabled)
+            const destUomSelect = row.querySelector('.dest-uom-select');
+            if (destUomSelect) {
+                destUomSelect.value = opt.dataset.uom || '';
+            }
+            
+            // Default source UoM cũng là base UoM
+            const sourceUomSelect = row.querySelector('.source-uom-select');
+            if (sourceUomSelect) {
+                const selectedUom = filterSourceUomOptions(sourceUomSelect, opt.value, opt.dataset.uom || '');
+                if (selectedUom) {
+                    sourceUomSelect.value = selectedUom;
+                } else if (typeof enterpriseNotify === 'function') {
+                    enterpriseNotify({
+                        title: 'Thiếu đơn vị nhập',
+                        text: 'Vật tư này chưa có đơn vị cơ sở hoặc bảng quy đổi hợp lệ. Vui lòng kiểm tra danh mục vật tư trước khi lưu phiếu.',
+                        icon: 'warning'
+                    });
+                }
+            }
+
+            // Auto-fill Putaway Location từ Master Data (Fixed Bin)
+            const putawaySelect = row.querySelector('.putaway-loc-select');
+            if (putawaySelect && opt.dataset.defaultLoc) {
+                putawaySelect.value = opt.dataset.defaultLoc;
+                putawaySelect.classList.add('putaway-highlight');
+                setTimeout(() => {
+                    putawaySelect.classList.remove('putaway-highlight');
+                }, 2000);
+            }
+            
+            // Lưu base cost vào row
+            let baseCost = parseFloat(opt.dataset.cost || 0);
+            row.dataset.baseCost = baseCost;
+            
+            // Set initial unit price
+            let initialPrice = baseCost;
+            if (@((int)Model.VoucherType) == 2) { // XuatKho
+                const exportMode = document.getElementById('ExportMode')?.value || 1;
+                if (exportMode == 2) initialPrice = baseCost * 1.2;
+                else initialPrice = 0;
+            } else if (@((int)Model.VoucherType) == 1 || @((int)Model.VoucherType) == 8) { // NhapKho || XuatSanXuat
+                initialPrice = 0;
+            }
+            row.querySelector('.cost-input').value = formatWithCommas(initialPrice.toFixed(0));
+            
+            // Tính SL Đích
+            calculateDestQty(row);
+            
+            const defaultLoc = opt.dataset.defaultLoc;
+            if (defaultLoc && defaultLoc !== "" && defaultLoc !== "0") {
+                const locInput = row.querySelector('.loc-input');
+                if (locInput) {
+                    locInput.value = defaultLoc;
+                }
+            }
+
+            if (locSelect) {
+                if (isExportVoucherJs) {
+                    filterExportLocations(locSelect, opt.value);
+                } else if (isInboundVoucherJs) {
+                    limitImportLocations(locSelect, opt.value, defaultLoc);
+                }
+            }
+        } else {
+            const sourceUomSelect = row.querySelector('.source-uom-select');
+            if (sourceUomSelect) {
+                resetSourceUomOptions(sourceUomSelect);
+            }
+            if (locSelect) {
+                locSelect.value = '';
+                Array.from(locSelect.options).forEach(optEl => {
+                    optEl.style.display = '';
+                    optEl.disabled = false;
+                });
+            }
+        }
+    }
+    
+    // Khi user thay đổi ĐV Nguồn → tính lại SL Đích
+    function sourceUomChanged(select) {
+        const row = select.closest('tr');
+        calculateDestQty(row);
+    }
+    
+    // Khi user thay đổi SL Nguồn → tính lại SL Đích
+    function sourceQtyChanged(input) {
+        const row = input.closest('tr');
+        calculateDestQty(row);
+    }
+    
+    // Hệ số quy đổi được lấy từ bảng UnitConversion (item-specific ưu tiên hơn global).
+    async function calculateDestQty(row) {
+        const destQtyInput = row?.querySelector('.dest-qty-input');
+        if (!destQtyInput) return;
+        const itemSelect = row.querySelector('.item-select');
+        const sourceUomSelect = row.querySelector('.source-uom-select');
+        const selectedItem = itemSelect?.selectedOptions?.[0];
+        const itemId = selectedItem?.value;
+        const baseUomId = selectedItem?.dataset?.uom;
+        const fromUomId = sourceUomSelect?.value || baseUomId;
+        const toUomId = baseUomId;
+
+        if (!itemId || !fromUomId || !toUomId) {
+            destQtyInput.value = '';
+            return;
+        }
+
+        if (fromUomId === toUomId) {
+            destQtyInput.value = formatWithCommas('1');
+            return;
+        }
+
+        try {
+            const data = await fetchJsonOrThrow(`/Vouchers/GetConversionRate?fromUomId=${fromUomId}&toUomId=${toUomId}&itemId=${itemId}`, 'Không tải được hệ số quy đổi.');
+            if (!data?.found) {
+                destQtyInput.value = '';
+                return;
+            }
+            const rate = Number(data.rate || 0);
+            destQtyInput.value = rate > 0 ? formatWithCommas(rate.toString()) : '';
+        } catch (err) {
+            console.error('Lỗi tính quy đổi:', err);
+            destQtyInput.value = '';
+        }
+    }
+
+    function priceChanged(input) {
+        const row = input.closest('tr');
+        calculateRowPrice(row);
+    }
+    
+    function calculateRowPrice(row) {
+        const itemSelect = row.querySelector('.item-select');
+        const itemOpt = itemSelect?.selectedOptions[0];
+        if (!itemOpt || !itemOpt.value) return;
+        
+        if (@((int)Model.VoucherType) == 8) { // XuatSanXuat
+            row.querySelector('.cost-input').value = '0';
+        } else if (@((int)Model.VoucherType) == 2) { // XuatKho
+            const exportMode = document.getElementById('ExportMode')?.value || 1;
+            if (exportMode != 2) {
+                row.querySelector('.cost-input').value = '0';
+            }
+        }
+    }
+
+    const canSeeFinancialJs = @(canSeeFinancial ? "true" : "false");
+    
+    function setExportMode(mode) {
+        if (!document.getElementById('ExportMode')) return;
+        document.getElementById('ExportMode').value = mode;
+
+        // Sync combobox value
+        const exportSelect = document.getElementById('exportModeSelect');
+        if (exportSelect) exportSelect.value = mode;
+
+        const showPrice = mode === 2 && canSeeFinancialJs;
+        document.querySelectorAll('.price-col').forEach(el => el.style.display = showPrice ? 'table-cell' : 'none');
+
+        // Recalculate prices for existing rows
+        document.querySelectorAll('.line-row').forEach(row => {
+            const costInput = row.querySelector('.cost-input');
+            if (!costInput) return;
+            if (showPrice) {
+                costInput.removeAttribute('readonly');
+                // Auto-fill from item UnitCost × 1.2 for external sales
+                const itemSelect = row.querySelector('.item-select');
+                const selectedOpt = itemSelect?.selectedOptions[0];
+                if (selectedOpt && selectedOpt.value) {
+                    const baseCost = parseFloat(selectedOpt.dataset.cost || 0);
+                    if (!parseCommaNumber(costInput.value)) {
+                        costInput.value = formatWithCommas((baseCost * 1.2).toFixed(0));
+                    }
+                }
+            } else {
+                costInput.setAttribute('readonly', 'readonly');
+                costInput.value = '0';
+            }
+        });
+        // Hiện/ẩn đối tác theo loại xuất
+        const partnerDiv = document.getElementById('partnerFieldDiv');
+        if (partnerDiv) partnerDiv.style.display = mode === 2 ? 'block' : 'none';
+    }
+
+    function initializeExportTabs() {
+        if (@((int)Model.VoucherType) == 2) { // XuatKho
+            const currentMode = parseInt(document.getElementById('ExportMode')?.value || '1');
+            setExportMode(currentMode);
+        } else if (@((int)Model.VoucherType) == 1 || @((int)Model.VoucherType) == 8) { // NhapKho || XuatSanXuat
+             // Nhập kho (1) và Xuất SX (8): ẩn đơn giá
+             document.querySelectorAll('.price-col').forEach(el => el.style.display = 'none');
+        } else {
+             document.querySelectorAll('.price-col').forEach(el => el.style.display = canSeeFinancialJs ? 'table-cell' : 'none');
+        }
+    }
+
+    // --- LỌC VỊ TRÍ XUẤT KHO ---
+    async function filterExportLocations(locSelect, itemId) {
+        if (!locSelect || !itemId) return;
+        // Reset trước
+        Array.from(locSelect.options).forEach(opt => { opt.style.display = ''; opt.disabled = false; });
+        try {
+            const data = await fetchJsonOrThrow(`/Warehouses/GetItemLocations?itemId=${itemId}${buildWarehouseQuery()}`, 'Không tải được danh sách vị trí xuất.');
+            const occupiedIds = Array.isArray(data) ? data.map(d => d.locationId.toString()) : [];
+            Array.from(locSelect.options).forEach(opt => {
+                if (!opt.value) return;
+                if (occupiedIds.includes(opt.value)) {
+                    opt.style.display = '';
+                    opt.disabled = false;
+                } else {
+                    opt.style.display = 'none';
+                    opt.disabled = true;
+                }
+            });
+            if (occupiedIds.length === 1) {
+                locSelect.value = occupiedIds[0];
+            } else if (locSelect.value && !occupiedIds.includes(locSelect.value)) {
+                locSelect.value = '';
+            }
+        } catch (err) {
+            console.error('Lỗi tải vị trí vật tư:', err);
+        }
+    }
+
+    // --- LỌC VỊ TRÍ NHẬP KHO (TỐI ĐA 2 VỊ TRÍ) ---
+    async function limitImportLocations(locSelect, itemId, defaultLocId) {
+        if (!locSelect || !itemId) return;
+        // Ẩn tất cả option (trừ option mặc định rỗng)
+        Array.from(locSelect.options).forEach(opt => { 
+            if (opt.value !== "") {
+                opt.style.display = 'none';
+                opt.disabled = true;
+            }
+        });
+
+        try {
+            const data = await fetchJsonOrThrow(`/Warehouses/GetSuggestedLocations?itemId=${itemId}&qty=1${buildWarehouseQuery()}`, 'Không tải được vị trí nhập gợi ý.');
+            const suggestions = Array.isArray(data) ? data : [];
+            let allowedIds = [];
+            if (defaultLocId && defaultLocId !== "0" && defaultLocId !== "") {
+                allowedIds.push(defaultLocId.toString());
+            }
+
+            for (let i = 0; i < suggestions.length; i++) {
+                if (allowedIds.length >= 2) break;
+                let locStr = suggestions[i].locationId?.toString();
+                if (locStr && !allowedIds.includes(locStr) && !suggestions[i].hasOtherItem) {
+                    allowedIds.push(locStr);
+                }
+            }
+
+            Array.from(locSelect.options).forEach(opt => {
+                if (opt.value && allowedIds.includes(opt.value)) {
+                    opt.style.display = '';
+                    opt.disabled = false;
+                }
+            });
+
+            if (defaultLocId && allowedIds.includes(defaultLocId.toString()) && (locSelect.value === "" || locSelect.value !== defaultLocId.toString())) {
+                locSelect.value = defaultLocId;
+            } else if (allowedIds.length > 0 && locSelect.value === "") {
+                locSelect.value = allowedIds[0];
+            } else if (locSelect.value && !allowedIds.includes(locSelect.value)) {
+                locSelect.value = '';
+            }
+        } catch (err) {
+            console.error('Lỗi xử lý vị trí nhập:', err);
+        }
+    }
+
+    // --- LOCATION SUGGESTION (REAL DB) ---
+    function openLocationSuggestion(btn) {
+        const row = btn.closest('.line-row');
+        const locSelect = row.querySelector('.loc-select');
+        const itemSelect = row.querySelector('.item-select');
+        const currentLocId = locSelect.value;
+        const qtyRaw = parseCommaNumber(row.querySelector('input[name$=".TransactionQty"]').value);
+        const itemId = itemSelect.value;
+        
+        const packOpt = row.querySelector('.packaging-select')?.selectedOptions[0];
+        const giatri = parseFloat(packOpt?.dataset.giatri || 1);
+        const qty = qtyRaw * giatri;
+        
+        // Get item name
+        const selectedItemOption = itemSelect.options[itemSelect.selectedIndex];
+        const itemName = selectedItemOption.text;
+        
+        if (!itemId || itemId === '') {
+            if (typeof Swal !== 'undefined') {
+                Swal.fire('Thiếu thông tin', 'Vui lòng chọn vật tư trước khi gợi ý vị trí.', 'warning');
+            } else {
+                enterpriseNotify({ title: 'Thiếu thông tin', text: 'Vui lòng chọn vật tư trước khi gợi ý vị trí.', icon: 'warning' });
+            }
+            return;
+        }
+        
+        // Create modal
+        let modal = document.getElementById('locationSuggestionModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'locationSuggestionModal';
+            modal.className = 'loc-suggest-backdrop';
+            document.body.appendChild(modal);
+        }
+        
+        modal.classList.add('is-open');
+        if (modal.dataset.backdropBound !== 'true') {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) modal.classList.remove('is-open');
+            });
+            modal.dataset.backdropBound = 'true';
+        }
+        modal.innerHTML = `
+            <div class="loc-suggest-modal">
+                <div class="loc-suggest-header">
+                    <div>
+                        <h5 class="loc-suggest-title">🔍 Gợi Ý Vị Trí</h5>
+                        <p class="loc-suggest-sub">${escapeDocumentText(itemName)} — SL: ${formatVnNumber(qty)}</p>
+                    </div>
+                    <button type="button" class="loc-suggest-close" data-wms-close-modal="locationSuggestionModal">&times;</button>
+                </div>
+                <div class="loc-suggest-body loc-suggest-loading">
+                    <i class="fas fa-spinner fa-spin loc-suggest-loading-icon"></i>
+                    <p class="loc-suggest-loading-text">Đang tải dữ liệu...</p>
+                </div>
+            </div>
+        `;
+        
+        // Lấy dữ liệu thật từ bộ xử lý nội bộ: xuất kho dùng danh sách vị trí đang có hàng, nhập kho dùng gợi ý vị trí cất.
+        const isExport = @(Model.VoucherType == WMS.Models.VoucherTypeEnum.XuatKho ? "true" : "false");
+        const apiUrl = isExport
+            ? `/Warehouses/GetItemLocations?itemId=${itemId}${buildWarehouseQuery()}`
+            : `/Warehouses/GetSuggestedLocations?itemId=${itemId}&qty=${qty}${buildWarehouseQuery()}`;
+        fetchJsonOrThrow(apiUrl, 'Không tải được dữ liệu gợi ý vị trí.')
+            .then(data => {
+                data = Array.isArray(data) ? data : [];
+                let tableRows = '';
+
+                if (isExport) {
+                    // XUẤT KHO: chỉ hiện ô đang chứa vật tư
+                    if (data && data.length > 0) {
+                        data.forEach(loc => {
+                            const locId = safeLocationId(loc.locationId);
+                            const locCodeText = escapeDocumentText(loc.locationCode);
+                            const locCodeArg = suggestionArg(loc.locationCode);
+                            const zoneText = escapeDocumentText(loc.zoneName);
+                            const quantityText = formatVnNumber(loc.quantity);
+                            const isSelected = String(loc.locationId ?? '') === currentLocId;
+                            // FEFO indicators
+                            let expiryText = '---';
+                            let expiryBadge = '';
+                            if (loc.expiryDate) {
+                                const dt = new Date(loc.expiryDate);
+                                if (!isNaN(dt)) {
+                                    const dd = String(dt.getDate()).padStart(2, '0');
+                                    const mm = String(dt.getMonth() + 1).padStart(2, '0');
+                                    const yyyy = dt.getFullYear();
+                                    expiryText = `${dd}/${mm}/${yyyy}`;
+                                    const today = new Date();
+                                    const daysLeft = Math.ceil((dt - new Date(today.getFullYear(), today.getMonth(), today.getDate())) / (1000 * 60 * 60 * 24));
+                                    if (daysLeft <= 0) {
+                                        expiryBadge = `<span class="chip chip-danger loc-suggest-chip-offset">Hết hạn</span>`;
+                                    } else if (daysLeft <= 30) {
+                                        expiryBadge = `<span class="chip chip-warning loc-suggest-chip-offset">${daysLeft} ngày</span>`;
+                                    }
+                                }
+                            }
+                            const lotText = loc.lotNumber ? ` <span class="chip chip-info loc-suggest-lot-chip" title="Số lô">Lô: ${escapeDocumentText(loc.lotNumber)}</span>` : '';
+                            tableRows += `<tr class="loc-suggest-row ${isSelected ? 'is-selected' : ''}">
+                                <td>${locCodeText}</td>
+                                <td>${zoneText}</td>
+                                <td class="loc-suggest-kpi">${quantityText}</td>
+                                <td class="loc-suggest-nowrap">${expiryText}${expiryBadge}${lotText}</td>
+                                <td class="loc-suggest-center">
+                                    <button type="button" class="btn btn-sm btn-outline-primary" data-wms-call="selectSuggestedLocation" data-wms-arg="${locId}" data-wms-arg2="${locCodeText}">
+                                        <i class="fas fa-check"></i> Chọn
+                                    </button>
+                                </td>
+                            </tr>`;
+                        });
+                    }
+                    if (!tableRows) {
+                        tableRows = '<tr><td colspan="5" class="loc-suggest-empty"><i class="fas fa-box-open loc-suggest-empty-icon"></i>Vật tư này chưa có trong ô/vị trí nào!</td></tr>';
+                    }
+                    const contentHtml = `
+                        <div class="loc-suggest-modal">
+                            <div class="loc-suggest-header">
+                                <div>
+                                    <h5 class="loc-suggest-title">📦 Vị Trí Chứa Vật Tư</h5>
+                                    <p class="loc-suggest-sub">${escapeDocumentText(itemName)}</p>
+                                </div>
+                                <button type="button" class="loc-suggest-close" data-wms-close-modal="locationSuggestionModal">&times;</button>
+                            </div>
+                            <div class="loc-suggest-body">
+                                <table class="loc-suggest-table">
+                                    <thead><tr>
+                                        <th>Ô vị trí</th>
+                                        <th>Khu</th>
+                                        <th>Tồn kho</th>
+                                        <th>HSD (FEFO)</th>
+                                        <th class="loc-suggest-center">Chọn</th>
+                                    </tr></thead>
+                                    <tbody>${tableRows}</tbody>
+                                </table>
+                            </div>
+                            <div class="loc-suggest-footer">
+                                <button type="button" class="btn btn-sm btn-secondary" data-wms-close-modal="locationSuggestionModal">Đóng</button>
+                            </div>
+                        </div>
+                    `;
+                    modal.innerHTML = contentHtml;
+                    window.enhanceDataWidths?.();
+                } else {
+                    // NHẬP KHO: hiện ô còn trống / sức chứa
+                    if (data && data.length > 0) {
+                        data.forEach(loc => {
+                            if (loc.hasOtherItem) return;
+                            const locId = safeLocationId(loc.locationId);
+                            const locCodeText = escapeDocumentText(loc.locationCode);
+                            const locCodeArg = suggestionArg(loc.locationCode);
+                            const zoneText = escapeDocumentText(loc.zoneName);
+                            const availableText = formatVnNumber(loc.available);
+                            const fillPercent = safePercent(loc.fillPercent);
+                            const isSelected = String(loc.locationId ?? '') === currentLocId;
+                            const fillClass = fillPercent <= 70 ? 'loc-suggest-fill-ok' : fillPercent <= 90 ? 'loc-suggest-fill-warn' : 'loc-suggest-fill-danger';
+                            const starIcon = loc.hasSameItem ? '<span title="Đã chứa cùng vật tư" class="loc-suggest-same-item">⭐</span> ' : '';
+                            tableRows += `<tr class="loc-suggest-row ${isSelected ? 'is-selected' : ''}">
+                                <td>${starIcon}${locCodeText}</td>
+                                <td>${zoneText}</td>
+                                <td>${availableText}</td>
+                                <td><div class="loc-suggest-fill"><div class="loc-suggest-fill-track"><div class="loc-suggest-fill-bar ${fillClass}" data-progress-width="${fillPercent}%"></div></div><span class="loc-suggest-fill-text">${fillPercent}%</span></div></td>
+                                <td class="loc-suggest-center"><button type="button" class="btn btn-sm btn-outline-primary" data-wms-call="selectSuggestedLocation" data-wms-arg="${locId}" data-wms-arg2="${locCodeText}"><i class="fas fa-check"></i> Chọn</button></td>
+                            </tr>`;
+                        });
+                    }
+                    if (!tableRows) { tableRows = '<tr><td colspan="5" class="loc-suggest-empty">Không tìm thấy vị trí phù hợp</td></tr>'; }
+                    const bestLoc = data.length > 0 ? data[0] : null;
+                    const contentHtml = `
+                        <div class="loc-suggest-modal">
+                            <div class="loc-suggest-header">
+                                <div>
+                                    <h5 class="loc-suggest-title">🔍 Gợi Ý Vị Trí</h5>
+                                    <p class="loc-suggest-sub">${escapeDocumentText(itemName)} — SL: ${formatVnNumber(qty)}</p>
+                                </div>
+                                <button type="button" class="loc-suggest-close" data-wms-close-modal="locationSuggestionModal">&times;</button>
+                            </div>
+                            <div class="loc-suggest-body">
+                                <div class="loc-suggest-hint"><span class="loc-suggest-same-item">⭐</span> = Ô đã chứa cùng vật tư (ưu tiên cao)</div>
+                                <table class="loc-suggest-table">
+                                    <thead><tr>
+                                        <th>Ô</th>
+                                        <th>Khu</th>
+                                        <th>Còn trống</th>
+                                        <th>% đầy</th>
+                                        <th class="loc-suggest-center">Chọn</th>
+                                    </tr></thead>
+                                    <tbody>${tableRows}</tbody>
+                                </table>
+                            </div>
+                            <div class="loc-suggest-footer">
+                                ${bestLoc ? `<button type="button" class="btn btn-sm btn-success" data-wms-call="selectSuggestedLocation" data-wms-arg="${safeLocationId(bestLoc.locationId)}" data-wms-arg2="${escapeDocumentText(bestLoc.locationCode)}">📦 Tự động phân bổ</button>` : ''}
+                                <button type="button" class="btn btn-sm btn-secondary" data-wms-close-modal="locationSuggestionModal">Đóng</button>
+                            </div>
+                        </div>
+                    `;
+                    modal.innerHTML = contentHtml;
+                    window.enhanceDataWidths?.();
+                }
+
+                // Store reference to location select
+                modal.dataset.locSelectName = locSelect.getAttribute('name');
+            })
+            .catch(err => {
+                console.error('Error loading suggestions:', err);
+                modal.innerHTML = `
+                    <div class="loc-suggest-modal loc-suggest-error">
+                        <i class="fas fa-circle-exclamation loc-suggest-error-icon"></i>
+                        <div class="fw-700 loc-suggest-error-message">${escapeDocumentText(err?.message || 'Lỗi tải dữ liệu gợi ý')}</div>
+                        <button type="button" class="btn btn-sm btn-secondary" data-wms-close-modal="locationSuggestionModal">Đóng</button>
+                    </div>
+                `;
+            });
+        
+        // Store which loc select we're modifying
+        window._currentLocSelect = locSelect;
+        
+    }
+    
+    function selectSuggestedLocation(locationId, locationCode) {
+        if (window._currentLocSelect) {
+            window._currentLocSelect.value = locationId;
+            validateLocation(window._currentLocSelect);
+        }
+        document.getElementById('locationSuggestionModal')?.classList.remove('is-open');
+    }
+
+    async function validateLocation(locSelect) {
+        const row = locSelect.closest('tr');
+        const locId = locSelect.value;
+        const itemSelect = row.querySelector('.item-select');
+        const itemId = itemSelect.value;
+        const itemText = itemSelect.selectedOptions[0]?.text.trim() || "Vật tư";
+
+        if (!locId || !itemId) return;
+
+        // 1. Check same-form conflicts
+        let conflictInForm = false;
+        let conflictItemName = "";
+        document.querySelectorAll('.line-row').forEach(otherRow => {
+            if (otherRow === row) return;
+            const otherLocSelect = otherRow.querySelector('.loc-select');
+            const otherItemSelect = otherRow.querySelector('.item-select');
+            
+            if (otherLocSelect && otherLocSelect.value === locId) {
+                if (otherItemSelect.value && otherItemSelect.value !== itemId) {
+                    conflictInForm = true;
+                    // Get name
+                    conflictItemName = otherItemSelect.selectedOptions[0]?.text.trim();
+                }
+            }
+        });
+
+        if (conflictInForm) {
+            if (typeof Swal !== 'undefined') {
+                Swal.fire('Xung đột vị trí', `Vị trí ${locSelect.selectedOptions[0].text} đang được dùng để xếp [${conflictItemName}] ở dòng khác trong phiếu này. Tránh xếp chung 2 vật tư vào 1 ô/bồn.`, 'warning');
+            } else {
+                enterpriseNotify({ title: 'Xung đột vị trí', text: `Vị trí ${locSelect.selectedOptions[0].text} đang được dùng để xếp [${conflictItemName}] ở dòng khác trong phiếu này.`, icon: 'warning' });
+            }
+            locSelect.value = ''; // Reset
+            return;
+        }
+
+        // 2. Check DB conflicts
+        try {
+            const res = await fetchJsonOrThrow(`/Warehouses/CheckLocationConflict?locationId=${locId}&itemId=${itemId}`, 'Không kiểm tra được xung đột vị trí.');
+            if (res.conflict) {
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire('Vị trí đã có hàng', `Vị trí ${locSelect.selectedOptions[0].text} đang chứa ${res.conflictItemName}. Không thể xếp [${itemText}] chung vào đây.`, 'error');
+                } else {
+                    enterpriseNotify({ title: 'Vị trí đã có hàng', text: `Vị trí ${locSelect.selectedOptions[0].text} đang chứa ${res.conflictItemName}.`, icon: 'error' });
+                }
+                locSelect.value = '';
+            }
+        } catch (err) {
+            console.error(err);
+            if (typeof Swal !== 'undefined') {
+                Swal.fire('Không kiểm tra được vị trí', err?.message || 'Có lỗi xảy ra khi kiểm tra xung đột vị trí.', 'error');
+            }
+        }
+    }
+
+    // --- FORM SUBMIT ---
+    document.getElementById('voucherForm').addEventListener('submit', function(e) {
+        // Tự động dọn dẹp các dòng trống (nếu có) trước khi kiểm tra lỗi
+        const tbody = document.getElementById('linesContainer');
+        const rows = tbody.querySelectorAll('.line-row');
+        if (rows.length > 1) {
+            let removedAny = false;
+            for (let i = rows.length - 1; i >= 0; i--) {
+                const r = rows[i];
+                const itemSelect = r.querySelector('.item-select');
+                const qtyInput = r.querySelector('.qty-input');
+                if (itemSelect && qtyInput && !itemSelect.value && (!qtyInput.value || qtyInput.value === "0")) {
+                    // Nếu dòng hoàn toàn trống và không phải dòng duy nhất
+                    if (tbody.querySelectorAll('.line-row').length > 1) {
+                        $(r).find('.item-select, .source-uom-select').each(function() {
+                            if ($(this).hasClass('select2-hidden-accessible')) {
+                                $(this).select2('destroy');
+                            }
+                        });
+                        r.remove();
+                        removedAny = true;
+                    }
+                }
+            }
+            if (removedAny) {
+                // Đánh lại số thứ tự index để MVC Binding không bị lỗi
+                const remainingRows = tbody.querySelectorAll('.line-row');
+                remainingRows.forEach((r, idx) => {
+                    r.querySelectorAll('[name]').forEach(el => {
+                        el.name = el.name.replace(/\[\d+\]/, `[${idx}]`);
+                    });
+                });
+                lineIdx = remainingRows.length;
+            }
+        }
+
+        let isValid = true;
+        
+        // Thêm fallback an toàn trong trường hợp jQuery validation chưa load kịch bản 
+        if (typeof $ !== 'undefined' && $.fn && $.fn.valid) {
+            isValid = $(this).valid();
+        }
+
+        // Custom validation: PartnerId required only when partner field is visible
+        const requiredPartner = this.querySelector('select[name="PartnerId"].partner-select-validate');
+        const partnerDiv = document.getElementById('partnerFieldDiv');
+        const partnerVisible = partnerDiv && partnerDiv.style.display !== 'none';
+        if (requiredPartner && partnerVisible && (!requiredPartner.value || requiredPartner.value === "")) {
+            e.preventDefault();
+            if (typeof Swal !== 'undefined') {
+                Swal.fire('Thiếu thông tin', 'Vui lòng chọn Đối Tác (NCC / Khách Hàng) trước khi lưu phiếu.', 'warning');
+            } else {
+                enterpriseNotify({ title: 'Thiếu thông tin', text: 'Vui lòng chọn Đối Tác (NCC / Khách Hàng) trước khi lưu phiếu.', icon: 'warning' });
+            }
+            requiredPartner.focus();
+            return;
+        }
+
+        if (isValid) {
+            document.getElementById('submitBtn').disabled = true;
+            document.getElementById('submitBtn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang Xử Lý...';
+        } else {
+            document.getElementById('validationSummary').style.display = 'block';
+            e.preventDefault();
+        }
+    });
+
+    // ============================================================
+    // TÍCH HỢP THIẾT BỊ QUÉT MÃ VẠCH
+    // Thiết bị quét USB/Bluetooth hoạt động giống bàn phím:
+    //   1. Thiết bị nhập nhanh chuỗi mã vạch
+    //   2. Sau đó gửi phím Enter
+    //   3. Ô nhập cần được lấy tiêu điểm để nhận mã
+    // ============================================================
+    initializeExportTabs();
+    document.querySelectorAll('.line-row .item-select').forEach(select => {
+        if (select.value) {
+            itemChanged(select);
+        } else {
+            const sourceUomSelect = select.closest('.line-row')?.querySelector('.source-uom-select');
+            if (sourceUomSelect) {
+                resetSourceUomOptions(sourceUomSelect);
+            }
+        }
+    });
+    const bInput = document.getElementById('barcodeInput');
+
+    // Tự lấy tiêu điểm khi tải trang
+    if (bInput) {
+        bInput.focus({ preventScroll: true });
+
+        // Lấy lại tiêu điểm khi bấm vào vùng trống trên trang
+        document.addEventListener('click', function(e) {
+            // Bỏ qua khi bấm vào ô tìm kiếm select2 hoặc thành phần select2
+            if (e.target.closest('.select2-container')) return;
+
+            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'BUTTON') {
+                bInput.focus({ preventScroll: true });
+            }
+        });
+
+        // Xử lý mã vạch khi người dùng nhấn Enter từ thiết bị quét hoặc nhập tay
+        bInput.addEventListener('keypress', async function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const barcode = this.value.trim();
+                this.value = '';
+                if (barcode) {
+                    // Nháy đèn trạng thái
+                    const led = document.getElementById('scannerLed');
+                    if (led) {
+                        led.style.background = '#fbbf24';
+                        led.style.boxShadow = '0 0 8px #fbbf24';
+                    }
+                    
+                    await processBarcode(barcode);
+                    
+                    // Đưa đèn trạng thái về bình thường
+                    if (led) {
+                        setTimeout(() => {
+                            led.style.background = '#10b981';
+                            led.style.boxShadow = '0 0 6px #10b981';
+                        }, 500);
+                    }
+                }
+                // Luôn lấy lại tiêu điểm cho lần quét tiếp theo
+                this.focus();
+            }
+        });
+    }
+
+    // --- XỬ LÝ MÃ VẠCH CHÍNH ---
+    async function processBarcode(barcode) {
+        if (!barcode) return false;
+        const busy = window.wmsLoading?.begin(
+            document.querySelector('.barcode-input-wrap') || document.getElementById('barcodeInput'),
+            { text: 'Đang tra mã vạch...', delay: 700, disable: false }
+        );
+
+        try {
+            const res = await fetch(`/Items/GetItemByBarcode?barcode=${encodeURIComponent(barcode)}`);
+            const raw = await res.text();
+            let payload = null;
+            if (raw) {
+                try {
+                    payload = JSON.parse(raw);
+                } catch {
+                    if (res.ok) throw new Error('Server trả về dữ liệu mã vạch không hợp lệ.');
+                }
+            }
+
+            if (res.ok && payload) {
+                const item = payload;
+                // Check if already in list → increment quantity
+                let foundRow = null;
+                document.querySelectorAll('.line-row').forEach(row => {
+                    const select = row.querySelector('.item-select');
+                    if (select.value == item.itemId) foundRow = row;
+                });
+
+                if (foundRow) {
+                    // DUPLICATE SCAN → increment qty
+                    const qtyInput = foundRow.querySelector('input[name$=".TransactionQty"]');
+                    const newQty = parseCommaNumber(qtyInput.value) + 1;
+                    qtyInput.value = formatWithCommas(newQty.toString());
+                    
+                    foundRow.classList.remove('scan-row-highlight');
+                    void foundRow.offsetWidth; // Force reflow
+                    foundRow.classList.add('scan-row-highlight');
+
+                    beepDuplicate();
+                    updateScanCount();
+                    showScanToast(`✓ ${item.itemCode} — SL tăng lên ${newQty}`, 'duplicate');
+                    return true;
+                }
+
+                // NEW ITEM → add to table
+                const tbody = document.getElementById('linesContainer');
+                let firstRow = tbody.querySelector('.line-row');
+                let isFirstBlank = firstRow && firstRow.querySelector('.item-select').value === "";
+                
+                let targetRow = isFirstBlank ? firstRow : null;
+                if (!targetRow) {
+                    addRow();
+                    const rows = document.querySelectorAll('.line-row');
+                    targetRow = rows[rows.length - 1];
+                }
+
+                const select = targetRow.querySelector('.item-select');
+                select.value = item.itemId;
+                itemChanged(select); 
+                
+                targetRow.querySelector('input[name$=".TransactionQty"]').value = 1;
+                calculateRowPrice(targetRow);
+
+                // Highlight the new row
+                targetRow.classList.add('scan-row-highlight');
+
+                beepSuccess();
+                updateScanCount();
+                showScanToast(`✓ Đã thêm: [${item.itemCode}] ${item.itemName}`, 'success');
+                return true;
+
+            } else {
+                // NOT FOUND
+                beepError();
+                showScanToast(`✗ ${payload?.message || `Không tìm thấy vật tư với mã: ${barcode}`}`, 'error');
+                return false;
+            }
+        } catch (err) {
+            console.error('[Scanner] Lỗi kết nối:', err);
+            beepError();
+            showScanToast(`✗ ${err?.message || 'Lỗi kết nối — thử lại'}`, 'error');
+            return false;
+        } finally {
+            window.wmsLoading?.end(busy);
+        }
+    }
+
+    // --- WEBCAM SCANNER (camera on mobile) ---
+    function toggleWebcamScanner() {
+        openScannerModal(async (decodedText) => {
+            const success = await processBarcode(decodedText);
+            const statusEl = document.getElementById('scanStatus');
+            if (statusEl) {
+                if (success) {
+                    statusEl.textContent = '✓ Đã thêm: ' + decodedText + ' — Tiếp tục quét...';
+                    statusEl.style.color = 'var(--accent, #10b981)';
+                } else {
+                    statusEl.textContent = '✗ Không tìm thấy: ' + decodedText;
+                    statusEl.style.color = 'var(--danger, #e53e3e)';
+                }
+                statusEl.style.display = 'block';
+            }
+        });
+    }
+
+
+    function normalizeInputDate(value) {
+        if (!value) return '';
+        const text = String(value).trim();
+        if (!text) return '';
+        if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.substring(0, 10);
+        const parsed = new Date(text);
+        if (Number.isNaN(parsed.getTime())) return '';
+        return new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Asia/Ho_Chi_Minh',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).format(parsed);
+    }
+
+    function escapeDocumentText(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function suggestionArg(value) {
+        return escapeDocumentText(JSON.stringify(String(value ?? '')));
+    }
+
+    function safeLocationId(value) {
+        const id = Number.parseInt(value, 10);
+        return Number.isFinite(id) && id > 0 ? id : 0;
+    }
+
+    function safePercent(value) {
+        const percent = Number(value);
+        if (!Number.isFinite(percent)) return 0;
+        return Math.max(0, Math.min(100, Math.round(percent)));
+    }
+
+    function formatVnNumber(value) {
+        const number = Number(value);
+        return Number.isFinite(number) ? number.toLocaleString('vi-VN') : '0';
+    }
+
+    function isReadyDocumentLine(item) {
+        const matched = item.IsMatched ?? item.isMatched ?? !!(item.ItemId ?? item.itemId);
+        const review = item.RequiresReview ?? item.requiresReview ?? false;
+        return matched && !review && !!(item.ItemId ?? item.itemId);
+    }
+
+    function mergeReadyDocumentLines(items) {
+        const map = new Map();
+        for (const item of items) {
+            const itemId = item.ItemId ?? item.itemId ?? 0;
+            const unitPrice = item.UnitPrice ?? item.unitPrice ?? 0;
+            const lotNumber = item.LotNumber ?? item.lotNumber ?? '';
+            const expiryDate = normalizeInputDate(item.ExpiryDate ?? item.expiryDate);
+            const key = `${itemId}__${unitPrice}__${lotNumber}__${expiryDate}`;
+            const quantity = item.Quantity ?? item.quantity ?? 1;
+            const existing = map.get(key);
+            if (!existing) {
+                map.set(key, { ...item, Quantity: quantity });
+            } else {
+                existing.Quantity = (existing.Quantity || 0) + quantity;
+            }
+        }
+        return Array.from(map.values());
+    }
+
+    function buildDocumentPreviewHtml(lines, warnings, confidence, parseStatus) {
+        const readyLines = lines.filter(isReadyDocumentLine);
+        const reviewLines = lines.filter(line => !isReadyDocumentLine(line));
+        const visibleLines = lines.slice(0, 12);
+        const lineRows = visibleLines.map(line => {
+            const ready = isReadyDocumentLine(line);
+            const code = line.ItemCode ?? line.itemCode ?? line.SuggestedItemCode ?? line.suggestedItemCode ?? '';
+            const name = line.ItemName ?? line.itemName ?? line.SuggestedItemName ?? line.suggestedItemName ?? '';
+            const quantity = line.Quantity ?? line.quantity ?? '';
+            const unit = line.UnitName ?? line.unitName ?? '';
+            const lot = line.LotNumber ?? line.lotNumber ?? '';
+            const status = ready ? 'Đã khớp' : 'Cần chọn vật tư';
+            const badgeClass = ready ? 'ready' : 'review';
+            const lineWarnings = line.Warnings ?? line.warnings ?? [];
+            return `
+                <tr>
+                    <td>${escapeDocumentText(code)}</td>
+                    <td>${escapeDocumentText(name)}</td>
+                    <td>${escapeDocumentText(quantity)}</td>
+                    <td>${escapeDocumentText(unit)}</td>
+                    <td>${escapeDocumentText(lot)}</td>
+                    <td><span class="doc-status-badge ${badgeClass}">${status}</span>${lineWarnings.length ? `<div class="doc-preview-line-warning">${escapeDocumentText(lineWarnings[0])}</div>` : ''}</td>
+                </tr>`;
+        }).join('');
+
+        const warningHtml = warnings.length
+            ? `<div class="doc-preview-warning">
+                    ${warnings.slice(0, 6).map(w => `<div>• ${escapeDocumentText(w)}</div>`).join('')}
+                    ${warnings.length > 6 ? `<div>• Còn ${warnings.length - 6} cảnh báo khác...</div>` : ''}
+               </div>`
+            : '';
+
+        return `
+            <div class="doc-preview-body">
+                <div class="doc-preview-chip-row">
+                    <span class="doc-preview-chip doc-preview-chip-status">Trạng thái: ${escapeDocumentText(parseStatus || 'Partial')}</span>
+                    <span class="doc-preview-chip doc-preview-chip-ready">Đã khớp: ${readyLines.length}</span>
+                    <span class="doc-preview-chip doc-preview-chip-review">Cần kiểm tra: ${reviewLines.length}</span>
+                    <span class="doc-preview-chip doc-preview-chip-confidence">Độ tin cậy: ${Math.round((confidence || 0) * 100)}%</span>
+                </div>
+                <div class="doc-preview-table-wrap">
+                    <table class="doc-preview-table">
+                        <thead>
+                            <tr>
+                                <th>Mã</th>
+                                <th>Tên vật tư</th>
+                                <th>SL</th>
+                                <th>ĐVT</th>
+                                <th>Số lô</th>
+                                <th>Kết quả</th>
+                            </tr>
+                        </thead>
+                        <tbody>${lineRows || '<tr><td colspan="6" class="doc-preview-empty">Chưa có dòng nào đủ rõ để đề xuất.</td></tr>'}</tbody>
+                    </table>
+                </div>
+                ${lines.length > visibleLines.length ? `<div class="doc-preview-more">Đang hiển thị ${visibleLines.length}/${lines.length} dòng đầu tiên.</div>` : ''}
+                ${warningHtml}
+                <div class="doc-preview-note">Hệ thống chỉ áp dụng các dòng đã khớp chắc chắn. Dòng còn cảnh báo cần chọn vật tư thủ công trên phiếu.</div>
+            </div>`;
+    }
+
+    async function applyMappedItemsToLines(items) {
+        if (!items || items.length === 0) return { newItemNames: [], matchedCount: 0 };
+
+        // Destroy Select2 BEFORE processing to avoid DOM conflicts
+        if (typeof $ !== 'undefined') {
+            $('.item-select, .source-uom-select').each(function() {
+                if ($(this).hasClass('select2-hidden-accessible')) {
+                    $(this).select2('destroy');
+                }
+            });
+        }
+
+        const tbody = document.getElementById('linesContainer');
+        let firstRow = tbody.querySelector('.line-row');
+        let isFirstBlank = firstRow && firstRow.querySelector('.item-select').value === "";
+        let newItemNames = [];
+        let matchedCount = 0;
+
+        items.forEach((item, index) => {
+            let targetRow = null;
+            if (index === 0 && isFirstBlank) {
+                targetRow = firstRow;
+            } else {
+                const newRow = document.querySelector('.line-row').cloneNode(true);
+                newRow.querySelectorAll('[name]').forEach(el => {
+                    el.name = el.name.replace(/\[\d+\]/, `[${lineIdx}]`);
+                    if (el.tagName === 'INPUT') {
+                        if (el.className.includes('loc-input')) el.value = '';
+                        else if (el.type === 'hidden') { /* keep */ }
+                        else el.value = '';
+                    } else if (el.tagName === 'SELECT') {
+                        if (el.className.includes('item-select')) el.value = '';
+                        if (el.className.includes('source-uom-select')) el.value = '';
+                        if (el.className.includes('loc-select')) el.value = '';
+                    }
+                });
+                const destUom = newRow.querySelector('.dest-uom-select');
+                if (destUom) destUom.value = '';
+                const destQty = newRow.querySelector('.dest-qty-input');
+                if (destQty) destQty.value = '';
+                const sourceUomSelect = newRow.querySelector('.source-uom-select');
+                if (sourceUomSelect) {
+                    resetSourceUomOptions(sourceUomSelect);
+                }
+                tbody.appendChild(newRow);
+                lineIdx++;
+                targetRow = newRow;
+            }
+
+            const select = targetRow.querySelector('.item-select');
+            const itemId = item.ItemId ?? item.itemId;
+            const itemCode = item.ItemCode ?? item.itemCode ?? '';
+            const itemName = item.ItemName ?? item.itemName ?? '';
+            const baseUomId = item.BaseUomId ?? item.baseUomId ?? '';
+            let matched = Array.from(select.options).find(o => o.value == itemId);
+            if (!matched) {
+                const newText = `[${itemCode}] ${itemName}`;
+                document.querySelectorAll('.item-select').forEach(sel => {
+                    const opt = new Option(newText, itemId);
+                    opt.dataset.uom = baseUomId || '';
+                    opt.dataset.cost = canSeeFinancialJs ? (item.UnitPrice ?? item.unitPrice ?? 0) : 0;
+                    sel.add(opt);
+                });
+            }
+
+            select.value = itemId;
+            itemChanged(select);
+
+            if (item.IsNew) newItemNames.push(`[${itemCode}] ${itemName}`);
+            else matchedCount++;
+
+            const qtyVal = (item.Quantity ?? item.quantity ?? 1);
+            targetRow.querySelector('input[name$=".TransactionQty"]').value = formatWithCommas(qtyVal.toString());
+
+            const unitPriceVal = canSeeFinancialJs ? (item.UnitPrice ?? item.unitPrice ?? 0) : 0;
+            if (unitPriceVal) targetRow.querySelector('.cost-input').value = formatWithCommas(unitPriceVal.toString());
+
+            if (item.LocationId) {
+                const locSel = targetRow.querySelector('.loc-select');
+                if (locSel) locSel.value = item.LocationId;
+            }
+            if (item.DefectQty != null) {
+                const defectInput = targetRow.querySelector('input[name$=".DefectQty"]');
+                if (defectInput) defectInput.value = formatWithCommas((item.DefectQty || 0).toString());
+            }
+
+            if (item.LotNumber != null || item.lotNumber != null) {
+                const lotVal = (item.LotNumber ?? item.lotNumber ?? '').toString();
+                const lotInput = targetRow.querySelector('input[name$=".LotNumber"]');
+                if (lotInput) lotInput.value = lotVal;
+            }
+
+            const manufacturingDate = normalizeInputDate(item.ManufacturingDate ?? item.manufacturingDate);
+            if (manufacturingDate) {
+                const mfgInput = targetRow.querySelector('.mfg-date-input');
+                if (mfgInput) mfgInput.value = manufacturingDate;
+            }
+
+            const expiryDate = normalizeInputDate(item.ExpiryDate ?? item.expiryDate);
+            if (expiryDate) {
+                const expInput = targetRow.querySelector('.exp-date-input');
+                if (expInput) expInput.value = expiryDate;
+            }
+        });
+
+        if (typeof initSelect2 === 'function') initSelect2();
+        refreshLineNumbers();
+        return { newItemNames, matchedCount };
+    }
+
+    document.getElementById('excelFileInput')?.addEventListener('change', async function() {
+        const file = this.files?.[0];
+        if (!file) return;
+
+        const btn = document.getElementById('importExcelBtn');
+        const busy = window.wmsLoading?.begin(btn, { text: 'Đang nhập Excel...', delay: 700 });
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const token = document.querySelector('#voucherForm input[name="__RequestVerificationToken"]')?.value;
+            const response = await fetch('/Vouchers/ImportLinesExcel', {
+                method: 'POST',
+                headers: token ? { 'RequestVerificationToken': token } : {},
+                body: formData
+            });
+
+            const raw = await response.text();
+            let res = null;
+            try { res = raw ? JSON.parse(raw) : null; } catch (e) {}
+            if (!response.ok) {
+                Swal.fire('Lỗi nhập Excel', res?.error || res?.title || raw || ('HTTP ' + response.status), 'error');
+                return;
+            }
+            if (!res) {
+                Swal.fire('Lỗi nhập Excel', 'Máy chủ không trả về dữ liệu hợp lệ.', 'error');
+                return;
+            }
+            let items = [];
+            try { items = JSON.parse(res.data); } catch (e) {}
+            if (!items || items.length === 0) {
+                Swal.fire('Không có dữ liệu', 'File Excel không có dòng hợp lệ.', 'warning');
+                return;
+            }
+
+            const summary = await applyMappedItemsToLines(items);
+            const msg = `Đã nhập ${items.length} dòng từ Excel!\n✅ Khớp vật tư: ${summary.matchedCount}\n🆕 Tạo mới: ${summary.newItemNames.length}`;
+            Swal.fire({
+                title: 'Nhập Excel thành công!',
+                html: `<div class="swal-preline-body">${msg}</div>`,
+                icon: 'success',
+                confirmButtonColor: '#10b981'
+            });
+        } catch (e) {
+            Swal.fire('Lỗi nhập dữ liệu', 'Đã xảy ra lỗi: ' + e, 'error');
+        } finally {
+            window.wmsLoading?.end(busy);
+            this.value = '';
+        }
+    });
+
+    document.getElementById('documentFileInput')?.addEventListener('change', async function() {
+        const files = Array.from(this.files || []);
+        if (!files.length) return;
+
+        const btn = document.getElementById('uploadDocumentBtn');
+        const busy = window.wmsLoading?.begin(btn, { text: `Đang đọc ${files.length} chứng từ...`, delay: 700 });
+
+        const token = document.querySelector('#voucherForm input[name="__RequestVerificationToken"]')?.value;
+        const allItems = [];
+        const allWarnings = [];
+        const readResults = [];
+
+        try {
+            Swal.fire({
+                title: 'Đang đọc chứng từ...',
+                html: `0/${files.length} chứng từ`,
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading()
+            });
+
+            for (let i = 0; i < files.length; i++) {
+                Swal.update({ html: `${i + 1}/${files.length} chứng từ` });
+                const formData = new FormData();
+                formData.append('file', files[i]);
+                const response = await fetch('/Vouchers/AnalyzeReceipt', {
+                    method: 'POST',
+                    headers: token ? { 'RequestVerificationToken': token } : {},
+                    body: formData
+                });
+                const raw = await response.text();
+                let res = null;
+                try { res = raw ? JSON.parse(raw) : null; } catch (e) {}
+                if (!response.ok) throw new Error(res?.error || res?.title || raw || ('HTTP ' + response.status));
+                if (!res) throw new Error('Máy chủ không trả về dữ liệu đọc chứng từ hợp lệ.');
+                let items = [];
+                try { items = JSON.parse(res.data); } catch (e) { console.error('[Đọc chứng từ] Lỗi parse dữ liệu đã phân tích.', e); }
+                const warnings = Array.isArray(res.warnings) ? res.warnings : [];
+                allWarnings.push(...warnings.map(w => `${files[i].name}: ${w}`));
+                readResults.push({
+                    fileName: files[i].name,
+                    provider: res.provider || 'MinerU',
+                    confidence: Number(res.confidence || 0),
+                    parseStatus: res.parseStatus || 'Partial'
+                });
+                if (items && items.length) {
+                    allItems.push(...items.map(item => ({ ...item, SourceFileName: files[i].name })));
+                }
+            }
+
+            Swal.close();
+
+            if (allItems.length === 0) {
+                const warningText = allWarnings.length ? `<br><br>${allWarnings.slice(0, 5).map(escapeDocumentText).join('<br>')}` : '';
+                Swal.fire('Chưa có dòng đề xuất', `Không nhận diện được dòng vật tư đủ rõ từ chứng từ.${warningText}`, 'warning');
+                return;
+            }
+
+            const readyItems = allItems.filter(isReadyDocumentLine);
+            const mergedReadyItems = mergeReadyDocumentLines(readyItems);
+            const averageConfidence = readResults.length
+                ? readResults.reduce((sum, result) => sum + result.confidence, 0) / readResults.length
+                : 0;
+            const status = readResults.every(result => result.parseStatus === 'Success')
+                ? 'Success'
+                : (readyItems.length > 0 ? 'Partial' : 'Failed');
+
+            const preview = await Swal.fire({
+                title: 'Kết quả đọc chứng từ',
+                html: buildDocumentPreviewHtml(allItems, allWarnings, averageConfidence, status),
+                icon: readyItems.length ? (allWarnings.length ? 'warning' : 'info') : 'warning',
+                width: 920,
+                showCancelButton: readyItems.length > 0,
+                confirmButtonText: readyItems.length > 0 ? `Áp dụng ${mergedReadyItems.length} dòng đã khớp` : 'Đã hiểu',
+                cancelButtonText: 'Kiểm tra lại',
+                confirmButtonColor: '#10b981',
+                cancelButtonColor: '#64748b'
+            });
+
+            if (!preview.isConfirmed || readyItems.length === 0) return;
+
+            const summary = await applyMappedItemsToLines(mergedReadyItems);
+            const msg = `Đã đọc ${files.length} chứng từ.\nTổng dòng đề xuất: ${allItems.length}\nDòng đã áp dụng: ${mergedReadyItems.length}\nCần kiểm tra thủ công: ${allItems.length - readyItems.length}\nKhớp vật tư: ${summary.matchedCount}`;
+            Swal.fire({
+                title: 'Đã áp dụng dòng chứng từ',
+                html: `<div class="swal-preline-body">${escapeDocumentText(msg)}</div>`,
+                icon: 'success',
+                confirmButtonColor: '#10b981'
+            });
+        } catch (e) {
+            Swal.close();
+            Swal.fire('Lỗi đọc chứng từ', '' + e, 'error');
+        } finally {
+            window.wmsLoading?.end(busy);
+            this.value = '';
+        }
+    });
+
+    // ================================================================
+    // DIRECTED PUTAWAY — Frontend Integration
+    // Gọi bộ gợi ý vị trí cất hàng và tự động điền vị trí phù hợp.
+    // ================================================================
+    async function autoPutaway() {
+        const rows = document.querySelectorAll('#linesContainer .line-row');
+        const items = [];
+        const warehouseId = parseInt(document.querySelector('input[name="WarehouseId"]')?.value || '0');
+        const antiForgeryToken = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+        rows.forEach((row, idx) => {
+            const itemSelect = row.querySelector('.item-select');
+            const qtyInput = row.querySelector('input[name$=".TransactionQty"]');
+            const lotInput = row.querySelector('input[name$=".LotNumber"]');
+            const expiryInput = row.querySelector('input[name$=".ExpiryDate"]');
+            if (itemSelect && itemSelect.value) {
+                items.push({
+                    itemId: parseInt(itemSelect.value),
+                    rowIndex: idx,
+                    warehouseId: warehouseId > 0 ? warehouseId : null,
+                    quantity: parseFloat(qtyInput?.value || '0') || null,
+                    lotNumber: lotInput?.value?.trim() || null,
+                    expiryDate: expiryInput?.value || null
+                });
+            }
+        });
+
+        if (items.length === 0) {
+            Swal.fire('Chưa có vật tư', 'Vui lòng chọn ít nhất 1 vật tư trước khi chạy gợi ý vị trí cất hàng.', 'warning');
+            return;
+        }
+
+        const busy = window.wmsLoading?.begin(
+            document.getElementById('linesContainer') || document.getElementById('voucherForm'),
+            { text: 'Đang gợi ý vị trí cất hàng...', delay: 700, disable: false }
+        );
+
+        try {
+            const resp = await fetch('/Vouchers/SuggestPutaway', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'RequestVerificationToken': antiForgeryToken
+                },
+                body: JSON.stringify(items)
+            });
+            const raw = await resp.text();
+            let data = null;
+            try {
+                data = raw ? JSON.parse(raw) : null;
+            } catch {
+                data = null;
+            }
+            if (!resp.ok) {
+                const serverMessage = data?.error || data?.title || raw || `HTTP ${resp.status}`;
+                Swal.fire('Lỗi Engine', serverMessage, 'error');
+                return;
+            }
+            if (!data) {
+                Swal.fire('Lỗi xử lý', 'Server không trả về dữ liệu hợp lệ cho chức năng gợi ý vị trí cất hàng.', 'error');
+                return;
+            }
+
+            if (!data.success) {
+                Swal.fire('Lỗi Engine', data.error || 'Không thể phân bổ vị trí.', 'error');
+                return;
+            }
+
+            // Apply suggestions to form with animation
+            let assignedCount = 0;
+            let strategies = [];
+            const allRows = document.querySelectorAll('#linesContainer .line-row');
+
+            for (const s of data.suggestions) {
+                if (s.locationId && s.rowIndex < allRows.length) {
+                    const row = allRows[s.rowIndex];
+                    const locSelect = row.querySelector('.putaway-loc-select');
+                    if (locSelect) {
+                        // Destroy Select2 if active
+                        if ($(locSelect).hasClass('select2-hidden-accessible')) {
+                            $(locSelect).select2('destroy');
+                        }
+                        locSelect.value = s.locationId;
+                        
+                        // Visual feedback: highlight the cell
+                        locSelect.style.transition = 'all 0.5s';
+                        locSelect.style.background = 'rgba(99, 102, 241, 0.15)';
+                        locSelect.style.borderColor = '#6366f1';
+                        locSelect.style.fontWeight = '700';
+                        setTimeout(() => {
+                            locSelect.style.background = '';
+                            locSelect.style.borderColor = '';
+                        }, 3000);
+
+                        assignedCount++;
+                        const strategyLocation = escapeDocumentText(s.locationCode);
+                        const strategyName = escapeDocumentText(s.strategy);
+                        const strategyReason = escapeDocumentText(s.reason || '');
+                        strategies.push(
+                            `<b>${strategyLocation}</b> <span class="putaway-strategy">← ${strategyName}</span>`
+                            + `${strategyReason ? `<div class="putaway-reason">${strategyReason}</div>` : ''}`
+                        );
+                    }
+                }
+            }
+
+            // Show result
+            Swal.fire({
+                title: '<i class="fas fa-check-circle swal-title-success-icon"></i> Đã gợi ý vị trí cất hàng',
+                html: `<div class="putaway-result-body">
+                    <div class="putaway-summary">
+                        <i class="fas fa-box-open"></i> Đã phân bổ ${assignedCount}/${items.length} vật tư vào vị trí tối ưu
+                    </div>
+                    ${strategies.map((s, i) => `<div class="putaway-line">${i+1}. ${s}</div>`).join('')}
+                    <div class="putaway-algo-note">
+                        <i class="fas fa-info-circle"></i> Thuật toán xếp hạng: cùng lô/cùng vật tư → fixed bin đủ tải → ô trống cùng khu vực → ô trống khả dụng
+                    </div>
+                </div>`,
+                icon: null,
+                confirmButtonColor: '#6366f1',
+                confirmButtonText: 'Tuyệt vời!'
+            });
+
+            if (typeof beepSuccess === 'function') beepSuccess();
+
+        } catch (err) {
+            Swal.fire('Lỗi kết nối', 'Không thể kết nối đến server: ' + err.message, 'error');
+        } finally {
+            window.wmsLoading?.end(busy);
+        }
+    }
+
+
+</script>
+<partial name="_ValidationScriptsPartial" />
+}

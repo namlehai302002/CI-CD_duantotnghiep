@@ -1,0 +1,356 @@
+﻿@using System.Text
+@model List<WMS.Models.AuditLog>
+@{
+    ViewData["Title"] = "Nhật ký hệ thống";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Nhật ký hệ thống</h1>
+        <p class="page-subtitle">Theo dõi toàn bộ thao tác thêm, sửa, xóa trong hệ thống để kiểm tra lịch sử thay đổi và phục vụ truy vết khi cần.</p>
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-circle-info"></i> Cách dùng nhanh</div>
+    <div class="user-guide-text">Lọc theo người thao tác, bảng dữ liệu hoặc khoảng thời gian. Bấm "Xem chi tiết" để kiểm tra giá trị trước và sau khi thay đổi.</div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Người thao tác</label>
+        <input type="text" name="changedBy" class="form-control" placeholder="Tên đăng nhập..." value="@ViewBag.ChangedBy" />
+    </div>
+    <div class="form-group">
+        <label class="form-label">Bảng dữ liệu</label>
+        <input type="text" name="tableName" class="form-control" placeholder="Ví dụ: Voucher, Item..." value="@ViewBag.TableName" />
+    </div>
+    <div class="form-group">
+        <label class="form-label">Từ ngày</label>
+        <input type="date" name="dateFrom" class="form-control" value="@(((DateTime)ViewBag.DateFrom).ToString("yyyy-MM-dd"))" />
+    </div>
+    <div class="form-group">
+        <label class="form-label">Đến ngày</label>
+        <input type="date" name="dateTo" class="form-control" value="@(((DateTime)ViewBag.DateTo).ToString("yyyy-MM-dd"))" />
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Tra cứu lịch sử</button>
+    </div>
+</form>
+
+<div class="mobile-table-card-list">
+    @{ var mobileIdx = 0; }
+    @foreach (var log in Model)
+    {
+        <div class="mobile-table-card">
+            <div class="mobile-table-card-title">
+                <div class="mobile-table-card-title-main">
+                    @log.ChangedAt.ToString("dd/MM/yyyy HH:mm:ss")
+                    <div class="text-muted fs-xs">@log.IpAddress</div>
+                </div>
+                @if (log.ActionType == "INSERT")
+                {
+                    <span class="badge badge-success">Thêm mới</span>
+                }
+                else if (log.ActionType == "UPDATE")
+                {
+                    <span class="badge badge-warning">Cập nhật</span>
+                }
+                else
+                {
+                    <span class="badge badge-danger">Xóa bỏ</span>
+                }
+            </div>
+            <div class="mobile-table-card-row"><span class="mobile-table-card-label">Người thao tác</span><span class="mobile-table-card-value">@log.ChangedBy</span></div>
+            <div class="mobile-table-card-row"><span class="mobile-table-card-label">Bảng</span><span class="mobile-table-card-value">@log.TableName</span></div>
+            <div class="mobile-table-card-row"><span class="mobile-table-card-label">Mã bản ghi</span><span class="mobile-table-card-value">#@log.RecordId</span></div>
+            <div class="mobile-table-card-actions">
+                <button type="button" class="btn btn-sm btn-info audit-view-btn"
+                        data-action="@log.ActionType"
+                        data-table="@log.TableName"
+                        data-record="@log.RecordId"
+                        data-idx="@mobileIdx">
+                    <i class="fas fa-eye"></i> Xem chi tiết
+                </button>
+            </div>
+        </div>
+        mobileIdx++;
+    }
+</div>
+
+<div class="table-container mobile-table-card-source">
+    <table>
+        <thead>
+            <tr>
+                <th class="w-180">Thời gian</th>
+                <th>Người thao tác</th>
+                <th class="w-130">Loại thao tác</th>
+                <th class="w-200">Bảng dữ liệu</th>
+                <th class="w-100px">Mã bản ghi</th>
+                <th class="w-130 cell-center">Chi tiết</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!Model.Any())
+            {
+                <tr><td colspan="6" class="empty-state"><i class="fas fa-history empty-icon"></i><div class="empty-text">Không tìm thấy thao tác nào phù hợp với bộ lọc hiện tại.</div></td></tr>
+            }
+            @{ var rowIdx = 0; }
+            @foreach (var log in Model)
+            {
+                <tr>
+                    <td>
+                        <div class="fw-600">@log.ChangedAt.ToString("dd/MM/yyyy HH:mm:ss")</div>
+                        <div class="text-muted fs-xs">@log.IpAddress</div>
+                    </td>
+                    <td>@log.ChangedBy</td>
+                    <td>
+                        @if (log.ActionType == "INSERT")
+                        {
+                            <span class="badge badge-success">Thêm mới</span>
+                        }
+                        else if (log.ActionType == "UPDATE")
+                        {
+                            <span class="badge badge-warning">Cập nhật</span>
+                        }
+                        else
+                        {
+                            <span class="badge badge-danger">Xóa bỏ</span>
+                        }
+                    </td>
+                    <td>@log.TableName</td>
+                    <td class="fw-700">#@log.RecordId</td>
+                    <td class="text-center">
+                        <button type="button" class="btn btn-sm btn-info audit-view-btn"
+                                data-action="@log.ActionType"
+                                data-table="@log.TableName"
+                                data-record="@log.RecordId"
+                                data-idx="@rowIdx">
+                            <i class="fas fa-eye"></i> Xem chi tiết
+                        </button>
+                    </td>
+                </tr>
+                rowIdx++;
+            }
+        </tbody>
+    </table>
+</div>
+
+@{ var idx = 0; }
+@foreach (var log in Model)
+{
+    var oldB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(log.OldValue ?? "null"));
+    var newB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(log.NewValue ?? "null"));
+    <script type="application/json" id="audit-old-@idx">@oldB64</script>
+    <script type="application/json" id="audit-new-@idx">@newB64</script>
+    idx++;
+}
+
+@section Scripts {
+<script>
+    const tableMap = {
+        Item: 'Vật tư / hàng hóa',
+        ItemLocation: 'Tồn kho theo vị trí',
+        ItemCategory: 'Danh mục vật tư',
+        Voucher: 'Phiếu nhập / xuất',
+        VoucherDetail: 'Chi tiết phiếu',
+        Warehouse: 'Kho',
+        Zone: 'Khu vực kho',
+        Location: 'Vị trí kho',
+        Partner: 'Đối tác',
+        UnitOfMeasure: 'Đơn vị tính',
+        UnitConversion: 'Quy đổi đơn vị',
+        PackagingUnit: 'Quy cách đóng gói',
+        AppUser: 'Người dùng',
+        AppRole: 'Vai trò',
+        StockAlert: 'Cảnh báo tồn kho'
+    };
+
+    const fieldMap = {
+        ItemCode: 'Mã vật tư',
+        ItemName: 'Tên vật tư',
+        Mã vạch: 'Mã vạch',
+        SkuCode: 'Mã SKU',
+        ItemType: 'Loại vật tư',
+        CategoryId: 'Danh mục',
+        BaseUomId: 'Đơn vị tính cơ bản',
+        CurrentStock: 'Tồn kho hiện tại',
+        MinThreshold: 'Ngưỡng tối thiểu',
+        MaxThreshold: 'Ngưỡng tối đa',
+        ReorderPoint: 'Điểm đặt hàng',
+        UnitCost: 'Giá vốn',
+        Description: 'Mô tả',
+        VoucherCode: 'Mã phiếu',
+        VoucherType: 'Loại phiếu',
+        VoucherDate: 'Ngày chứng từ',
+        WarehouseId: 'Kho',
+        PartnerId: 'Đối tác',
+        ReferenceNo: 'Số chứng từ gốc',
+        TotalAmount: 'Tổng tiền',
+        IsPosted: 'Đã ghi sổ',
+        IsCancelled: 'Đã hủy',
+        Quantity: 'Số lượng',
+        LotNumber: 'Số lô',
+        ExpiryDate: 'Hạn dùng',
+        LocationCode: 'Mã vị trí',
+        UserName: 'Tên đăng nhập',
+        FullName: 'Họ tên',
+        RoleId: 'Vai trò',
+        UomCode: 'Mã đơn vị tính',
+        UomName: 'Tên đơn vị tính',
+        WarehouseCode: 'Mã kho',
+        WarehouseName: 'Tên kho',
+        PartnerCode: 'Mã đối tác',
+        PartnerName: 'Tên đối tác',
+        CreatedAt: 'Ngày tạo',
+        UpdatedAt: 'Ngày cập nhật',
+        CreatedBy: 'Người tạo',
+        Notes: 'Ghi chú'
+    };
+
+    function translateTable(name) {
+        return tableMap[name] || name;
+    }
+
+    function translateField(name) {
+        return fieldMap[name] || name.replace(/([A-Z])/g, ' $1').trim();
+    }
+
+    function escapeAuditText(value) {
+        const div = document.createElement('div');
+        div.textContent = value == null ? '' : String(value);
+        return div.innerHTML;
+    }
+
+    function formatValue(val) {
+        if (val === null || val === undefined || val === '') return '<span class="audit-empty-value">Trống</span>';
+        if (typeof val === 'boolean') return escapeAuditText(val ? 'Có' : 'Không');
+        if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(val)) {
+            try {
+                const d = new Date(val);
+                const vietnamDate = d.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+                const vietnamTime = d.toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+                return escapeAuditText(vietnamDate + ' ' + vietnamTime);
+            } catch {
+                return escapeAuditText(val);
+            }
+        }
+        if (typeof val === 'number') return escapeAuditText(val.toLocaleString('vi-VN'));
+        return escapeAuditText(String(val));
+    }
+
+    function decodeAuditPayload(id) {
+        const raw = document.getElementById(id)?.textContent?.trim();
+        if (!raw || raw === 'null') return null;
+        try {
+            return JSON.parse(decodeURIComponent(escape(window.atob(raw))));
+        } catch {
+            return null;
+        }
+    }
+
+    function buildRowsForSingleObject(obj, type) {
+        if (!obj) {
+            return '<div class="text-muted">Không có dữ liệu để hiển thị.</div>';
+        }
+
+        let rows = '';
+        Object.keys(obj).forEach(key => {
+            rows += `<tr>
+                <td class="audit-diff-field">${escapeAuditText(translateField(key))}</td>
+                <td>${formatValue(obj[key])}</td>
+            </tr>`;
+        });
+
+        const title = type === 'new' ? 'Giá trị đã thêm' : 'Giá trị trước khi xóa';
+        return `<div class="audit-modal-title">${escapeAuditText(title)}</div>
+            <table class="audit-diff-table">
+                <thead>
+                    <tr>
+                        <th>Trường dữ liệu</th>
+                        <th>Giá trị</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+    }
+
+    function buildDiffRows(oldObj, newObj) {
+        if (!oldObj || !newObj) {
+            return '<div class="text-muted">Không đủ dữ liệu để so sánh.</div>';
+        }
+
+        const keys = Array.from(new Set([...Object.keys(oldObj), ...Object.keys(newObj)]));
+        let rows = '';
+        keys.forEach(key => {
+            const oldVal = oldObj[key];
+            const newVal = newObj[key];
+            if (String(oldVal) !== String(newVal)) {
+                rows += `<tr>
+                    <td class="audit-diff-field">${escapeAuditText(translateField(key))}</td>
+                    <td>${formatValue(oldVal)}</td>
+                    <td>${formatValue(newVal)}</td>
+                </tr>`;
+            }
+        });
+
+        if (!rows) {
+            return '<div class="text-muted">Không có trường dữ liệu nào thay đổi.</div>';
+        }
+
+        return `<table class="audit-diff-table">
+            <thead>
+                <tr>
+                    <th>Trường dữ liệu</th>
+                    <th>Giá trị cũ</th>
+                    <th>Giá trị mới</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>`;
+    }
+
+    document.querySelectorAll('.audit-view-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const action = this.dataset.action;
+            const table = this.dataset.table;
+            const record = this.dataset.record;
+            const idx = this.dataset.idx;
+            const oldObj = decodeAuditPayload('audit-old-' + idx);
+            const newObj = decodeAuditPayload('audit-new-' + idx);
+
+            let detailHtml = '';
+            let title = '';
+            if (action === 'INSERT') {
+                title = 'Chi tiết thao tác thêm mới';
+                detailHtml = buildRowsForSingleObject(newObj, 'new');
+            } else if (action === 'DELETE') {
+                title = 'Chi tiết thao tác xóa';
+                detailHtml = buildRowsForSingleObject(oldObj, 'old');
+            } else {
+                title = 'Chi tiết thay đổi dữ liệu';
+                detailHtml = buildDiffRows(oldObj, newObj);
+            }
+
+            if (typeof Swal === 'undefined') {
+                enterpriseNotify({ title: 'Không thể mở chi tiết', text: 'Dịch vụ hộp thoại chi tiết chưa sẵn sàng. Vui lòng tải lại trang.', icon: 'warning' });
+                return;
+            }
+
+            Swal.fire({
+                title: title,
+                width: 900,
+                html: `<div class="audit-modal-body">
+                    <div class="audit-modal-meta">
+                        <b>Bảng dữ liệu:</b> ${escapeAuditText(translateTable(table))}<br>
+                        <b>Mã bản ghi:</b> #${escapeAuditText(record)}
+                    </div>
+                    ${detailHtml}
+                </div>`,
+                confirmButtonText: 'Đóng'
+            });
+        });
+    });
+</script>
+}

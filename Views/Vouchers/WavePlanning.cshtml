@@ -1,0 +1,210 @@
+@model List<WMS.Models.Voucher>
+@{
+    ViewData["Title"] = "Lập kế hoạch sóng đa đơn";
+    Layout = "_Layout";
+    var whId = ViewBag.WarehouseId as int?;
+}
+
+<div class="page-header">
+    <div class="page-title-group">
+        <h1 class="page-title"><i class="fas fa-water"></i> Lập kế hoạch đợt gom đa đơn</h1>
+        <p class="page-subtitle">Chọn nhiều phiếu xuất, nhóm theo đối tác/khu vực/tuyến và phát hành đợt gom đơn cùng lúc</p>
+    </div>
+    <a href="@Url.Action("Index")" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Quay lại</a>
+</div>
+
+<div class="page-toolbar">
+    <form method="get" action="@Url.Action("WavePlanning")" class="filter-bar">
+        <label>Kho:</label>
+        <select name="warehouseId" class="form-control wave-filter-select" data-wms-submit-form="true">
+            <option value="">— Tất cả kho —</option>
+            @foreach (var wh in (List<WMS.Models.Warehouse>)ViewBag.Warehouses)
+            {
+                <option value="@wh.WarehouseId" selected="@(whId == wh.WarehouseId)">@wh.WarehouseCode — @wh.WarehouseName</option>
+            }
+        </select>
+    </form>
+</div>
+
+@* ── Tóm tắt nhóm hãng vận chuyển ── *@
+@{
+    var carrierGroups = ViewBag.CarrierGroups as List<dynamic>;
+}
+@if (carrierGroups != null && carrierGroups.Count > 0)
+{
+    <div class="info-box mb-3">
+        <div class="info-box-title"><i class="fas fa-truck"></i> Nhóm theo carrier — nhấn để chọn tất cả</div>
+        <div class="carrier-chip-group">
+            @foreach (var cg in carrierGroups)
+            {
+                <button type="button" class="badge-btn" data-wms-call="selectByCarrier" data-wms-arg="@cg.CarrierCode">
+                    <i class="fas fa-truck"></i> @cg.CarrierName
+                    <span class="badge-count">@cg.Count phiếu</span>
+                </button>
+            }
+        </div>
+    </div>
+}
+
+@* ── Main form: select vouchers ── *@
+<form id="waveForm" method="post" action="@Url.Action("CreateWave")">
+    @Html.AntiForgeryToken()
+
+    @* ── Cấu hình đợt gom đơn ── *@
+    <div class="card mb-3">
+        <div class="card-header">
+            <span class="card-title"><i class="fas fa-cogs"></i> Cấu hình sóng</span>
+        </div>
+        <div class="card-body">
+            <div class="form-grid-3">
+                <div class="form-group">
+                    <label class="form-label">Profile sóng *</label>
+                    <select name="waveProfile" class="form-control" required>
+                        <option value="Standard">Tiêu chuẩn - Gộp chung</option>
+                        <option value="TwoStep">Lấy tổng hai bước - Tập kết rồi phân loại đơn</option>
+                        <option value="CarrierGroup">Nhóm hãng vận chuyển - Theo đơn vị vận chuyển</option>
+                        <option value="ZoneGroup">Nhóm khu vực</option>
+                        <option value="RouteGroup">Nhóm tuyến giao - Theo tuyến giao</option>
+                        <option value="Priority">Ưu tiên - Khẩn cấp</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Hãng vận chuyển</label>
+                    <input name="carrierCode" class="form-control" placeholder="VD: GHTK, GHN, ViettelPost..." />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tên hãng</label>
+                    <input name="carrierName" class="form-control" placeholder="Tên đầy đủ hãng vận chuyển" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Mã tuyến</label>
+                    <input name="routeCode" class="form-control" placeholder="VD: ROUTE-HN-01" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Giờ cutoff</label>
+                    <input type="datetime-local" name="cutoffTime" class="form-control" />
+                    <small class="form-hint">Đơn phải lấy hàng trước giờ này</small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Độ ưu tiên</label>
+                    <select name="priority" class="form-control">
+                        <option value="1">1 — Thấp</option>
+                        <option value="2" selected>2 — Bình thường</option>
+                        <option value="3">3 — Cao</option>
+                        <option value="4">4 — Khẩn cấp</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group mt-2 mb-0">
+                <label class="form-label">Ghi chú sóng</label>
+                <textarea name="notes" class="form-control" rows="2" placeholder="Ghi chú bổ sung cho sóng này..."></textarea>
+            </div>
+        </div>
+    </div>
+
+    @* ── Voucher selection table ── *@
+    @if (Model.Count == 0)
+    {
+        <div class="empty-state">
+            <i class="fas fa-check-circle"></i>
+            <p>Không có phiếu xuất nào đang chờ lập kế hoạch.</p>
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="card-header flex-header">
+                <span class="card-title"><i class="fas fa-list"></i> Phiếu xuất chờ lập kế hoạch (@Model.Count)</span>
+                <label class="check-all-label">
+                    <input type="checkbox" id="checkAll" data-wms-change-call="toggleAll" data-wms-change-self="true" />
+                    Chọn / bỏ chọn tất cả
+                </label>
+            </div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th class="wave-check-col"><input type="checkbox" id="checkAll" data-wms-call-self="toggleAll" /></th>
+                            <th>Mã phiếu</th>
+                            <th>Ngày</th>
+                            <th>Đối tác</th>
+                            <th>Loại</th>
+                            <th class="cell-right">Số dòng</th>
+                            <th class="cell-right">Tổng SL</th>
+                            <th>Ghi chú</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var v in Model)
+                        {
+                            <tr>
+                                <td class="cell-center">
+                                    <input type="checkbox" name="selectedVoucherIds" value="@v.VoucherId"
+                                           class="voucher-check" data-carrier="@(v.Partner?.PartnerCode ?? "NO_CARRIER")" />
+                                </td>
+                                <td><a href="@Url.Action("Details", new { id = v.VoucherId })" target="_blank">@v.VoucherCode</a></td>
+                                <td>@v.VoucherDate.ToString("dd/MM/yyyy")</td>
+                                <td>@(v.Partner?.PartnerName ?? "—")</td>
+                                <td><span class="badge badge-accent">Xuất kho</span></td>
+                                <td class="td-number cell-right">@v.Details.Count</td>
+                                <td class="td-number cell-right">@v.Details.Sum(d => Math.Abs(d.BaseQty)).ToString("N0")</td>
+                                <td class="text-muted">@(v.Description?.Length > 40 ? v.Description[..40] + "…" : v.Description)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="action-bar mt-3">
+            <span id="selectedCount" class="selected-count">0 phiếu đã chọn</span>
+            <button type="submit" class="btn btn-primary btn-lg" id="createWaveBtn" disabled>
+                <i class="fas fa-bolt"></i> Phát hành sóng
+            </button>
+        </div>
+    }
+</form>
+
+@section Scripts {
+<script>
+    function toggleAll(el) {
+        var checked = el.checked;
+        document.querySelectorAll('.voucher-check').forEach(function(cb) { cb.checked = checked; });
+        updateCount();
+    }
+
+    function selectByCarrier(carrierCode) {
+        document.querySelectorAll('.voucher-check').forEach(function(cb) {
+            var cbCarrier = cb.getAttribute('data-carrier');
+            cb.checked = (cbCarrier === carrierCode);
+        });
+        updateCount();
+    }
+
+    function updateCount() {
+        var count = document.querySelectorAll('.voucher-check:checked').length;
+        document.getElementById('selectedCount').textContent = count + ' phiếu đã chọn';
+        var btn = document.getElementById('createWaveBtn');
+        if (btn) btn.disabled = (count === 0);
+    }
+
+    document.querySelectorAll('.voucher-check').forEach(function(cb) {
+        cb.addEventListener('change', updateCount);
+    });
+    updateCount();
+
+    document.getElementById('waveForm')?.addEventListener('submit', function(e) {
+        var count = document.querySelectorAll('.voucher-check:checked').length;
+        if (count === 0) {
+            e.preventDefault();
+            enterpriseNotify({ title: 'Thiếu phiếu xuất', text: 'Vui lòng chọn ít nhất 1 phiếu xuất.', icon: 'warning' });
+            return;
+        }
+        var btn = document.getElementById('createWaveBtn');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang tạo sóng...';
+        }
+    });
+</script>
+}

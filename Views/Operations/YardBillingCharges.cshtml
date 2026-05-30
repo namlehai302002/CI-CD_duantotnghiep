@@ -1,0 +1,278 @@
+@using WMS.Models
+@model WMS.ViewModels.YardBillingChargePageViewModel
+@{
+    ViewData["Title"] = "Đối soát phí lưu bãi";
+    var charges = Model.Charges;
+    var visibleAmount = charges.Sum(c => c.Amount);
+
+    string StatusClass(YardChargeStatusEnum status) => status switch
+    {
+        YardChargeStatusEnum.Draft => "warning",
+        YardChargeStatusEnum.Confirmed => "success",
+        YardChargeStatusEnum.Invoiced => "info",
+        YardChargeStatusEnum.Waived => "neutral",
+        _ => "neutral"
+    };
+    string StatusText(YardChargeStatusEnum status) => status switch
+    {
+        YardChargeStatusEnum.Draft => "Nháp",
+        YardChargeStatusEnum.Confirmed => "Đã xác nhận",
+        YardChargeStatusEnum.Invoiced => "Đã xuất HĐ",
+        YardChargeStatusEnum.Waived => "Đã miễn",
+        _ => "Không xác định"
+    };
+    string DurationText(int minutes)
+    {
+        var safe = Math.Max(0, minutes);
+        var days = safe / 1440;
+        var hours = (safe % 1440) / 60;
+        var mins = safe % 60;
+        if (days > 0) return $"{days}d {hours}h {mins}m";
+        if (hours > 0) return $"{hours}h {mins}m";
+        return $"{mins}m";
+    }
+}
+
+<div class="yardops-shell">
+    <div class="yardops-pagehead">
+        <div>
+            <h1 class="yardops-title">Đối soát phí lưu bãi</h1>
+            <p class="yardops-subtitle">Kiểm tra phí detention/demurrage theo lượt yard visit, thời gian miễn phí, thời gian tính phí và trạng thái xác nhận.</p>
+        </div>
+        <div class="yardops-head-actions">
+            <a class="btn btn-success"
+               asp-action="ExportYardBillingChargesExcel"
+               asp-route-warehouseId="@Model.WarehouseId"
+               asp-route-status="@Model.Status"
+               asp-route-dateFrom="@Model.DateFrom?.ToString("yyyy-MM-dd")"
+               asp-route-dateTo="@Model.DateTo?.ToString("yyyy-MM-dd")">
+                <i class="fas fa-file-excel"></i> Xuất bảng tính
+            </a>
+            <form method="post" asp-action="RecalculateAllDraftCharges" class="yardops-inline-form"
+                  data-enterprise-confirm="Tự động tính lại toàn bộ các phí đang Nháp theo bảng giá mới nhất?"
+                  data-enterprise-confirm-title="Xác nhận tính lại phí bãi"
+                  data-enterprise-confirm-icon="warning"
+                  data-enterprise-confirm-ok="Tính lại phí">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="warehouseId" value="@Model.WarehouseId" />
+                <input type="hidden" name="status" value="@Model.Status" />
+                <input type="hidden" name="dateFrom" value="@Model.DateFrom?.ToString("yyyy-MM-dd")" />
+                <input type="hidden" name="dateTo" value="@Model.DateTo?.ToString("yyyy-MM-dd")" />
+                <button type="submit" class="btn btn-secondary"><i class="fas fa-rotate"></i> Tính lại phí Nháp</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="yardops-kpis">
+        <div class="yardops-kpi warning">
+            <div class="yardops-kpi-value">@Model.DraftCount <span class="yardops-kpi-unit">dòng</span></div>
+            <div class="yardops-kpi-label">Đang nháp</div>
+        </div>
+        <div class="yardops-kpi success">
+            <div class="yardops-kpi-value">@Model.TotalConfirmedAmount.ToString("N0") <span class="yardops-kpi-unit">VND</span></div>
+            <div class="yardops-kpi-label">Đã xác nhận</div>
+        </div>
+        <div class="yardops-kpi">
+            <div class="yardops-kpi-value">@Model.WaivedCount <span class="yardops-kpi-unit">dòng</span></div>
+            <div class="yardops-kpi-label">Đã miễn</div>
+        </div>
+        <div class="yardops-kpi info">
+            <div class="yardops-kpi-value">@visibleAmount.ToString("N0") <span class="yardops-kpi-unit">VND</span></div>
+            <div class="yardops-kpi-label">Đang hiển thị / @charges.Count.ToString("N0") dòng</div>
+        </div>
+    </div>
+
+    <form method="get" class="yardops-filter">
+        <div class="form-group yardops-span-3">
+            <label class="form-label">Kho</label>
+            <select name="warehouseId" class="form-control" data-wms-submit-form="true">
+                <option value="">-- Tất cả kho --</option>
+                @foreach (var w in Model.Warehouses) {
+                    <option value="@w.WarehouseId" selected="@(Model.WarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+                }
+            </select>
+        </div>
+        <div class="form-group yardops-span-2">
+            <label class="form-label">Trạng thái</label>
+            <select name="status" class="form-control" data-wms-submit-form="true">
+                <option value="">-- Tất cả --</option>
+                <option value="1" selected="@(Model.Status == YardChargeStatusEnum.Draft)">Nháp</option>
+                <option value="2" selected="@(Model.Status == YardChargeStatusEnum.Confirmed)">Đã xác nhận</option>
+                <option value="3" selected="@(Model.Status == YardChargeStatusEnum.Invoiced)">Đã xuất HĐ</option>
+                <option value="4" selected="@(Model.Status == YardChargeStatusEnum.Waived)">Đã miễn</option>
+            </select>
+        </div>
+        <div class="form-group yardops-span-2">
+            <label class="form-label">Từ ngày</label>
+            <input type="date" name="dateFrom" class="form-control" value="@Model.DateFrom?.ToString("yyyy-MM-dd")" />
+        </div>
+        <div class="form-group yardops-span-2">
+            <label class="form-label">Đến ngày</label>
+            <input type="date" name="dateTo" class="form-control" value="@Model.DateTo?.ToString("yyyy-MM-dd")" />
+        </div>
+        <div class="form-group yardops-span-2">
+            <label class="form-label">&nbsp;</label>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Lọc</button>
+        </div>
+    </form>
+
+    <section class="yardops-panel">
+        <div class="yardops-panel-head">
+            <div>
+                <h2 class="yardops-panel-title">Bảng đối soát phí</h2>
+                <p class="yardops-panel-subtitle">Đối chiếu lượt, xe/công-ten-nơ, khách hàng, thời gian lưu bãi/miễn phí/tính phí, đơn giá, thành tiền và trạng thái xử lý.</p>
+            </div>
+            <span class="yardops-context-pill">@charges.Count.ToString("N0") dòng</span>
+        </div>
+        <div class="yardops-table-wrap">
+            <table class="yardops-table">
+                <thead>
+                    <tr>
+                        <th>Lượt vào bãi</th>
+                        <th>Xe / công-ten-nơ</th>
+                        <th>Khách hàng</th>
+                        <th>Kho</th>
+                        <th class="text-end">Thời gian lưu bãi</th>
+                        <th class="text-end">Miễn phí</th>
+                        <th class="text-end">Tính phí</th>
+                        <th class="text-end">Đơn giá</th>
+                        <th class="text-end">Số tiền</th>
+                        <th>Trạng thái</th>
+                        <th>Thời gian cổng</th>
+                        <th class="text-end">Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in charges)
+                    {
+                        <tr>
+                            <td>
+                                <div class="yardops-rule-title">@c.VisitCode</div>
+                                <div class="yardops-subline">ID @c.YardBillingChargeId</div>
+                            </td>
+                            <td>
+                                <div class="yardops-rule-title">@c.TrailerNumber</div>
+                                <div class="yardops-subline">@(string.IsNullOrWhiteSpace(c.ContainerNumber) ? "không có số công-ten-nơ" : c.ContainerNumber) · @(c.CarrierName ?? "-")</div>
+                            </td>
+                            <td>@(c.PartnerName ?? "-")</td>
+                            <td>@c.WarehouseName</td>
+                            <td class="text-end">
+                                <strong>@c.TotalDwellMinutes.ToString("N0")</strong>
+                                <div class="yardops-subline">@DurationText(c.TotalDwellMinutes)</div>
+                            </td>
+                            <td class="text-end">
+                                <strong>@c.FreeTimeMinutes.ToString("N0")</strong>
+                                <div class="yardops-subline">@DurationText(c.FreeTimeMinutes)</div>
+                            </td>
+                            <td class="text-end">
+                                <strong>@c.ChargeableMinutes.ToString("N0")</strong>
+                                <div class="yardops-subline">@DurationText(c.ChargeableMinutes)</div>
+                            </td>
+                            <td class="text-end">@c.AppliedRatePerHour.ToString("N0")</td>
+                            <td class="text-end">
+                                <strong>@c.Amount.ToString("N0")</strong>
+                                <div class="yardops-subline">@c.Currency</div>
+                            </td>
+                            <td>
+                                <span class="yardops-status @StatusClass(c.Status)">@StatusText(c.Status)</span>
+                                @if (c.WaivedReason != null)
+                                {
+                                    <div class="yardops-subline" title="@c.WaivedReason">Lý do: @c.WaivedReason</div>
+                                }
+                            </td>
+                            <td>
+                                <div>Vào: @(c.GateInAt?.ToString("dd/MM HH:mm") ?? "--")</div>
+                                <div class="yardops-subline">Ra: @(c.GateOutAt?.ToString("dd/MM HH:mm") ?? "--")</div>
+                            </td>
+                            <td class="text-end text-nowrap">
+                                @if (c.Status == YardChargeStatusEnum.Draft)
+                                {
+                                    <form method="post" asp-action="ConfirmYardCharge" class="yardops-inline-form" data-enterprise-confirm="Xác nhận dòng phí lưu bãi này?" data-enterprise-confirm-ok="Xác nhận">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="chargeId" value="@c.YardBillingChargeId" />
+                                        <input type="hidden" name="warehouseId" value="@Model.WarehouseId" />
+                                        <button type="submit" class="btn btn-sm btn-success" title="Xác nhận"><i class="fas fa-check"></i></button>
+                                    </form>
+                                    <button type="button" class="btn btn-sm btn-secondary" title="Miễn phí" data-wms-call="openWaive" data-wms-arg="@c.YardBillingChargeId"><i class="fas fa-ban"></i></button>
+                                }
+                                else
+                                {
+                                    <span class="yardops-muted">--</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                    @if (!charges.Any())
+                    {
+                        <tr>
+                            <td colspan="12">
+                                <div class="yardops-empty"><i class="fas fa-file-invoice-dollar"></i>Không có dòng phí nào theo bộ lọc hiện tại.</div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+<div class="yardops-modal-overlay" id="waiveModal" aria-hidden="true">
+    <form method="post" asp-action="WaiveYardCharge" class="yardops-modal sm" role="dialog" aria-modal="true" aria-labelledby="waiveModalTitle">
+        @Html.AntiForgeryToken()
+        <div class="yardops-modal-head">
+            <div>
+                <h2 class="yardops-modal-title" id="waiveModalTitle">Miễn phí lưu bãi</h2>
+                <p class="yardops-modal-subtitle">Thao tác này chuyển dòng phí nháp sang trạng thái đã miễn.</p>
+            </div>
+            <button type="button" class="yardops-modal-close" data-wms-call="closeYardopsModal" data-wms-arg="waiveModal" aria-label="Đóng"><i class="fas fa-xmark"></i></button>
+        </div>
+        <div class="yardops-modal-body">
+            <input type="hidden" name="chargeId" id="waiveChargeId" />
+            <input type="hidden" name="warehouseId" value="@Model.WarehouseId" />
+            <div class="yardops-waive-copy">
+                Nhập lý do rõ ràng để phục vụ đối soát nội bộ và kiểm tra sau này. Nên ghi căn cứ miễn phí, người phê duyệt hoặc mã trao đổi với khách hàng nếu có.
+            </div>
+            <div class="form-group">
+                <label class="form-label">Lý do miễn phí <span class="text-danger">*</span></label>
+                <textarea name="reason" class="form-control textarea-sm-fixed" rows="4" required placeholder="VD: Khách VIP theo thỏa thuận hợp đồng, miễn phí bởi quản lý vận hành..."></textarea>
+            </div>
+        </div>
+        <div class="yardops-modal-foot">
+            <button type="button" class="btn btn-secondary" data-wms-call="closeYardopsModal" data-wms-arg="waiveModal">Hủy</button>
+            <button type="submit" class="btn btn-warning"><i class="fas fa-ban"></i> Miễn phí</button>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+<script>
+function openYardopsModal(id) {
+    const modal = document.getElementById(id);
+    if (!modal) return;
+    modal.classList.add('active');
+    modal.setAttribute('aria-hidden', 'false');
+}
+function closeYardopsModal(id) {
+    const modal = document.getElementById(id);
+    if (!modal) return;
+    modal.classList.remove('active');
+    modal.setAttribute('aria-hidden', 'true');
+}
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.yardops-modal-overlay.active').forEach(function(m) {
+            closeYardopsModal(m.id);
+        });
+    }
+});
+document.addEventListener('click', function(e) {
+    if (e.target.classList && e.target.classList.contains('yardops-modal-overlay')) {
+        closeYardopsModal(e.target.id);
+    }
+});
+function openWaive(chargeId) {
+    document.getElementById('waiveChargeId').value = chargeId;
+    openYardopsModal('waiveModal');
+}
+</script>
+}

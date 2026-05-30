@@ -1,0 +1,108 @@
+﻿@model List<WMS.Models.Partner>
+@{
+    ViewData["Title"] = "Đối tác";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Nhà cung cấp & khách hàng</h1>
+        <p class="page-subtitle">Quản lý danh bạ đối tác kinh doanh phục vụ nhập hàng, xuất hàng và đối soát chứng từ.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Partners" asp-action="Create" class="btn btn-primary"><i class="fas fa-plus"></i> Thêm đối tác mới</a>
+    </div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Tên / mã đối tác</label>
+        <input type="text" name="search" class="form-control" placeholder="Tìm kiếm..." value="@ViewBag.Search" />
+    </div>
+    <div class="form-group">
+        <label class="form-label">Phân loại</label>
+        <select name="type" class="form-control">
+            <option value="">Tất cả</option>
+            <option value="1" selected="@(ViewBag.Type != null && (byte)ViewBag.Type == 1)">Nhà cung cấp</option>
+            <option value="2" selected="@(ViewBag.Type != null && (byte)ViewBag.Type == 2)">Khách hàng</option>
+            <option value="3" selected="@(ViewBag.Type != null && (byte)ViewBag.Type == 3)">Nhà cung cấp và khách hàng</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Lọc</button>
+    </div>
+</form>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Mã</th>
+                <th>Tên đối tác</th>
+                <th>Phân loại</th>
+                <th>Mã số thuế</th>
+                <th>Điện thoại</th>
+                <th>Người liên hệ</th>
+                <th class="text-right">Thao tác</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!Model.Any())
+            {
+                <tr>
+                    <td colspan="7" class="table-empty-cell">
+                        <div class="table-empty-content">Chưa có đối tác nào theo bộ lọc hiện tại.</div>
+                    </td>
+                </tr>
+            }
+            else
+            {
+                @foreach (var p in Model)
+                {
+                    <tr>
+                        <td class="td-code text-accent">@p.PartnerCode</td>
+                        <td class="td-name fw-600">@p.PartnerName</td>
+                        <td>
+                            <span class="badge @(p.PartnerType == WMS.Models.PartnerTypeEnum.Supplier ? "badge-info" : p.PartnerType == WMS.Models.PartnerTypeEnum.Customer ? "badge-success" : "badge-purple")">
+                                @(p.PartnerType == WMS.Models.PartnerTypeEnum.Supplier ? "Nhà cung cấp" : p.PartnerType == WMS.Models.PartnerTypeEnum.Customer ? "Khách hàng" : "Nhà cung cấp và khách hàng")
+                            </span>
+                        </td>
+                        <td class="td-number">@(string.IsNullOrEmpty(p.TaxCode) ? "Chưa cập nhật" : p.TaxCode)</td>
+                        <td class="td-number">@(string.IsNullOrEmpty(p.Phone) ? "Chưa cập nhật" : p.Phone)</td>
+                        <td>@(string.IsNullOrEmpty(p.ContactPerson) ? "Chưa cập nhật" : p.ContactPerson)</td>
+                        <td class="td-actions">
+                            <a asp-controller="Partners" asp-action="Edit" asp-route-id="@p.PartnerId" class="btn btn-sm btn-secondary" title="Sửa"><i class="fas fa-edit"></i></a>
+                            @if (User.IsInRole("Admin"))
+                            {
+                            <form method="post" asp-controller="Partners" asp-action="Delete" asp-route-id="@p.PartnerId" class="js-confirm-partner-delete inline-form">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn-sm btn-danger" title="Khóa"><i class="fas fa-trash"></i></button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+@section Scripts {
+<script>
+    document.querySelectorAll('.js-confirm-partner-delete').forEach(form => {
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            if (typeof Swal === 'undefined') { this.submit(); return; }
+            Swal.fire({
+                title: 'Khóa đối tác này?',
+                text: 'Đối tác sẽ ngừng được sử dụng trong các phiếu mới.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Khóa đối tác',
+                cancelButtonText: 'Hủy',
+                confirmButtonColor: '#ef4444'
+            }).then(r => { if (r.isConfirmed) this.submit(); });
+        });
+    });
+</script>
+}

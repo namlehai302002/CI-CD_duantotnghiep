@@ -1,0 +1,212 @@
+@model List<WMS.ViewModels.SerialLookupRow>
+@{
+    ViewData["Title"] = "Tra cứu số sê-ri";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Tra cứu / quét số sê-ri</h1>
+        <p class="page-subtitle">Tìm nhanh từng số sê-ri để biết nó đang nằm ở kho nào, thuộc phiếu nhập nào và đã xuất theo phiếu nào chưa.</p>
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-fingerprint"></i> Cách dùng nhanh</div>
+    <div class="step-list">
+        <span class="step-chip"><i class="fas fa-qrcode"></i> 1) Quét hoặc nhập số sê-ri</span>
+        <span class="step-chip"><i class="fas fa-location-dot"></i> 2) Kiểm tra vị trí / mã kiện (LPN) / phiếu nguồn</span>
+        <span class="step-chip"><i class="fas fa-truck-arrow-right"></i> 3) Nếu số sê-ri đã xuất, xem ngay phiếu xuất liên quan</span>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="form-row align-end">
+            <div class="form-group form-span-2">
+                <label class="form-label">Quét nhanh số sê-ri</label>
+                <div class="scan-input-row">
+                    <input type="text" id="serialScanInput" class="form-control" placeholder="Quét số sê-ri rồi nhấn Enter" autocomplete="off" />
+                    <button type="button" class="btn btn-secondary scan-camera-btn" data-wms-call="openSerialCamera" title="Mở camera quét số sê-ri">
+                        <i class="fas fa-camera"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">&nbsp;</label>
+                <button type="button" class="btn btn-primary" data-wms-call="scanSerialNow"><i class="fas fa-magnifying-glass"></i> Tra cứu nhanh</button>
+            </div>
+        </div>
+        <div id="serialScanResult" class="form-help mt-2"></div>
+    </div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select class="form-control" name="warehouseId">
+            <option value="">Tất cả</option>
+            @foreach (var w in (List<WMS.Models.Warehouse>)ViewBag.Warehouses)
+            {
+                <option value="@w.WarehouseId" selected="@(ViewBag.WarehouseId != null && (int)ViewBag.WarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Tìm nhanh</label>
+        <input type="text" class="form-control" name="search" value="@ViewBag.Search" placeholder="Số sê-ri, vật tư, phiếu, vị trí, mã kiện (LPN)..." />
+    </div>
+    <div class="form-group">
+        <label class="form-label">Trạng thái</label>
+        <select class="form-control" name="status">
+            <option value="">Tất cả</option>
+            <option value="1" selected="@(ViewBag.Status != null && (byte)ViewBag.Status == 1)">Đang hiệu lực</option>
+            <option value="2" selected="@(ViewBag.Status != null && (byte)ViewBag.Status == 2)">Đã xuất / tiêu thụ</option>
+            <option value="3" selected="@(ViewBag.Status != null && (byte)ViewBag.Status == 3)">Đã vô hiệu</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc dữ liệu</button>
+    </div>
+</form>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Số sê-ri</th>
+                <th>Kho</th>
+                <th>Phiếu nhập nguồn</th>
+                <th>Phiếu xuất gần nhất</th>
+                <th>Vật tư</th>
+                <th>Vị trí / mã kiện (LPN)</th>
+                <th>Lô / HSD</th>
+                <th>Trạng thái</th>
+            </tr>
+        </thead>
+        <tbody>
+        @if (!Model.Any())
+        {
+            <tr>
+                <td colspan="8" class="cell-empty cell-empty-md">Chưa có số sê-ri phù hợp điều kiện lọc.</td>
+            </tr>
+        }
+        else
+        {
+            foreach (var row in Model)
+            {
+                var badgeClass = row.Status switch
+                {
+                    WMS.Models.SerialNumberStatusEnum.Active => "badge-success",
+                    WMS.Models.SerialNumberStatusEnum.Consumed => "badge-info",
+                    WMS.Models.SerialNumberStatusEnum.Voided => "badge-secondary",
+                    _ => "badge-secondary"
+                };
+                var statusLabel = row.Status switch
+                {
+                    WMS.Models.SerialNumberStatusEnum.Active => "Đang hiệu lực",
+                    WMS.Models.SerialNumberStatusEnum.Consumed => "Đã xuất / tiêu thụ",
+                    WMS.Models.SerialNumberStatusEnum.Voided => "Đã vô hiệu",
+                    _ => "Không xác định"
+                };
+                <tr>
+                    <td><span class="badge badge-accent">@row.SerialCode</span></td>
+                    <td>@row.WarehouseName</td>
+                    <td><a asp-controller="Vouchers" asp-action="Details" asp-route-id="@row.VoucherId" class="td-code link-clean">@row.VoucherCode</a></td>
+                    <td>
+                        @if (row.ConsumedVoucherId.HasValue && !string.IsNullOrWhiteSpace(row.ConsumedVoucherCode))
+                        {
+                            <a asp-controller="Vouchers" asp-action="Details" asp-route-id="@row.ConsumedVoucherId" class="td-code link-clean">@row.ConsumedVoucherCode</a>
+                            @if (row.ConsumedAt.HasValue)
+                            {
+                                <div class="text-muted fs-sm">@row.ConsumedAt.Value.ToString("dd/MM/yyyy HH:mm")</div>
+                            }
+                        }
+                        else
+                        {
+                            <span class="text-muted">---</span>
+                        }
+                    </td>
+                    <td>
+                        <div class="fw-700">@row.ItemCode</div>
+                        <div class="text-muted fs-sm">@row.ItemName</div>
+                    </td>
+                    <td>
+                        <div>@(row.LocationCode ?? "---")</div>
+                        <div class="text-muted fs-sm">Mã kiện (LPN): @(row.LpnCode ?? "---")</div>
+                    </td>
+                    <td>@((row.LotNumber ?? "---") + (row.ExpiryDate.HasValue ? $" / {row.ExpiryDate.Value:dd/MM/yyyy}" : ""))</td>
+                    <td><span class="badge @badgeClass">@statusLabel</span></td>
+                </tr>
+            }
+        }
+        </tbody>
+    </table>
+</div>
+
+@section Scripts {
+<script>
+function escapeLookupText(value) {
+    const div = document.createElement('div');
+    div.textContent = value == null || value === '' ? '---' : String(value);
+    return div.innerHTML;
+}
+
+async function scanSerialNow() {
+    const input = document.getElementById('serialScanInput');
+    const resultBox = document.getElementById('serialScanResult');
+    const code = input?.value?.trim();
+    if (!code) {
+        resultBox.textContent = 'Vui lòng quét hoặc nhập mã số sê-ri.';
+        resultBox.style.color = '#ef4444';
+        return;
+    }
+
+    resultBox.textContent = 'Đang tra cứu...';
+    resultBox.style.color = 'var(--text-muted)';
+    const busy = window.wmsLoading?.begin(resultBox, { text: 'Đang tra cứu số sê-ri...', delay: 700, disable: false });
+
+    try {
+        const res = await fetch(`/Operations/ScanSerial?code=${encodeURIComponent(code)}`);
+        const payload = await res.json();
+        if (!payload.success) {
+            resultBox.textContent = payload.message || 'Không tìm thấy số sê-ri.';
+            resultBox.style.color = '#ef4444';
+            return;
+        }
+
+        const info = payload.data;
+        resultBox.innerHTML =
+            `<span class="lookup-result-code">✓ ${escapeLookupText(info.serialCode)}</span> | `
+            + `${escapeLookupText(info.itemCode)} - ${escapeLookupText(info.itemName)} | `
+            + `Vị trí: ${escapeLookupText(info.locationCode)} | `
+            + `Mã kiện (LPN): ${escapeLookupText(info.lpnCode)}`;
+        resultBox.style.color = '#10b981';
+    } catch {
+        resultBox.textContent = 'Không thể tra cứu số sê-ri lúc này. Vui lòng thử lại.';
+        resultBox.style.color = '#ef4444';
+    } finally {
+        window.wmsLoading?.end(busy);
+    }
+}
+
+document.getElementById('serialScanInput')?.addEventListener('keydown', function (event) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        scanSerialNow();
+    }
+});
+
+function openSerialCamera() {
+    openScannerModal(async function(decodedText) {
+        const input = document.getElementById('serialScanInput');
+        if (input) {
+            input.value = decodedText;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        scanSerialNow();
+    }, { closeOnSuccess: true });
+}
+</script>
+}

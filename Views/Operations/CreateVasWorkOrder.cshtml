@@ -1,0 +1,146 @@
+﻿@model WMS.ViewModels.VasWorkOrderCreatePageViewModel
+@using WMS.Models
+@{
+    ViewData["Title"] = "Tạo lệnh gia công phụ trợ";
+    string TypeText(VasOperationTypeEnum type) => type switch
+    {
+        VasOperationTypeEnum.LightAssembly => "Lắp ráp nhẹ",
+        VasOperationTypeEnum.CoPacking => "Đóng gói phối hợp",
+        VasOperationTypeEnum.Repack => "Đóng gói lại",
+        VasOperationTypeEnum.Relabel => "Dán nhãn lại",
+        _ => "Không áp dụng"
+    };
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-screwdriver-wrench text-accent"></i> Tạo lệnh gia công phụ trợ</h1>
+        <p class="page-subtitle">Tạo lệnh lắp ráp nhẹ, đóng gói phối hợp, đóng gói lại hoặc dán nhãn lại có kiểm soát vật tư, thời gian nhân công và kiểm tra chất lượng.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-secondary" asp-controller="Operations" asp-action="VasWorkOrders"><i class="fas fa-arrow-left"></i> Danh sách</a>
+    </div>
+</div>
+
+<form method="post" asp-controller="Operations" asp-action="CreateVasWorkOrder">
+    @Html.AntiForgeryToken()
+
+    <div class="enterprise-card mb-4">
+        <div class="enterprise-card-header">
+            <div>
+                <h3 class="enterprise-card-title">Thông tin lệnh</h3>
+                <p class="enterprise-card-subtitle">Nếu không gắn khách hàng hoặc phiếu, vui lòng nhập ghi chú lý do tạo lệnh nội bộ.</p>
+            </div>
+        </div>
+        <div class="enterprise-card-body">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label class="form-label">Kho *</label>
+                    <select class="form-control" name="WarehouseId" required>
+                        <option value="">Chọn kho</option>
+                        @foreach (var w in Model.Warehouses)
+                        {
+                            <option value="@w.WarehouseId" selected="@(Model.Request.WarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Loại thao tác *</label>
+                    <select class="form-control" name="OperationType" required>
+                        @foreach (VasOperationTypeEnum t in Enum.GetValues<VasOperationTypeEnum>())
+                        {
+                            <option value="@t" selected="@(Model.Request.OperationType == t)">@TypeText(t)</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Mã hàng chính *</label>
+                    <select class="form-control" name="PrimaryItemId" required>
+                        <option value="">Chọn mã hàng</option>
+                        @foreach (var item in Model.Items)
+                        {
+                            <option value="@item.ItemId">@item.ItemCode - @item.ItemName (@(item.BaseUom?.UomCode ?? ""))</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Số lượng kế hoạch *</label>
+                    <input class="form-control" name="PlannedQty" type="number" min="0.0001" step="0.0001" value="@Model.Request.PlannedQty" required />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Khách hàng/đối tác</label>
+                    <select class="form-control" name="PartnerId">
+                        <option value="">Không chọn</option>
+                        @foreach (var p in Model.Partners)
+                        {
+                            <option value="@p.PartnerId">@p.PartnerCode - @p.PartnerName</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Phiếu liên kết</label>
+                    <select class="form-control" name="VoucherId">
+                        <option value="">Không gắn phiếu</option>
+                        @foreach (var v in Model.Vouchers)
+                        {
+                            <option value="@v.VoucherId">@v.VoucherCode - @(v.Partner?.PartnerName ?? "Không có đối tác")</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Đơn giá nhân công/giờ</label>
+                    <input class="form-control" name="LaborRatePerHour" type="number" min="0" step="0.0001" value="@Model.Request.LaborRatePerHour" />
+                </div>
+                <div class="form-group form-span-2">
+                    <label class="form-label">Ghi chú</label>
+                    <input class="form-control" name="Notes" maxlength="500" placeholder="Yêu cầu khách hàng, lý do xử lý nội bộ, hướng dẫn thao tác..." />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="enterprise-card mb-4">
+        <div class="enterprise-card-header">
+            <div>
+                <h3 class="enterprise-card-title">Vật tư phụ/bao bì/nhãn cần dùng</h3>
+                <p class="enterprise-card-subtitle">Sau khi tạo lệnh, hệ thống sẽ tự giữ chỗ theo nguyên tắc hạn dùng gần nhất xuất trước.</p>
+            </div>
+        </div>
+        <div class="enterprise-card-body">
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Vật tư phụ</th>
+                            <th class="table-col-180">Số lượng cần</th>
+                            <th>Ghi chú</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @for (var i = 0; i < 5; i++)
+                    {
+                        <tr>
+                            <td>
+                                <select class="form-control" name="MaterialLines[@i].MaterialItemId">
+                                    <option value="">Chọn vật tư</option>
+                                    @foreach (var item in Model.MaterialItems)
+                                    {
+                                        <option value="@item.ItemId">@item.ItemCode - @item.ItemName (@(item.BaseUom?.UomCode ?? ""))</option>
+                                    }
+                                </select>
+                            </td>
+                            <td><input class="form-control" name="MaterialLines[@i].RequiredQty" type="number" min="0" step="0.0001" /></td>
+                            <td><input class="form-control" name="MaterialLines[@i].Notes" maxlength="300" /></td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="form-actions">
+        <button class="btn btn-primary" type="submit"><i class="fas fa-save"></i> Tạo lệnh gia công</button>
+        <a class="btn btn-secondary" asp-controller="Operations" asp-action="VasWorkOrders">Hủy</a>
+    </div>
+</form>

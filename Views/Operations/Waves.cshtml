@@ -1,0 +1,165 @@
+@model List<WMS.ViewModels.WaveBoardRow>
+@{
+    ViewData["Title"] = "Đợt gom đơn";
+    var totalOpen = Model.Sum(w => w.OpenTasks);
+    var totalDone = Model.Sum(w => w.DoneTasks);
+    var inProgress = Model.Count(w => w.Status == WMS.Models.WaveStatusEnum.InProgress || w.Status == WMS.Models.WaveStatusEnum.Released);
+    string ProgressWidth(WMS.ViewModels.WaveBoardRow row)
+    {
+        var total = row.OpenTasks + row.DoneTasks;
+        if (total <= 0) return "0%";
+        return Math.Min(100, Math.Round((decimal)row.DoneTasks / total * 100, 0)) + "%";
+    }
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-layer-group text-accent"></i> Đợt gom đơn</h1>
+        <p class="page-subtitle">Theo dõi từng đợt gom lệnh lấy hàng để điều phối kho nhanh, rõ ràng và kiểm soát tiến độ theo nhiệm vụ mở/hoàn tất.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-secondary" asp-controller="Vouchers" asp-action="WavePlanning"><i class="fas fa-calendar-plus"></i> Lập đợt mới</a>
+        <a class="btn btn-secondary" asp-controller="Operations" asp-action="PickTasks"><i class="fas fa-list-check"></i> Nhiệm vụ lấy hàng</a>
+    </div>
+</div>
+
+<section class="enterprise-section wave-control-panel">
+    <div class="enterprise-section-header">
+        <div>
+            <div class="enterprise-section-title">Cách đọc bảng điều phối</div>
+            <div class="enterprise-section-subtitle">Mỗi đợt gom đơn sinh ra nhiệm vụ lấy hàng, sau đó kho theo dõi số nhiệm vụ còn mở và đã hoàn tất.</div>
+        </div>
+        <span class="badge badge-accent">Điều phối xuất kho</span>
+    </div>
+    <div class="quality-step-grid">
+        <div class="quality-step"><i class="fas fa-boxes-stacked"></i><span>Gom nhiều phiếu xuất</span></div>
+        <div class="quality-step"><i class="fas fa-user-check"></i><span>Sinh nhiệm vụ lấy hàng</span></div>
+        <div class="quality-step"><i class="fas fa-route"></i><span>Theo dõi tiến độ theo kho</span></div>
+        <div class="quality-step"><i class="fas fa-circle-check"></i><span>Đóng đợt khi hoàn tất</span></div>
+    </div>
+</section>
+
+<div class="stats-grid">
+    <div class="stat-card accent">
+        <div class="stat-icon"><i class="fas fa-layer-group"></i></div>
+        <div class="stat-value">@Model.Count</div>
+        <div class="stat-label">Tổng đợt gom</div>
+    </div>
+    <div class="stat-card warning">
+        <div class="stat-icon"><i class="fas fa-person-digging"></i></div>
+        <div class="stat-value">@inProgress</div>
+        <div class="stat-label">Đang điều phối</div>
+    </div>
+    <div class="stat-card info">
+        <div class="stat-icon"><i class="fas fa-list-check"></i></div>
+        <div class="stat-value">@totalOpen</div>
+        <div class="stat-label">Nhiệm vụ mở</div>
+    </div>
+    <div class="stat-card success">
+        <div class="stat-icon"><i class="fas fa-check-double"></i></div>
+        <div class="stat-value">@totalDone</div>
+        <div class="stat-label">Nhiệm vụ hoàn tất</div>
+    </div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select class="form-control" name="warehouseId">
+            <option value="">Tất cả</option>
+            @foreach (var w in (List<WMS.Models.Warehouse>)ViewBag.Warehouses)
+            {
+                <option value="@w.WarehouseId" selected="@(ViewBag.WarehouseId != null && (int)ViewBag.WarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc</button>
+    </div>
+</form>
+
+<section class="enterprise-section">
+    <div class="enterprise-section-header">
+        <div>
+            <div class="enterprise-section-title">Bảng đợt gom đơn</div>
+            <div class="enterprise-section-subtitle">Theo dõi trạng thái phát hành, tiến độ lấy hàng và thời điểm hoàn tất.</div>
+        </div>
+        <button type="button" class="btn-export" data-wms-export-table="#waveBoardTable" data-wms-export-filename="dot_gom_don">
+            <i class="fas fa-file-excel"></i> Xuất Excel
+        </button>
+    </div>
+    <div class="table-container">
+        <table id="waveBoardTable" class="data-table">
+            <thead>
+                <tr>
+                    <th>Mã đợt</th>
+                    <th>Kho</th>
+                    <th>Trạng thái</th>
+                    <th>Tiến độ</th>
+                    <th>Tạo lúc</th>
+                    <th>Xong lúc</th>
+                    <th class="table-actions-col"></th>
+                </tr>
+            </thead>
+            <tbody>
+            @if (!Model.Any())
+            {
+                <tr>
+                    <td colspan="7" class="cell-compact">
+                        <div class="empty-state">
+                            <div class="empty-icon"><i class="fas fa-layer-group"></i></div>
+                            <div class="empty-text">Chưa có đợt lấy hàng nào</div>
+                            <div class="empty-sub">Tạo đợt gom từ màn lập kế hoạch để phát hành nhiệm vụ lấy hàng theo kho.</div>
+                            <div class="empty-action">
+                                <a class="btn btn-primary btn-sm" asp-controller="Vouchers" asp-action="WavePlanning"><i class="fas fa-calendar-plus"></i> Lập đợt mới</a>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            }
+            @foreach (var wave in Model)
+            {
+                var (statusLabel, statusBadge) = wave.Status switch
+                {
+                    WMS.Models.WaveStatusEnum.Created => ("Nháp", "badge-secondary"),
+                    WMS.Models.WaveStatusEnum.Released => ("Đã phát hành", "badge-info"),
+                    WMS.Models.WaveStatusEnum.InProgress => ("Đang lấy", "badge-warning"),
+                    WMS.Models.WaveStatusEnum.Completed => ("Hoàn tất", "badge-success"),
+                    WMS.Models.WaveStatusEnum.Cancelled => ("Đã hủy", "badge-danger"),
+                    _ => ("Không áp dụng", "badge-secondary")
+                };
+                <tr class="@(wave.Status == WMS.Models.WaveStatusEnum.Cancelled ? "is-muted-row" : "")">
+                    <td><span class="td-code">@wave.WaveCode</span></td>
+                    <td>@wave.WarehouseName</td>
+                    <td><span class="badge @statusBadge">@statusLabel</span></td>
+                    <td>
+                        <div class="wave-progress-cell">
+                            <div class="wave-progress-text">@wave.DoneTasks / @(wave.OpenTasks + wave.DoneTasks) nhiệm vụ</div>
+                            <div class="wave-progress-track" aria-hidden="true">
+                                <span class="wave-progress-fill" data-progress-width="@ProgressWidth(wave)"></span>
+                            </div>
+                            <div class="table-subtext text-muted">@wave.OpenTasks nhiệm vụ còn mở</div>
+                        </div>
+                    </td>
+                    <td>@wave.CreatedAt.ToString("dd/MM/yyyy HH:mm")</td>
+                    <td>@(wave.CompletedAt?.ToString("dd/MM/yyyy HH:mm") ?? "---")</td>
+                    <td class="td-actions">
+                        <a class="btn btn-sm btn-secondary" asp-controller="Operations" asp-action="PickTasks" asp-route-waveId="@wave.WaveId">
+                            <i class="fas fa-eye"></i> Nhiệm vụ
+                        </a>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@section Scripts {
+<script>
+document.querySelectorAll('.wave-progress-fill[data-progress-width]').forEach(function (bar) {
+    bar.style.width = bar.dataset.progressWidth || '0%';
+});
+</script>
+}

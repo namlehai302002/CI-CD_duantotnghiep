@@ -1,0 +1,227 @@
+﻿@model List<WMS.ViewModels.StockSnapshotCompareRow>
+@{
+    ViewData["Title"] = "Chốt tồn kho";
+    var snapshotDate = (DateTime)(ViewBag.SnapshotDate ?? WMS.Common.VietnamTime.Today);
+    var diffCount = (int)(ViewBag.DiffCount ?? 0);
+    var totalDiffValue = Model.Sum(x => x.DiffValue);
+    var isPreview = (bool)(ViewBag.IsPreview ?? false);
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Chốt tồn kho</h1>
+        <p class="page-subtitle">Khóa số liệu tồn theo ngày để đối chiếu cuối kỳ và tạo phiếu điều chỉnh khi phát sinh chênh lệch.</p>
+    </div>
+    <div class="page-actions">
+        @if (ViewBag.WarehouseId != null)
+        {
+            <a class="btn btn-success"
+               asp-controller="Reports"
+               asp-action="ExportStockSnapshot"
+               asp-route-warehouseId="@ViewBag.WarehouseId"
+               asp-route-snapshotDate="@snapshotDate.ToString("yyyy-MM-dd")">
+                <i class="fas fa-file-excel"></i> Xuất bảng tính
+            </a>
+            @if (!isPreview && diffCount > 0)
+            {
+                <button type="button" class="btn btn-warning" id="quickAdjustBtn">
+                    <i class="fas fa-sliders-h"></i> Tạo phiếu điều chỉnh (@diffCount mã lệch)
+                </button>
+            }
+        }
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-circle-info"></i> Cách dùng nhanh</div>
+    <div class="step-list">
+        <span class="step-chip"><i class="fas fa-warehouse"></i> 1) Chọn kho và ngày chốt.</span>
+        <span class="step-chip"><i class="fas fa-eye"></i> 2) Kiểm tra tồn chốt và tồn hiện tại.</span>
+        <span class="step-chip"><i class="fas fa-lock"></i> 3) Bấm "Chốt tồn kho" để lưu số liệu.</span>
+        <span class="step-chip"><i class="fas fa-sliders-h"></i> 4) Nếu lệch, tạo phiếu điều chỉnh để cập nhật tồn thực tế.</span>
+    </div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho *</label>
+        <select name="warehouseId" class="form-control" required>
+            <option value="">-- Chọn kho --</option>
+            @foreach (var w in (List<WMS.Models.Warehouse>)ViewBag.Warehouses)
+            {
+                <option value="@w.WarehouseId" selected="@(ViewBag.WarehouseId != null && (int)ViewBag.WarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Ngày chốt</label>
+        <input type="date" name="snapshotDate" class="form-control" value="@snapshotDate.ToString("yyyy-MM-dd")" />
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Xem dữ liệu</button>
+    </div>
+</form>
+
+@if (ViewBag.WarehouseId != null)
+{
+    <div class="card mb-3">
+        <div class="card-body enterprise-table-tools">
+            <div class="text-muted fs-body-sm">
+                @(isPreview
+                    ? "Bạn đang xem dữ liệu xem trước. Sau khi chốt, hệ thống sẽ lưu bộ số liệu này thành mốc đối chiếu chính thức."
+                    : "Bạn đang xem số liệu đã chốt. Nếu có chênh lệch so với tồn hiện tại, hãy tạo phiếu điều chỉnh để đồng bộ tồn kho.")
+            </div>
+            <form method="post" asp-controller="Reports" asp-action="GenerateStockSnapshot" class="enterprise-inline-controls mb-0">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="warehouseId" value="@ViewBag.WarehouseId" />
+                <input type="hidden" name="snapshotDate" value="@snapshotDate.ToString("yyyy-MM-dd")" />
+                <button type="submit" class="btn btn-warning" id="generateSnapshotBtn">
+                    <i class="fas fa-lock"></i> Chốt tồn kho
+                </button>
+            </form>
+        </div>
+    </div>
+}
+
+<div class="grid-3 mb-3">
+    <div class="stat-card accent">
+        <div class="stat-value">@Model.Count</div>
+        <div class="stat-label">Số mã đã chốt</div>
+    </div>
+    <div class="stat-card success">
+        <div class="stat-value">@Model.Sum(x => x.SnapshotValue).ToString("N0")</div>
+        <div class="stat-label">Tổng giá trị tồn chốt</div>
+    </div>
+    <div class="stat-card warning">
+        <div class="stat-value">@diffCount</div>
+        <div class="stat-label">Số mã đang chênh lệch</div>
+    </div>
+</div>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Mã vật tư</th>
+                <th>Tên vật tư</th>
+                <th>ĐVT</th>
+                <th class="cell-right">Tồn tại ngày chốt</th>
+                <th class="cell-right">Tồn hiện tại</th>
+                <th class="cell-right">Chênh lệch</th>
+                <th class="cell-right">Giá trị chênh lệch</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!Model.Any())
+            {
+                <tr><td colspan="7" class="cell-empty cell-empty-lg">Chưa có dữ liệu chốt tồn cho điều kiện đã chọn.</td></tr>
+            }
+            else
+            {
+                foreach (var s in Model)
+                {
+                    var diff = s.DiffQty;
+                    <tr>
+                        <td class="td-code text-accent">@s.ItemCode</td>
+                        <td class="td-name fw-600">@s.ItemName</td>
+                        <td>@s.UomCode</td>
+                        <td class="td-number fw-700">@s.SnapshotQty.ToString("#,##0.##")</td>
+                        <td class="td-number">@s.CurrentQty.ToString("#,##0.##")</td>
+                        <td class="td-number fw-700 @(diff == 0 ? "text-muted" : diff > 0 ? "text-success" : "text-danger")">
+                            @(diff == 0 ? "0" : (diff > 0 ? "+" : ""))@diff.ToString("#,##0.##")
+                        </td>
+                        <td class="td-number @(s.DiffValue == 0 ? "text-muted" : s.DiffValue > 0 ? "text-success" : "text-danger")">
+                            @(s.DiffValue == 0 ? "0" : (s.DiffValue > 0 ? "+" : ""))@s.DiffValue.ToString("N0")
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+        @if (Model.Any())
+        {
+            <tfoot>
+                <tr>
+                    <td colspan="6" class="text-right fw-700 voucher-total-label">TỔNG GIÁ TRỊ CHÊNH LỆCH:</td>
+                    <td class="td-number fw-700 fs-lg">@totalDiffValue.ToString("N0")</td>
+                </tr>
+            </tfoot>
+        }
+    </table>
+</div>
+
+@if (ViewBag.WarehouseId != null)
+{
+    <form id="quickAdjustForm" method="post" asp-controller="Reports" asp-action="QuickAdjustFromSnapshot" class="d-none">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="warehouseId" value="@ViewBag.WarehouseId" />
+        <input type="hidden" name="snapshotDate" value="@snapshotDate.ToString("yyyy-MM-dd")" />
+        <input type="hidden" name="notes" id="quickAdjustNotes" value="" />
+    </form>
+}
+
+@section Scripts {
+<script>
+    const btn = document.getElementById('generateSnapshotBtn');
+    if (btn) {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const form = btn.closest('form');
+            const count = @Model.Count;
+            const dateStr = '@snapshotDate.ToString("dd/MM/yyyy")';
+            if (typeof Swal === 'undefined') { form.submit(); return; }
+            Swal.fire({
+                title: 'Xác nhận chốt tồn kho?',
+                html: `<div class="snapshot-confirm-body">
+                    <div><b>Ngày chốt:</b> ${dateStr}</div>
+                    <div><b>Số mã sẽ chốt:</b> ${count}</div>
+                    <div class="snapshot-confirm-note">
+                        Sau khi chốt, số liệu này sẽ trở thành mốc đối chiếu. Nếu phát hiện lệch, hãy dùng phiếu điều chỉnh thay vì sửa trực tiếp dữ liệu chốt.
+                    </div>
+                </div>`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Chốt tồn kho',
+                cancelButtonText: 'Hủy',
+                confirmButtonColor: '#f59e0b'
+            }).then(r => { if (r.isConfirmed) form.submit(); });
+        });
+    }
+
+    const adjBtn = document.getElementById('quickAdjustBtn');
+    if (adjBtn) {
+        adjBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const totalDiff = '@totalDiffValue.ToString("N0")';
+            const dateStr = '@snapshotDate.ToString("dd/MM/yyyy")';
+            if (typeof Swal === 'undefined') {
+                document.getElementById('quickAdjustForm').submit();
+                return;
+            }
+            Swal.fire({
+                title: 'Tạo phiếu điều chỉnh từ số liệu chốt?',
+                html: `<div class="snapshot-adjust-body">
+                    <div><b>Ngày chốt:</b> ${dateStr}</div>
+                    <div><b>Số mã chênh lệch:</b> <span class="snapshot-adjust-highlight">@diffCount</span></div>
+                    <div><b>Tổng giá trị chênh lệch:</b> <span class="fw-700">${totalDiff} VNĐ</span></div>
+                    <hr class="snapshot-adjust-divider">
+                    <label class="snapshot-adjust-label">Ghi chú thêm</label>
+                    <input id="swalAdjustNote" class="swal2-input snapshot-adjust-input" placeholder="Ví dụ: Điều chỉnh chốt tồn cuối tháng">
+                </div>`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Tạo phiếu điều chỉnh',
+                cancelButtonText: 'Hủy',
+                confirmButtonColor: '#f59e0b',
+                preConfirm: () => {
+                    document.getElementById('quickAdjustNotes').value = document.getElementById('swalAdjustNote')?.value || '';
+                }
+            }).then(r => {
+                if (r.isConfirmed) {
+                    document.getElementById('quickAdjustForm').submit();
+                }
+            });
+        });
+    }
+</script>
+}

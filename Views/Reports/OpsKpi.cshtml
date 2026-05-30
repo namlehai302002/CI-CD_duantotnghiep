@@ -1,0 +1,226 @@
+﻿@{
+    ViewData["Title"] = "Chỉ số vận hành";
+    var recentWaves = (List<WMS.ViewModels.WaveBoardRow>)(ViewBag.RecentWaves ?? new List<WMS.ViewModels.WaveBoardRow>());
+    var recentTasks = (List<WMS.ViewModels.PickTaskBoardRow>)(ViewBag.RecentTasks ?? new List<WMS.ViewModels.PickTaskBoardRow>());
+    var recentHandovers = (List<WMS.Models.ShippingHandoverLog>)(ViewBag.RecentHandovers ?? new List<WMS.Models.ShippingHandoverLog>());
+    var carrierSlaRows = (List<WMS.ViewModels.CarrierSlaRow>)(ViewBag.CarrierSlaRows ?? new List<WMS.ViewModels.CarrierSlaRow>());
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Chỉ số vận hành kho</h1>
+        <p class="page-subtitle">Theo dõi hiệu quả lấy hàng, tồn đọng đóng gói và tỷ lệ giao đúng hẹn trên cùng một màn hình.</p>
+    </div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select class="form-control" name="warehouseId">
+            <option value="">-- Tất cả --</option>
+            @foreach (var w in (List<WMS.Models.Warehouse>)ViewBag.Warehouses)
+            {
+                if (ViewBag.WarehouseId != null && (int)ViewBag.WarehouseId == w.WarehouseId)
+                {
+                    <option value="@w.WarehouseId" selected>@w.WarehouseCode - @w.WarehouseName</option>
+                }
+                else
+                {
+                    <option value="@w.WarehouseId">@w.WarehouseCode - @w.WarehouseName</option>
+                }
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Lọc</button>
+    </div>
+</form>
+
+<div class="stats-grid">
+    <div class="stat-card accent"><div class="stat-value">@ViewBag.WaveCount</div><div class="stat-label">Số đợt lấy hàng</div></div>
+    <div class="stat-card success"><div class="stat-value">@ViewBag.DoneTasks</div><div class="stat-label">Nhiệm vụ hoàn tất</div></div>
+    <div class="stat-card warning"><div class="stat-value">@ViewBag.OpenTasks</div><div class="stat-label">Nhiệm vụ đang mở</div></div>
+    <div class="stat-card danger"><div class="stat-value">@ViewBag.ShortTasks</div><div class="stat-label">Lấy thiếu hàng</div></div>
+    <div class="stat-card info"><div class="stat-value">@ViewBag.AvgMinutes</div><div class="stat-label">TB phút / nhiệm vụ</div></div>
+    <div class="stat-card purple"><div class="stat-value">@(((decimal)ViewBag.FillRate).ToString("N1"))%</div><div class="stat-label">Tỷ lệ đáp ứng giữ chỗ</div></div>
+</div>
+
+<div class="stats-grid mt-3">
+    <div class="stat-card warning"><div class="stat-value">@ViewBag.WaitingPacking</div><div class="stat-label">Chờ đóng gói</div></div>
+    <div class="stat-card info"><div class="stat-value">@ViewBag.ReadyToShip</div><div class="stat-label">Chờ giao hàng</div></div>
+    <div class="stat-card success"><div class="stat-value">@ViewBag.ShippedToday</div><div class="stat-label">Đã giao hôm nay</div></div>
+    <div class="stat-card danger"><div class="stat-value">@ViewBag.OverdueShipping</div><div class="stat-label">Giao hàng quá hạn</div></div>
+    <div class="stat-card accent"><div class="stat-value">@(((decimal)ViewBag.OnTimeShipRate).ToString("N1"))%</div><div class="stat-label">Tỷ lệ giao đúng hẹn</div></div>
+    <div class="stat-card purple"><div class="stat-value">@(((double)ViewBag.AvgShipLeadHours).ToString("N1"))h</div><div class="stat-label">TB giờ đóng gói đến giao</div></div>
+</div>
+
+@if ((int)ViewBag.WaveCount == 0 && (int)ViewBag.TotalTasks == 0)
+{
+    <div class="alert alert-warning mt-3">
+        Chưa có dữ liệu điều độ lấy hàng cho kho đã chọn trong hệ thống.
+    </div>
+}
+
+<div class="table-container mt-3">
+    <div class="enterprise-table-title">Đợt lấy hàng gần đây</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Mã đợt</th>
+                <th>Kho</th>
+                <th>Trạng thái</th>
+                <th>Mở / Hoàn tất</th>
+                <th>Tạo lúc</th>
+                <th>Hoàn tất lúc</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!recentWaves.Any())
+            {
+                <tr><td colspan="6" class="cell-empty cell-empty-sm">Chưa có đợt lấy hàng.</td></tr>
+            }
+            else
+            {
+                foreach (var w in recentWaves)
+                {
+                    <tr>
+                        <td>@w.WaveCode</td>
+                        <td>@w.WarehouseName</td>
+                        <td>@(w.Status switch { WMS.Models.WaveStatusEnum.Created => "Nháp", WMS.Models.WaveStatusEnum.Released => "Đã phát hành", WMS.Models.WaveStatusEnum.InProgress => "Đang lấy", WMS.Models.WaveStatusEnum.Completed => "Hoàn tất", WMS.Models.WaveStatusEnum.Cancelled => "Đã hủy", _ => "Không xác định" })</td>
+                        <td>@w.OpenTasks / @w.DoneTasks</td>
+                        <td>@w.CreatedAt.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td>@(w.CompletedAt?.ToString("dd/MM/yyyy HH:mm") ?? "-")</td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+<div class="table-container mt-3">
+    <div class="enterprise-table-title">Nhiệm vụ lấy hàng gần đây</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Mã nhiệm vụ</th>
+                <th>Đợt</th>
+                <th>Phiếu</th>
+                <th>Vật tư</th>
+                <th>Vị trí</th>
+                <th>Yêu cầu / Đã lấy</th>
+                <th>Trạng thái</th>
+                <th>Người thực hiện</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!recentTasks.Any())
+            {
+                <tr><td colspan="8" class="cell-empty cell-empty-sm">Chưa có nhiệm vụ lấy hàng.</td></tr>
+            }
+            else
+            {
+                foreach (var t in recentTasks)
+                {
+                    <tr>
+                        <td>@t.TaskCode</td>
+                        <td>@t.WaveCode</td>
+                        <td>@t.VoucherCode</td>
+                        <td>@t.ItemCode</td>
+                        <td>@t.LocationCode</td>
+                        <td>@t.TargetQty.ToString("N0") / @t.PickedQty.ToString("N0")</td>
+                        <td>@(t.Status switch { WMS.Models.PickTaskStatusEnum.Pending => "Mới tạo", WMS.Models.PickTaskStatusEnum.Assigned => "Đã gán", WMS.Models.PickTaskStatusEnum.InProgress => "Đang lấy", WMS.Models.PickTaskStatusEnum.Completed => "Hoàn tất", WMS.Models.PickTaskStatusEnum.Short => "Lấy thiếu", WMS.Models.PickTaskStatusEnum.Cancelled => "Đã hủy", _ => "Không xác định" })</td>
+                        <td>@(string.IsNullOrWhiteSpace(t.AssignedTo) ? "-" : t.AssignedTo)</td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+<div class="table-container mt-3">
+    <div class="enterprise-table-title"><i class="fas fa-truck-ramp-box"></i> Nhật ký bàn giao vận chuyển gần đây</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Thời điểm</th>
+                <th>Phiếu</th>
+                <th>Kho</th>
+                <th>Đơn vị vận chuyển</th>
+                <th>Tài xế</th>
+                <th>Biển số</th>
+                <th>Người bàn giao</th>
+                <th>Mã vận đơn / mã chuyến bàn giao</th>
+                <th>Ghi chú</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!recentHandovers.Any())
+            {
+                <tr><td colspan="9" class="cell-empty cell-empty-sm">Chưa có nhật ký bàn giao vận chuyển.</td></tr>
+            }
+            else
+            {
+                foreach (var h in recentHandovers)
+                {
+                    <tr>
+                        <td>@h.HandedOverAt.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td>@(h.Voucher?.VoucherCode ?? h.VoucherId.ToString())</td>
+                        <td>@(h.Warehouse?.WarehouseName ?? $"Kho {h.WarehouseId}")</td>
+                        <td>@(string.IsNullOrWhiteSpace(h.CarrierName) ? "---" : h.CarrierName)</td>
+                        <td>@(string.IsNullOrWhiteSpace(h.DriverName) ? "---" : h.DriverName)</td>
+                        <td>@(string.IsNullOrWhiteSpace(h.VehicleNumber) ? "---" : h.VehicleNumber)</td>
+                        <td>@h.HandedOverBy</td>
+                        <td>
+                            <div>Mã vận đơn: @(string.IsNullOrWhiteSpace(h.TrackingNumber) ? "---" : h.TrackingNumber)</div>
+                            <div class="text-muted fs-sm">Mã chuyến bàn giao: @(string.IsNullOrWhiteSpace(h.ManifestCode) ? "---" : h.ManifestCode)</div>
+                        </td>
+                        <td>@(string.IsNullOrWhiteSpace(h.Notes) ? "---" : h.Notes)</td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+<div class="table-container mt-3">
+    <div class="enterprise-table-title"><i class="fas fa-chart-bar"></i> Cam kết giao hàng theo đơn vị vận chuyển</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Đơn vị vận chuyển</th>
+                <th class="cell-right">Tổng giao</th>
+                <th class="cell-right">Đúng hạn</th>
+                <th class="cell-right">Trễ hạn</th>
+                <th class="cell-right">Tỷ lệ đúng hạn</th>
+                <th class="cell-right">TB giờ lead time</th>
+                <th class="cell-right">TB giờ đóng gói đến giao</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!carrierSlaRows.Any())
+            {
+                <tr><td colspan="7" class="cell-empty cell-empty-sm">Chưa có dữ liệu bàn giao vận chuyển theo đơn vị vận chuyển.</td></tr>
+            }
+            else
+            {
+                foreach (var c in carrierSlaRows)
+                {
+                    <tr>
+                        <td class="fw-700">@c.CarrierName</td>
+                        <td class="td-number">@c.TotalShipped</td>
+                        <td class="td-number text-success">@c.OnTimeCount</td>
+                        <td class="td-number text-danger">@c.OverdueCount</td>
+                        <td class="td-number">
+                            <span class="badge @(c.OnTimeRate >= 90 ? "badge-success" : c.OnTimeRate >= 70 ? "badge-warning" : "badge-danger")">
+                                @c.OnTimeRate.ToString("N1")%
+                            </span>
+                        </td>
+                        <td class="td-number">@c.AvgLeadHours.ToString("N1")h</td>
+                        <td class="td-number">@c.AvgPackToShipHours.ToString("N1")h</td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>

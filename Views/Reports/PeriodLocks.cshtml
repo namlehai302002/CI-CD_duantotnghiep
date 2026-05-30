@@ -1,0 +1,102 @@
+@model List<WMS.Models.WarehousePeriodLock>
+@{
+    ViewData["Title"] = "Khóa kỳ theo kho";
+    var warehouses = (List<WMS.Models.Warehouse>)ViewBag.Warehouses;
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Khóa kỳ theo kho</h1>
+        <p class="page-subtitle">Ngăn tạo, duyệt hoặc hủy phiếu trong giai đoạn đã chốt sổ để đảm bảo dữ liệu vận hành và kế toán không bị thay đổi ngoài ý muốn.</p>
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-circle-info"></i> Khi nào nên dùng</div>
+    <div class="user-guide-text">Dùng sau khi đã kiểm tra xong số liệu cuối kỳ. Khi khóa kỳ, người dùng sẽ không thể thao tác với các phiếu có ngày chứng từ nhỏ hơn hoặc bằng ngày khóa.</div>
+</div>
+
+<section class="enterprise-section period-lock-control-panel">
+    <div class="period-lock-form-shell">
+        <form method="post" asp-controller="Reports" asp-action="SetPeriodLock" class="filter-bar" data-enterprise-confirm="Lưu khóa kỳ cho kho đã chọn?">
+            @Html.AntiForgeryToken()
+            <div class="form-group">
+                <label class="form-label">Kho *</label>
+                <select name="warehouseId" class="form-control" required>
+                    <option value="">-- Chọn kho --</option>
+                    @foreach (var w in warehouses)
+                    {
+                        <option value="@w.WarehouseId">@w.WarehouseCode - @w.WarehouseName</option>
+                    }
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Khóa đến ngày *</label>
+                <input type="date" name="lockDate" class="form-control" required />
+            </div>
+            <div class="form-group min-w-320">
+                <label class="form-label">Lý do</label>
+                <input type="text" name="reason" class="form-control" placeholder="Ví dụ: Đã chốt sổ kho tháng 04/2026" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">&nbsp;</label>
+                <button type="submit" class="btn btn-warning"><i class="fas fa-lock"></i> Lưu khóa kỳ</button>
+            </div>
+        </form>
+    </div>
+</section>
+
+<div class="table-container period-locks-table-container">
+    <table class="data-table period-locks-table">
+        <thead>
+            <tr>
+                <th>Kho</th>
+                <th>Ngày khóa</th>
+                <th>Trạng thái</th>
+                <th>Lý do</th>
+                <th>Người thao tác</th>
+                <th>Thời điểm cập nhật</th>
+                <th class="w-120">Thao tác</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!Model.Any())
+            {
+                <tr><td colspan="7" class="cell-empty cell-empty-md">Chưa có thiết lập khóa kỳ nào.</td></tr>
+            }
+            else
+            {
+                foreach (var l in Model)
+                {
+                    <tr>
+                        <td class="fw-600">@(l.Warehouse?.WarehouseCode ?? l.WarehouseId.ToString())</td>
+                        <td>@l.LockDate.ToString("dd/MM/yyyy")</td>
+                        <td>
+                            @if (l.IsActive)
+                            {
+                                <span class="period-lock-chip is-active"><i class="fas fa-lock"></i> Đang khóa</span>
+                            }
+                            else
+                            {
+                                <span class="period-lock-chip is-open"><i class="fas fa-lock-open"></i> Đã mở</span>
+                            }
+                        </td>
+                        <td>@(string.IsNullOrWhiteSpace(l.Reason) ? "-" : l.Reason)</td>
+                        <td>@l.LockedBy</td>
+                        <td>@l.LockedAt.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td>
+                            @if (l.IsActive)
+                            {
+                                <form method="post" asp-controller="Reports" asp-action="ClearPeriodLock" class="d-inline-flex" data-enterprise-confirm="Mở khóa kỳ cho kho này?" data-enterprise-confirm-ok="Mở khóa" data-enterprise-confirm-icon="warning">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@l.WarehousePeriodLockId" />
+                                    <button type="submit" class="btn btn-secondary btn-sm">Mở khóa</button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>

@@ -1,0 +1,151 @@
+@model List<WMS.Models.StockAlert>
+@{
+    ViewData["Title"] = "Cảnh báo hệ thống";
+    byte? type = ViewBag.Type as byte?;
+    bool unresolvedOnly = (bool)(ViewBag.UnresolvedOnly ?? true);
+    int days = (int)(ViewBag.Days ?? 30);
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Cảnh báo hệ thống</h1>
+        <p class="page-subtitle">Theo dõi tồn thấp, tồn cao và hàng sắp hết hạn để xử lý sớm trước khi ảnh hưởng đến vận hành kho.</p>
+    </div>
+    <div class="page-actions">
+        <form method="post" asp-controller="Reports" asp-action="RefreshExpiryAlerts" class="enterprise-inline-controls">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="days" value="@days" />
+            <button type="submit" class="btn btn-warning" title="Quét lại dữ liệu hạn dùng và cập nhật cảnh báo">
+                <i class="fas fa-rotate"></i> Làm mới cảnh báo hạn dùng
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-circle-info"></i> Gợi ý xử lý</div>
+    <div class="user-guide-text">Ưu tiên xem các cảnh báo chưa xử lý. Với hàng sắp hết hạn, bạn có thể đổi số ngày cảnh báo để phù hợp với từng nhóm hàng hoặc từng đợt kiểm tra.</div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Loại cảnh báo</label>
+        <select name="type" class="form-control">
+            <option value="" selected="@(type == null)">Tất cả</option>
+            <option value="1" selected="@(type == 1)">Tồn kho thấp</option>
+            <option value="2" selected="@(type == 2)">Tồn kho cao</option>
+            <option value="3" selected="@(type == 3)">Sắp hết hạn</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Trạng thái</label>
+        <select name="unresolvedOnly" class="form-control">
+            <option value="true" selected="@(unresolvedOnly)">Chưa xử lý</option>
+            <option value="false" selected="@(!unresolvedOnly)">Tất cả</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Ngưỡng cảnh báo hạn dùng</label>
+        <input type="number" min="1" max="365" name="days" class="form-control" value="@days" />
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Áp dụng bộ lọc</button>
+    </div>
+</form>
+
+<div class="grid-3 mb-3">
+    <div class="stat-card accent">
+        <div class="stat-value">@Model.Count</div>
+        <div class="stat-label">Tổng số cảnh báo</div>
+    </div>
+    <div class="stat-card warning">
+        <div class="stat-value">@Model.Count(x => !x.IsResolved)</div>
+        <div class="stat-label">Cảnh báo chưa xử lý</div>
+    </div>
+    <div class="stat-card success">
+        <div class="stat-value">@Model.Count(x => x.AlertType == WMS.Models.AlertTypeEnum.Expiry && !x.IsResolved)</div>
+        <div class="stat-label">Hàng sắp hết hạn</div>
+    </div>
+</div>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th class="w-150">Loại cảnh báo</th>
+                <th>Mã vật tư</th>
+                <th>Tên vật tư</th>
+                <th class="cell-right">SL hiện tại</th>
+                <th class="cell-right">Ngưỡng</th>
+                <th class="w-180">Thời gian</th>
+                <th class="w-140 cell-center">Trạng thái</th>
+                <th class="w-120 cell-center">Thao tác</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!Model.Any())
+            {
+                <tr>
+                    <td colspan="8" class="cell-empty cell-empty-lg">
+                        <i class="fas fa-bell-slash empty-muted-icon"></i>
+                        Không có cảnh báo phù hợp với bộ lọc hiện tại.
+                    </td>
+                </tr>
+            }
+            else
+            {
+                foreach (var a in Model)
+                {
+                    var typeBadge = a.AlertType switch
+                    {
+                        WMS.Models.AlertTypeEnum.LowStock => "badge-warning",
+                        WMS.Models.AlertTypeEnum.OverStock => "badge-info",
+                        WMS.Models.AlertTypeEnum.Expiry => "badge-danger",
+                        _ => "badge-secondary"
+                    };
+                    var thresholdLabel = a.AlertType == WMS.Models.AlertTypeEnum.Expiry ? $"{(int)a.Threshold} ngày" : a.Threshold.ToString("#,##0.##");
+                    <tr class="@(a.IsResolved ? "row-dimmed" : "")">
+                        <td><span class="badge @typeBadge">@a.AlertTypeName</span></td>
+                        <td class="td-code text-accent">@a.Item?.ItemCode</td>
+                        <td class="td-name fw-600">@a.Item?.ItemName</td>
+                        <td class="td-number">@a.CurrentStock.ToString("#,##0.##")</td>
+                        <td class="td-number">@thresholdLabel</td>
+                        <td>
+                            <div class="fw-600">@a.CreatedAt.ToString("dd/MM/yyyy HH:mm")</div>
+                            <div class="text-muted fs-xs">@(a.ResolvedAt.HasValue ? $"Đã xử lý lúc: {a.ResolvedAt.Value:dd/MM/yyyy HH:mm}" : "Chưa xử lý")</div>
+                        </td>
+                        <td class="text-center">
+                            @if (a.IsResolved)
+                            {
+                                <span class="chip chip-success"><i class="fas fa-check"></i> Đã xử lý</span>
+                            }
+                            else
+                            {
+                                <span class="chip chip-warning"><i class="fas fa-bolt"></i> Cần xử lý</span>
+                            }
+                        </td>
+                        <td class="text-center">
+                            @if (!a.IsResolved)
+                            {
+                    <form method="post" asp-controller="Reports" asp-action="ResolveAlert" class="d-inline" data-enterprise-confirm="Đánh dấu cảnh báo này đã xử lý?">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@a.AlertId" />
+                                    <input type="hidden" name="type" value="@(type?.ToString() ?? "")" />
+                                    <input type="hidden" name="unresolvedOnly" value="@unresolvedOnly.ToString().ToLower()" />
+                                    <input type="hidden" name="days" value="@days" />
+                                    <button type="submit" class="btn btn-sm btn-ghost" title="Đánh dấu đã xử lý">
+                                        <i class="fas fa-check"></i>
+                                    </button>
+                                </form>
+                            }
+                    <a class="btn btn-sm btn-info" asp-controller="Items" asp-action="Details" asp-route-id="@a.ItemId" title="Xem vật tư">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>

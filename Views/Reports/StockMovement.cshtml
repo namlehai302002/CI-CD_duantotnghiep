@@ -1,0 +1,104 @@
+﻿@model dynamic
+@{
+    ViewData["Title"] = "Báo cáo xuất nhập tồn";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Thẻ kho / lịch sử giao dịch</h1>
+        <p class="page-subtitle">Theo dõi biến động nhập, xuất theo từng vật tư trong khoảng thời gian đã chọn.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-success"
+           asp-controller="Reports"
+           asp-action="ExportStockMovement"
+           asp-route-warehouseId="@ViewBag.WarehouseId"
+           asp-route-itemId="@ViewBag.ItemId"
+           asp-route-dateFrom="@(((DateTime)ViewBag.DateFrom).ToString("yyyy-MM-dd"))"
+           asp-route-dateTo="@(((DateTime)ViewBag.DateTo).ToString("yyyy-MM-dd"))">
+            <i class="fas fa-file-excel"></i> Xuất bảng tính
+        </a>
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-circle-info"></i> Cách xem nhanh</div>
+    <div class="user-guide-text">Chọn kho, vật tư và khoảng ngày cần tra cứu. Dòng màu xanh là nhập, dòng màu đỏ là xuất.</div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select name="warehouseId" class="form-control">
+            <option value="">Tất cả kho</option>
+            @foreach (var w in (List<WMS.Models.Warehouse>)ViewBag.Warehouses)
+            {
+                <option value="@w.WarehouseId" selected="@(ViewBag.WarehouseId != null && (int)ViewBag.WarehouseId == w.WarehouseId)">@w.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Vật tư / hàng hóa</label>
+        <select name="itemId" class="form-control">
+            <option value="">Tất cả vật tư</option>
+            @foreach (var i in (List<WMS.Models.Item>)ViewBag.Items)
+            {
+                <option value="@i.ItemId" selected="@(ViewBag.ItemId != null && (int)ViewBag.ItemId == i.ItemId)">[@i.ItemCode] @i.ItemName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Từ ngày</label>
+        <input type="date" name="dateFrom" class="form-control" value="@(((DateTime)ViewBag.DateFrom).ToString("yyyy-MM-dd"))" />
+    </div>
+    <div class="form-group">
+        <label class="form-label">Đến ngày</label>
+        <input type="date" name="dateTo" class="form-control" value="@(((DateTime)ViewBag.DateTo).ToString("yyyy-MM-dd"))" />
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Tra cứu</button>
+    </div>
+</form>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Ngày giao dịch</th>
+                <th>Mã phiếu</th>
+                <th>Loại</th>
+                <th>Mã vật tư</th>
+                <th>Tên vật tư</th>
+                <th>Kho</th>
+                <th class="cell-right">SL giao dịch</th>
+                <th>ĐVT</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (ViewBag.Data == null || !((List<WMS.Models.VoucherDetail>)ViewBag.Data).Any())
+            {
+                <tr><td colspan="8" class="cell-empty cell-empty-lg">Không có biến động nào trong kỳ đã chọn</td></tr>
+            }
+            else
+            {
+                foreach (var d in (List<WMS.Models.VoucherDetail>)ViewBag.Data)
+                {
+                    bool isImport = d.Voucher?.VoucherType is WMS.Models.VoucherTypeEnum.NhapKho or WMS.Models.VoucherTypeEnum.KhachTra or WMS.Models.VoucherTypeEnum.NhapThanhPham;
+                    <tr>
+                        <td>@d.Voucher?.VoucherDate.ToString("dd/MM/yyyy")</td>
+                        <td><a asp-controller="Vouchers" asp-action="Details" asp-route-id="@d.VoucherId" class="td-code link-clean">@d.Voucher?.VoucherCode</a></td>
+                        <td><span class="badge @(isImport ? "badge-success" : "badge-danger")">@d.Voucher?.VoucherTypeName</span></td>
+                        <td class="td-code text-accent">@d.Item?.ItemCode</td>
+                        <td>@d.Item?.ItemName</td>
+                        <td>@d.Voucher?.Warehouse?.WarehouseName</td>
+                        <td class="td-number fw-600 @(isImport ? "text-success" : "text-danger")">
+                            @(isImport ? "+" : "-")@d.BaseQty.ToString("#,##0.##")
+                        </td>
+                        <td>@(d.Item?.BaseUom?.UomCode ?? d.TransactionUom?.UomCode ?? "Không áp dụng")</td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>

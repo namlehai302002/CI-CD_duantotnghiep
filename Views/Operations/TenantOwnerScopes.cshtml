@@ -1,0 +1,101 @@
+@model WMS.ViewModels.TenantOwnerScopePageViewModel
+@{
+    ViewData["Title"] = "Phạm vi chủ hàng của người dùng";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Phạm vi chủ hàng của người dùng</h1>
+        <p class="page-subtitle">Gán và thu hồi phạm vi chủ hàng để nhân viên 3PL chỉ thấy đúng dữ liệu được phép.</p>
+    </div>
+</div>
+
+<section class="enterprise-section">
+    <div class="enterprise-section-header">
+        <div>
+            <div class="enterprise-section-title">Gán phạm vi mới</div>
+            <div class="enterprise-section-subtitle">Chọn người dùng và chủ hàng cần cấp quyền thao tác.</div>
+        </div>
+    </div>
+    <form asp-action="AssignTenantOwnerScope" method="post" class="yardops-form-grid">
+        @Html.AntiForgeryToken()
+        <div class="form-group">
+            <label class="form-label">Người dùng</label>
+            <select name="userId" class="form-control" required>
+                @foreach (var user in Model.Users)
+                {
+                    <option value="@user.UserId">@user.UserName (@user.Role?.RoleName)</option>
+                }
+            </select>
+        </div>
+        <div class="form-group yardops-wide">
+            <label class="form-label">Chủ hàng</label>
+            <select name="ownerPartnerId" class="form-control" required>
+                @foreach (var owner in Model.Owners)
+                {
+                    <option value="@owner.PartnerId">@owner.PartnerCode - @owner.PartnerName</option>
+                }
+            </select>
+        </div>
+        <div class="form-group yardops-filter-actions">
+            <label class="form-label">&nbsp;</label>
+            <button class="btn btn-primary" type="submit"><i class="fas fa-link"></i> Gán phạm vi</button>
+        </div>
+    </form>
+</section>
+
+<section class="enterprise-section">
+    <div class="enterprise-section-header">
+        <div>
+            <div class="enterprise-section-title">Danh sách phạm vi hiện có</div>
+            <div class="enterprise-section-subtitle">Theo dõi phạm vi còn hiệu lực và lịch sử đã thu hồi.</div>
+        </div>
+        <span class="yardops-context-pill">@Model.Scopes.Count.ToString("N0") dòng</span>
+    </div>
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Người dùng</th>
+                    <th>Chủ hàng</th>
+                    <th>Trạng thái</th>
+                    <th>Ngày gán</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var scope in Model.Scopes)
+                {
+                    <tr>
+                        <td>@scope.User.UserName</td>
+                        <td>@scope.OwnerPartner.PartnerCode - @scope.OwnerPartner.PartnerName</td>
+                        <td>
+                            <span class="status-badge @(scope.IsActive ? "success" : "neutral")">
+                                @(scope.IsActive ? "Đang hiệu lực" : "Đã thu hồi")
+                            </span>
+                        </td>
+                        <td>@scope.CreatedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td class="text-end">
+                            @if (scope.IsActive)
+                            {
+                                <form asp-action="RevokeTenantOwnerScope" method="post" class="d-inline">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@scope.AppUserOwnerScopeId" />
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Thu hồi phạm vi"><i class="fas fa-unlink"></i></button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+                @if (!Model.Scopes.Any())
+                {
+                    <tr>
+                        <td colspan="5" class="table-empty-cell">
+                            <div class="table-empty-content">Chưa có phạm vi chủ hàng nào được gán.</div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

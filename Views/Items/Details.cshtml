@@ -1,0 +1,291 @@
+@model WMS.Models.Item
+@{
+    ViewData["Title"] = "Chi Tiết Vật Tư";
+    var canSeeFinancial = (bool)(ViewBag.CanSeeFinancial ?? false);
+    var barcodeForJs = string.IsNullOrEmpty(Model.Barcode) ? Model.ItemCode : Model.Barcode;
+    var locations = ViewBag.Locations as List<WMS.Models.ItemLocation> ?? new();
+    var recentVouchers = ViewBag.RecentVouchers as List<WMS.Models.VoucherDetail> ?? new();
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">@Model.ItemName</h1>
+        <p class="page-subtitle">Mã: @Model.ItemCode @(string.IsNullOrEmpty(Model.Barcode) ? "" : $"| Mã vạch: {Model.Barcode}")</p>
+    </div>
+    <div class="page-actions">
+        <button type="button" class="btn btn-info" data-wms-call="openPrintModal"><i class="fas fa-print"></i> In Tem Nhãn</button>
+        <a asp-controller="Items" asp-action="Edit" asp-route-id="@Model.ItemId" class="btn btn-primary"><i class="fas fa-edit"></i> Chỉnh sửa</a>
+        <a asp-controller="Items" asp-action="Index" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Quay lại</a>
+    </div>
+</div>
+
+<div id="printModal" class="print-label-overlay">
+    <div class="print-label-dialog">
+        <h4 class="print-label-title">
+            <i class="fas fa-tags text-accent"></i> In Tem Nhãn Vật Tư
+        </h4>
+
+        <div id="printArea" class="print-label-preview">
+            <div class="print-label-name">@Model.ItemName</div>
+            <div class="print-label-code">Mã VT: @Model.ItemCode</div>
+            <svg id="barcodeTarget"></svg>
+            <div class="print-label-meta">@Model.Category?.CategoryName - @(Model.BaseUom?.UomName)</div>
+        </div>
+
+        <div class="print-label-options">
+            <div>
+                <label class="form-label fs-sm">Số lượng tem</label>
+                <input type="number" id="printQty" class="form-control text-center" value="1" min="1" max="500" />
+            </div>
+            <div>
+                <label class="form-label fs-sm">Khổ tem</label>
+                <select id="printSize" class="form-control">
+                    <option value="">50×30mm</option>
+                    <option value="100x50">100×50mm</option>
+                    <option value="a4grid">A4 Grid</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="print-label-actions">
+            <button type="button" class="btn btn-secondary" data-wms-call="closePrintModal">Hủy</button>
+            <button type="button" class="btn btn-success" data-wms-call="doPrintSingle">
+                <i class="fas fa-print"></i> In Nhãn
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <div class="card-header"><span class="card-title">Thông Tin Cơ Bản</span></div>
+        <div class="card-body">
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <div class="detail-label">Danh Mục</div>
+                    <div class="detail-value">@(Model.Category?.CategoryName ?? "---")</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Loại</div>
+                    <div class="detail-value"><span class="badge badge-purple">@Model.ItemTypeName</span></div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Đơn Vị Tính</div>
+                    <div class="detail-value">@(Model.BaseUom?.UomName ?? "---") (@(Model.BaseUom?.UomCode ?? "---"))</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">SKU / Mã Khác</div>
+                    <div class="detail-value">@(string.IsNullOrWhiteSpace(Model.SkuCode) ? "---" : Model.SkuCode)</div>
+                </div>
+                @if (Model.Weight.HasValue)
+                {
+                    <div class="detail-item">
+                        <div class="detail-label">Khối Lượng</div>
+                        <div class="detail-value">@Model.Weight.Value.ToString("N4") kg</div>
+                    </div>
+                }
+                <div class="detail-item">
+                    <div class="detail-label">Vị Trí Cố Định</div>
+                    <div class="detail-value">@(Model.DefaultLocation?.LocationCode ?? "---")</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Theo dõi truy vết</div>
+                    <div class="detail-value">
+                        @(Model.TrackLot ? "Lot" : "Không lot")
+                        · @(Model.TrackExpiry ? "HSD" : "Không HSD")
+                        · @(Model.TrackSerial ? "Có số sê-ri" : "Không số sê-ri")
+                        · @(Model.TrackCatchWeight ? $"cân trọng lượng thực tế ({Model.NominalWeightPerBaseUnit:N4} {Model.CatchWeightUom?.UomCode ?? ""}/base)" : "Không cân trọng lượng thực tế")
+                    </div>
+                </div>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(Model.Description) || !string.IsNullOrWhiteSpace(Model.Specifications))
+            {
+                <div class="mt-3">
+                    @if (!string.IsNullOrWhiteSpace(Model.Description))
+                    {
+                        <div class="detail-label">Mô Tả</div>
+                        <p class="fs-body-sm text-muted mb-3">@Model.Description</p>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Model.Specifications))
+                    {
+                        <div class="detail-label">Thông Số Kỹ Thuật</div>
+                        <p class="fs-body-sm text-muted">@Model.Specifications</p>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header"><span class="card-title">Thông Tin Tồn Kho</span></div>
+        <div class="card-body">
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <div class="detail-label">Tồn Kho Hiện Tại</div>
+                    <div class="detail-value text-accent fs-xl">@Model.CurrentStock.ToString("#,##0.##") <span class="fs-body-sm">@Model.BaseUom?.UomCode</span></div>
+                </div>
+                @if (canSeeFinancial)
+                {
+                    <div class="detail-item">
+                        <div class="detail-label">Giá Trị Tồn Kho</div>
+                        <div class="detail-value text-success fs-xl">@Model.TotalStockValue.ToString("N0") <span class="fs-body-sm">VNĐ</span></div>
+                    </div>
+                }
+            </div>
+
+            <div class="detail-grid mt-3">
+                <div class="detail-item">
+                    <div class="detail-label">Mức Tối Thiểu</div>
+                    <div class="detail-value">@Model.MinThreshold.ToString("#,##0.##")</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Mức Tối Đa</div>
+                    <div class="detail-value">@(Model.MaxThreshold?.ToString("#,##0.##") ?? "---")</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Điểm Đặt Hàng</div>
+                    <div class="detail-value">@(Model.ReorderPoint?.ToString("#,##0.##") ?? "---")</div>
+                </div>
+                @if (canSeeFinancial)
+                {
+                    <div class="detail-item">
+                        <div class="detail-label">Giá Vốn</div>
+                        <div class="detail-value">@Model.UnitCost.ToString("N0") VNĐ</div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-header"><span class="card-title"><i class="fas fa-map-marker-alt text-warning"></i> Chi Tiết Tồn Theo Vị Trí</span></div>
+    <div class="table-container flat">
+        <table>
+            <thead>
+                <tr>
+                    <th>Kho</th>
+                    <th>Khu Vực</th>
+                    <th>Vị Trí</th>
+                    <th>Hạn Dùng</th>
+                    <th class="cell-right">Số Lượng</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (locations.Any())
+                {
+                    @foreach (var il in locations)
+                    {
+                        <tr>
+                            <td>@il.Location?.Zone?.Warehouse?.WarehouseName</td>
+                            <td>@il.Location?.Zone?.ZoneName</td>
+                            <td class="td-code text-accent">@il.Location?.LocationCode</td>
+                            <td>@(il.ExpiryDate?.ToString("dd/MM/yyyy") ?? "---")</td>
+                            <td class="td-number fw-600">@il.Quantity.ToString("#,##0.##")</td>
+                        </tr>
+                    }
+                }
+                else
+                {
+                    <tr><td colspan="5" class="cell-empty">Chưa có dữ liệu tồn vị trí</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-header"><span class="card-title"><i class="fas fa-history text-info"></i> Lịch Sử Giao Dịch (20 phiếu gần nhất)</span></div>
+    <div class="table-container flat">
+        <table>
+            <thead>
+                <tr>
+                    <th>Ngày Phiếu</th>
+                    <th>Mã Phiếu</th>
+                    <th>Loại Giao Dịch</th>
+                    <th>Kho</th>
+                    <th class="cell-right">Số Lượng</th>
+                    @if (canSeeFinancial)
+                    {
+                        <th class="cell-right">Đơn Giá</th>
+                        <th class="cell-right">Thành Tiền</th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @if (recentVouchers.Any())
+                {
+                    @foreach (var vd in recentVouchers)
+                    {
+                        var isCancel = vd.Voucher?.IsCancelled ?? false;
+                        var voucherType = vd.Voucher?.VoucherType;
+                        var isInbound = voucherType is WMS.Models.VoucherTypeEnum.NhapKho or WMS.Models.VoucherTypeEnum.KhachTra or WMS.Models.VoucherTypeEnum.NhapThanhPham;
+                        var isOutbound = voucherType is WMS.Models.VoucherTypeEnum.XuatKho or WMS.Models.VoucherTypeEnum.TraNCC or WMS.Models.VoucherTypeEnum.XuatSanXuat;
+                        var cancelledClass = isCancel ? "text-cancelled" : "";
+                        <tr>
+                            <td class="@cancelledClass">@vd.Voucher?.VoucherDate.ToString("dd/MM/yyyy")</td>
+                <td><a asp-controller="Vouchers" asp-action="Details" asp-route-id="@vd.VoucherId" class="td-code link-clean @cancelledClass">@vd.Voucher?.VoucherCode</a></td>
+                            <td><span class="badge @(isCancel ? "badge-danger" : "badge-info")">@(isCancel ? "Đã Hủy" : vd.Voucher?.VoucherTypeName)</span></td>
+                            <td>@vd.Voucher?.Warehouse?.WarehouseName</td>
+                            <td class="td-number @(isInbound ? "text-success" : isOutbound ? "text-danger" : "") fw-600">
+                                @(isInbound ? "+" : isOutbound ? "-" : "")@vd.BaseQty.ToString("#,##0.##")
+                            </td>
+                            @if (canSeeFinancial)
+                            {
+                                <td class="td-number">@vd.UnitPrice.ToString("N0")</td>
+                                <td class="td-number">@vd.LineAmount.ToString("N0")</td>
+                            }
+                        </tr>
+                    }
+                }
+                else
+                {
+                    <tr>
+                        <td colspan="@(canSeeFinancial ? 7 : 5)" class="cell-empty">Chưa có lịch sử giao dịch</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <script>
+        const itemBarcode = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(barcodeForJs));
+
+        function openPrintModal() {
+            document.getElementById('printModal').style.display = 'flex';
+            try {
+                JsBarcode("#barcodeTarget", itemBarcode, {
+                    format: "CODE128",
+                    lineColor: "#000",
+                    width: 2,
+                    height: 50,
+                    displayValue: true,
+                    fontSize: 14,
+                    margin: 10
+                });
+            } catch (err) {
+                console.error("Lỗi tạo mã vạch:", err);
+            }
+        }
+
+        function closePrintModal() {
+            document.getElementById('printModal').style.display = 'none';
+        }
+
+        function doPrintSingle() {
+            const qty = parseInt(document.getElementById('printQty').value) || 1;
+            const size = document.getElementById('printSize').value;
+            let url = '/Items/PrintSingle?id=@Model.ItemId&qty=' + qty;
+            if (size) url += '&labelSize=' + size;
+            window.open(url, '_blank');
+            closePrintModal();
+        }
+
+        document.getElementById('printModal')?.addEventListener('click', function (e) {
+            if (e.target === this) closePrintModal();
+        });
+    </script>
+}

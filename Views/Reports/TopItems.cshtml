@@ -1,0 +1,133 @@
+﻿@model List<WMS.ViewModels.TopItemRow>
+@{
+    ViewData["Title"] = "Top hàng nhập/xuất";
+    var dateFrom = (DateTime)ViewBag.DateFrom;
+    var dateTo = (DateTime)ViewBag.DateTo;
+    var direction = (string)ViewBag.Direction;
+    var top = (int)ViewBag.Top;
+    var sortBy = (string)ViewBag.SortBy;
+    var canSeeFinancial = (bool)ViewBag.CanSeeFinancial;
+    var dirLabel = direction == "out" ? "Xuất kho" : "Nhập kho";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Top hàng @dirLabel nhiều nhất</h1>
+        <p class="page-subtitle">Xem nhanh mặt hàng nổi bật theo số lượng hoặc giá trị trong khoảng thời gian đã chọn.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Reports"
+           asp-action="ExportTopItems"
+           asp-route-dateFrom="@dateFrom"
+           asp-route-dateTo="@dateTo"
+           asp-route-direction="@direction"
+           asp-route-top="@top"
+           asp-route-sortBy="@sortBy"
+           class="btn btn-success">
+            <i class="fas fa-file-excel"></i> Xuất bảng tính
+        </a>
+    </div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Hướng</label>
+        <select name="direction" class="form-control">
+            <option value="in" selected="@(direction == "in")">Nhập kho</option>
+            <option value="out" selected="@(direction == "out")">Xuất kho</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Từ ngày</label>
+        <input type="date" name="dateFrom" value="@dateFrom.ToString("yyyy-MM-dd")" class="form-control" />
+    </div>
+    <div class="form-group">
+        <label class="form-label">Đến ngày</label>
+        <input type="date" name="dateTo" value="@dateTo.ToString("yyyy-MM-dd")" class="form-control" />
+    </div>
+    <div class="form-group">
+        <label class="form-label">Top</label>
+        <select name="top" class="form-control">
+            <option value="10" selected="@(top == 10)">10</option>
+            <option value="20" selected="@(top == 20)">20</option>
+            <option value="50" selected="@(top == 50)">50</option>
+            <option value="100" selected="@(top == 100)">100</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Sắp xếp</label>
+        <select name="sortBy" class="form-control">
+            <option value="qty" selected="@(sortBy == "qty")">Theo số lượng</option>
+            <option value="value" selected="@(sortBy == "value")">Theo giá trị</option>
+        </select>
+    </div>
+    <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Lọc</button>
+</form>
+
+@if (Model.Count == 0)
+{
+    <div class="empty-state">
+        <div class="empty-icon"><i class="fas fa-chart-bar"></i></div>
+        <div class="empty-text">Không có dữ liệu trong khoảng thời gian này</div>
+        <div class="empty-sub">Thử mở rộng khoảng ngày hoặc đổi hướng nhập/xuất</div>
+    </div>
+}
+else
+{
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th class="w-50px">#</th>
+                    <th>Mã VT</th>
+                    <th>Tên vật tư</th>
+                    <th>Danh mục</th>
+                    <th>ĐVT</th>
+                    <th class="text-right">Tổng SL</th>
+                    <th class="text-right">Số phiếu</th>
+                    @if (canSeeFinancial)
+                    {
+                        <th class="text-right">Tổng tiền</th>
+                    }
+                    <th class="w-220">Tỷ trọng</th>
+                </tr>
+            </thead>
+            <tbody>
+                @{
+                    var maxQty = Model.Max(x => x.TotalQty);
+                    var rank = 0;
+                }
+                @foreach (var item in Model)
+                {
+                    rank++;
+                    var pct = maxQty > 0 ? (item.TotalQty / maxQty) * 100 : 0;
+                    <tr>
+                        <td class="fw-700">@rank</td>
+                        <td><a asp-controller="Items" asp-action="Details" asp-route-id="@item.ItemId" class="text-accent fw-600">@item.ItemCode</a></td>
+                        <td>@item.ItemName</td>
+                        <td><span class="badge badge-info">@(item.CategoryName ?? "-")</span></td>
+                        <td>@item.UomCode</td>
+                        <td class="text-right fw-700">@item.TotalQty.ToString("#,##0.##")</td>
+                        <td class="text-right">@item.VoucherCount</td>
+                        @if (canSeeFinancial)
+                        {
+                            <td class="text-right fw-600">@item.TotalValue.ToString("N0") VNĐ</td>
+                        }
+                        <td>
+                            <div class="wms-progress-bar">
+                                <div class="wms-progress-track">
+                                    <div class="wms-progress-fill @(pct > 80 ? "danger" : pct > 50 ? "warning" : "")" data-progress-width="@($"{pct:F0}%")"></div>
+                                </div>
+                                <span class="wms-progress-percent">@pct.ToString("F0")%</span>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="top-items-note">
+        <i class="fas fa-info-circle"></i>
+        Hiển thị top @Model.Count mặt hàng @dirLabel.ToLower() theo @(sortBy == "value" ? "giá trị" : "số lượng") từ @dateFrom.ToString("dd/MM/yyyy") đến @dateTo.ToString("dd/MM/yyyy"). Chỉ tính các phiếu đã duyệt và chưa hủy.
+    </div>
+}

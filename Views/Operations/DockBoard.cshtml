@@ -1,0 +1,383 @@
+@model WMS.ViewModels.DockBoardPageViewModel
+@using WMS.Models
+@using WMS.ViewModels
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
+@{
+    ViewData["Title"] = "Bảng điều phối cửa bến";
+
+    string StatusLabel(DockOperationStatusEnum status) => status switch
+    {
+        DockOperationStatusEnum.Scheduled => "Đã lên lịch",
+        DockOperationStatusEnum.Arrived => "Đã đến",
+        DockOperationStatusEnum.Unloading => "Đang dỡ hàng",
+        DockOperationStatusEnum.Completed => "Hoàn tất",
+        DockOperationStatusEnum.Delayed => "Trễ hạn",
+        _ => "Đã lên lịch"
+    };
+
+    string StatusClass(DockOperationStatusEnum status) => status switch
+    {
+        DockOperationStatusEnum.Completed => "dock-status-completed",
+        DockOperationStatusEnum.Unloading => "dock-status-unloading",
+        DockOperationStatusEnum.Arrived => "dock-status-arrived",
+        DockOperationStatusEnum.Delayed => "dock-status-delayed",
+        _ => "dock-status-scheduled"
+    };
+}
+
+<div class="dock-board-shell">
+    <div class="dock-board-header">
+        <div>
+            <h1 class="page-title">Bảng điều phối cửa bến</h1>
+            <p class="page-subtitle">Theo dõi cửa dock, xe đến, tiến độ dỡ hàng và các mốc thời gian vận hành trong ngày.</p>
+        </div>
+        <div class="dock-clock" id="dockClock">@Model.Now.ToString("HH:mm:ss")</div>
+    </div>
+
+    <form method="get" class="filter-bar">
+        <div class="form-group">
+            <label class="form-label">Kho</label>
+            <select class="form-control" name="warehouseId">
+                <option value="">Tất cả</option>
+                @foreach (var w in Model.Warehouses)
+                {
+                    <option value="@w.WarehouseId" selected="@(Model.WarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+                }
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Ngày</label>
+            <input class="form-control" type="date" name="date" value="@Model.BoardDate.ToString("yyyy-MM-dd")" />
+        </div>
+        <div class="form-group">
+            <label class="form-label">&nbsp;</label>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Lọc</button>
+        </div>
+        <div class="form-group">
+            <label class="form-label">&nbsp;</label>
+            <button type="button" class="btn btn-secondary" data-wms-call="refreshDockBoard"><i class="fas fa-rotate"></i> Làm mới</button>
+        </div>
+    </form>
+
+    <div class="dock-kpis">
+        <div class="dock-kpi"><div class="dock-kpi-value" id="countScheduled">@Model.ScheduledCount</div><div class="dock-kpi-label">Đã lên lịch</div></div>
+        <div class="dock-kpi"><div class="dock-kpi-value" id="countArrived">@Model.ArrivedCount</div><div class="dock-kpi-label">Đã đến</div></div>
+        <div class="dock-kpi"><div class="dock-kpi-value" id="countUnloading">@Model.UnloadingCount</div><div class="dock-kpi-label">ĐANG DỠ HÀNG</div></div>
+        <div class="dock-kpi"><div class="dock-kpi-value" id="countCompleted">@Model.CompletedCount</div><div class="dock-kpi-label">HOÀN TẤT</div></div>
+        <div class="dock-kpi"><div class="dock-kpi-value text-danger" id="countDelayed">@Model.DelayedCount</div><div class="dock-kpi-label">ĐANG TRỄ</div></div>
+    </div>
+
+    <section class="yardops-panel">
+        <div class="yardops-panel-head">
+            <div>
+                <h2 class="yardops-panel-title">Đặt lịch cửa bến enterprise</h2>
+                <p class="yardops-panel-subtitle">Lập lịch nhập/xuất kho, phát hiện trùng cửa, cảnh báo quá tải và đồng bộ về phiếu/chuyến nếu có liên kết.</p>
+            </div>
+            <a asp-action="ExportDockAppointments" asp-route-warehouseId="@Model.WarehouseId" asp-route-date="@Model.BoardDate" class="btn btn-secondary">
+                <i class="fas fa-download"></i> Tải lịch
+            </a>
+        </div>
+        <div class="yardops-panel-body">
+            <form method="post" asp-action="CreateDockAppointment" class="yardops-form-grid">
+                @Html.AntiForgeryToken()
+                <div class="form-group">
+                    <label class="form-label">Kho</label>
+                    <select name="warehouseId" class="form-control" required>
+                        @foreach (var w in Model.Warehouses)
+                        {
+                            <option value="@w.WarehouseId" selected="@(Model.WarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Chiều</label>
+                    <select name="direction" class="form-control">
+                        <option value="@DockAppointmentDirectionEnum.Inbound">@EnterpriseUiLabels.DockAppointmentDirection(DockAppointmentDirectionEnum.Inbound)</option>
+                        <option value="@DockAppointmentDirectionEnum.Outbound">@EnterpriseUiLabels.DockAppointmentDirection(DockAppointmentDirectionEnum.Outbound)</option>
+                        <option value="@DockAppointmentDirectionEnum.Transfer">@EnterpriseUiLabels.DockAppointmentDirection(DockAppointmentDirectionEnum.Transfer)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Cửa dock</label>
+                    <input name="dockDoor" class="form-control" placeholder="Để trống để hệ thống gợi ý" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Bắt đầu</label>
+                    <input name="plannedStartAt" type="datetime-local" value="@Model.BoardDate.AddHours(8).ToString("yyyy-MM-ddTHH:mm")" class="form-control" required />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Kết thúc</label>
+                    <input name="plannedEndAt" type="datetime-local" value="@Model.BoardDate.AddHours(9).ToString("yyyy-MM-ddTHH:mm")" class="form-control" required />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Loại hàng</label>
+                    <input name="goodsType" class="form-control" placeholder="normal/cold/hazmat..." />
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-row"><input name="isUrgent" value="true" type="checkbox" /> <span>Gấp</span></label>
+                    <label class="checkbox-row"><input name="isRefrigerated" value="true" type="checkbox" /> <span>Hàng lạnh</span></label>
+                    <label class="checkbox-row"><input name="isHazmat" value="true" type="checkbox" /> <span>Hàng nguy hiểm</span></label>
+                </div>
+                <div class="form-group yardops-filter-actions">
+                    <label class="form-label">&nbsp;</label>
+                    <button class="btn btn-primary" type="submit"><i class="fas fa-calendar-plus"></i> Đặt lịch</button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    @if (Model.EnterpriseAppointments.Any())
+    {
+        <section class="yardops-panel">
+            <div class="yardops-panel-head">
+                <div>
+                    <h2 class="yardops-panel-title">Lịch enterprise chưa đóng</h2>
+                    <p class="yardops-panel-subtitle">Các appointment tách riêng khỏi phiếu nhưng vẫn được đồng bộ khi liên kết.</p>
+                </div>
+                <span class="yardops-context-pill">@Model.EnterpriseAppointments.Count.ToString("N0") lịch</span>
+            </div>
+            <div class="yardops-table-wrap">
+                <table class="yardops-table">
+                    <thead>
+                        <tr>
+                            <th>Lịch</th>
+                            <th>Cửa</th>
+                            <th>Chủ hàng</th>
+                            <th>Khung giờ</th>
+                            <th>Trạng thái</th>
+                            <th>Cảnh báo</th>
+                            <th class="text-end">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var a in Model.EnterpriseAppointments)
+                    {
+                        <tr>
+                            <td>
+                                <div class="yardops-rule-title">@a.AppointmentCode</div>
+                                <div class="yardops-subline">@EnterpriseUiLabels.DockAppointmentDirection(a.Direction) · @(string.IsNullOrWhiteSpace(a.GoodsType) ? "Chưa phân loại hàng" : a.GoodsType)</div>
+                            </td>
+                            <td>@a.DockDoor</td>
+                            <td>@(a.OwnerPartner?.PartnerName ?? "-")</td>
+                            <td>@a.PlannedStartAt.ToString("dd/MM HH:mm") - @a.PlannedEndAt.ToString("HH:mm")</td>
+                            <td><span class="yardops-status @(a.Status == DockAppointmentStatusEnum.Completed ? "success" : a.PlannedEndAt < Model.Now ? "danger" : "info")">@EnterpriseUiLabels.DockAppointmentStatus(a.Status)</span></td>
+                            <td>@(a.OverloadWarning ?? "-")</td>
+                            <td class="text-end text-nowrap">
+                                <form method="post" asp-action="CheckInDockAppointment" class="d-inline">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="appointmentId" value="@a.DockAppointmentId" />
+                                    <button class="btn btn-sm btn-secondary" title="Xác nhận vào cổng"><i class="fas fa-right-to-bracket"></i></button>
+                                </form>
+                                <form method="post" asp-action="CheckOutDockAppointment" class="d-inline">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="appointmentId" value="@a.DockAppointmentId" />
+                                    <button class="btn btn-sm btn-success" title="Hoàn tất lịch cửa bến"><i class="fas fa-check"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+
+    <input type="hidden" id="dockAntiForgery" value="@Antiforgery.GetAndStoreTokens(Context).RequestToken" />
+
+    <div class="dock-grid" id="dockGrid">
+        @foreach (var door in Model.Doors)
+        {
+            <section class="dock-door">
+                <div class="dock-door-head">
+                    <div>
+                        <div class="dock-door-title">@door.DockDoor</div>
+                        <div class="dock-door-meta">@door.WarehouseName - @door.DoorType</div>
+                    </div>
+                    <div class="dock-door-counts">
+                        <span class="badge badge-info">@door.ActiveCount hoạt động</span>
+                        <span class="badge badge-danger">@door.DelayedCount đang trễ</span>
+                        <span class="badge badge-success">@door.CompletedTodayCount hoàn tất</span>
+                    </div>
+                </div>
+                <div class="dock-appointments">
+                    @if (!door.ActiveAppointments.Any())
+                    {
+                        <div class="dock-empty">Không có lịch cửa bến trong khung ngày này</div>
+                    }
+                    @foreach (var row in door.ActiveAppointments)
+                    {
+                        <article class="dock-appt @StatusClass(row.EffectiveDockStatus)">
+                            <div class="dock-appt-top">
+                                <div>
+                                    <a class="dock-appt-code" asp-controller="Vouchers" asp-action="Details" asp-route-id="@row.VoucherId">@row.VoucherCode</a>
+                                    <div class="dock-appt-sub">ASN @(row.AsnCode ?? "---") - @(row.PartnerName ?? "---")</div>
+                                </div>
+                                <span class="badge @(row.IsDelayed ? "badge-danger" : row.EffectiveDockStatus == DockOperationStatusEnum.Completed ? "badge-success" : row.EffectiveDockStatus == DockOperationStatusEnum.Unloading ? "badge-warning" : "badge-info")">@StatusLabel(row.EffectiveDockStatus)</span>
+                            </div>
+                            <div class="dock-appt-sub">
+                                @(row.VehicleNumber ?? "---") - @(row.CarrierName ?? "---") - Hẹn @(row.DockAppointmentStart?.ToString("HH:mm") ?? "--:--")-@(row.DockAppointmentEnd?.ToString("HH:mm") ?? "--:--")
+                                @if (row.DelayMinutes.HasValue)
+                                {
+                                    <span class="text-danger"> - Trễ @row.DelayMinutes phút</span>
+                                }
+                            </div>
+                            <div class="dock-timeline">
+                                <div class="dock-timecell"><span>Cổng</span><strong>@(row.GateInAt?.ToString("HH:mm") ?? "--:--")</strong></div>
+                                <div class="dock-timecell"><span>Cửa bến</span><strong>@(row.DockArrivalAt?.ToString("HH:mm") ?? "--:--")</strong></div>
+                                <div class="dock-timecell"><span>Bắt đầu</span><strong>@(row.UnloadStartAt?.ToString("HH:mm") ?? "--:--")</strong></div>
+                                <div class="dock-timecell"><span>Kết thúc</span><strong>@(row.UnloadEndAt?.ToString("HH:mm") ?? "--:--")</strong></div>
+                                <div class="dock-timecell"><span>Hoàn tất</span><strong>@(row.DockCompletedAt?.ToString("HH:mm") ?? "--:--")</strong></div>
+                            </div>
+                            <div class="dock-actions-row">
+                                @foreach (var action in new[] { ("gate-in", "Cổng", "fa-right-to-bracket"), ("dock-arrival", "Cửa bến", "fa-warehouse"), ("unload-start", "Bắt đầu", "fa-box-open"), ("unload-end", "Kết thúc", "fa-check"), ("complete", "Hoàn tất", "fa-flag-checkered"), ("delayed", "Trễ", "fa-clock") })
+                                {
+                                    <form method="post" asp-action="UpdateDockMilestone" asp-controller="Operations">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="voucherId" value="@row.VoucherId" />
+                                        <input type="hidden" name="milestone" value="@action.Item1" />
+                                        <input type="hidden" name="warehouseId" value="@Model.WarehouseId" />
+                                        <input type="hidden" name="date" value="@Model.BoardDate.ToString("yyyy-MM-dd")" />
+                                        <button class="btn btn-sm @(action.Item1 == "delayed" ? "btn-danger" : action.Item1 == "complete" ? "btn-success" : "btn-secondary")" type="submit" title="@action.Item2">
+                                            <i class="fas @action.Item3"></i> @action.Item2
+                                        </button>
+                                    </form>
+                                }
+                            </div>
+                        </article>
+                    }
+                </div>
+            </section>
+        }
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    const vietnamClockOptions = { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', second: '2-digit' };
+    const vietnamTimeOptions = { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' };
+    const dockVoucherDetailsBaseUrl = '@Url.Action("Details", "Vouchers")';
+    const dockMilestoneUrl = '@Url.Action("UpdateDockMilestone", "Operations")';
+    const dockBoardDataUrl = '@Url.Action("DockBoardData", "Operations")';
+    const dockStatusClass = {
+        Scheduled: 'dock-status-scheduled',
+        Arrived: 'dock-status-arrived',
+        Unloading: 'dock-status-unloading',
+        Completed: 'dock-status-completed',
+        Delayed: 'dock-status-delayed'
+    };
+
+    function formatTime(value) {
+        if (!value) return '--:--';
+        const d = new Date(value);
+        return d.toLocaleTimeString('vi-VN', vietnamTimeOptions);
+    }
+
+    function escapeDockText(value) {
+        const div = document.createElement('div');
+        div.textContent = value || '';
+        return div.innerHTML;
+    }
+
+    function statusBadge(status, delayed) {
+        const cls = delayed ? 'badge-danger' : status === 'Completed' ? 'badge-success' : status === 'Unloading' ? 'badge-warning' : 'badge-info';
+        const labels = {
+            Scheduled: 'Đã lên lịch',
+            Arrived: 'Đã đến',
+            Unloading: 'Đang dỡ hàng',
+            Completed: 'Hoàn tất',
+            Delayed: 'Trễ hạn'
+        };
+        return `<span class="badge ${cls}">${escapeDockText(labels[status] || status)}</span>`;
+    }
+
+    function actionForm(row, milestone, label, icon, buttonClass) {
+        const token = document.getElementById('dockAntiForgery')?.value || '';
+        const params = new URLSearchParams(window.location.search);
+        const warehouseId = params.get('warehouseId') || '';
+        const date = params.get('date') || '@Model.BoardDate.ToString("yyyy-MM-dd")';
+        return `<form method="post" action="${dockMilestoneUrl}">
+            <input name="__RequestVerificationToken" type="hidden" value="${escapeDockText(token)}" />
+            <input type="hidden" name="voucherId" value="${row.voucherId}" />
+            <input type="hidden" name="milestone" value="${milestone}" />
+            <input type="hidden" name="warehouseId" value="${escapeDockText(warehouseId)}" />
+            <input type="hidden" name="date" value="${escapeDockText(date)}" />
+            <button class="btn btn-sm ${buttonClass}" type="submit" title="${escapeDockText(label)}"><i class="fas ${icon}"></i> ${escapeDockText(label)}</button>
+        </form>`;
+    }
+
+    function renderAppointment(row) {
+        const cls = dockStatusClass[row.dockStatus] || dockStatusClass.Scheduled;
+        const delay = row.delayMinutes !== null && row.delayMinutes !== undefined ? ` <span class="text-danger">- Trễ ${row.delayMinutes} phút</span>` : '';
+        return `<article class="dock-appt ${cls}">
+            <div class="dock-appt-top">
+                <div>
+                    <a class="dock-appt-code" href="${dockVoucherDetailsBaseUrl}/${row.voucherId}">${escapeDockText(row.voucherCode)}</a>
+                    <div class="dock-appt-sub">ASN ${escapeDockText(row.asnCode || '---')} - ${escapeDockText(row.partnerName || '---')}</div>
+                </div>
+                ${statusBadge(row.dockStatus, row.isDelayed)}
+            </div>
+            <div class="dock-appt-sub">
+                ${escapeDockText(row.vehicleNumber || '---')} - ${escapeDockText(row.carrierName || '---')} - Hẹn ${formatTime(row.dockAppointmentStart)}-${formatTime(row.dockAppointmentEnd)}${delay}
+            </div>
+            <div class="dock-timeline">
+                <div class="dock-timecell"><span>Cổng</span><strong>${formatTime(row.gateInAt)}</strong></div>
+                <div class="dock-timecell"><span>Cửa bến</span><strong>${formatTime(row.dockArrivalAt)}</strong></div>
+                <div class="dock-timecell"><span>Bắt đầu</span><strong>${formatTime(row.unloadStartAt)}</strong></div>
+                <div class="dock-timecell"><span>Kết thúc</span><strong>${formatTime(row.unloadEndAt)}</strong></div>
+                <div class="dock-timecell"><span>Hoàn tất</span><strong>${formatTime(row.dockCompletedAt)}</strong></div>
+            </div>
+            <div class="dock-actions-row">
+                ${actionForm(row, 'gate-in', 'Cổng', 'fa-right-to-bracket', 'btn-secondary')}
+                ${actionForm(row, 'dock-arrival', 'Cửa bến', 'fa-warehouse', 'btn-secondary')}
+                ${actionForm(row, 'unload-start', 'Bắt đầu', 'fa-box-open', 'btn-secondary')}
+                ${actionForm(row, 'unload-end', 'Kết thúc', 'fa-check', 'btn-secondary')}
+                ${actionForm(row, 'complete', 'Hoàn tất', 'fa-flag-checkered', 'btn-success')}
+                ${actionForm(row, 'delayed', 'Trễ', 'fa-clock', 'btn-danger')}
+            </div>
+        </article>`;
+    }
+
+    function renderDoor(door) {
+        const appointments = (door.appointments || []).map(renderAppointment).join('') || '<div class="dock-empty">Không có lịch cửa bến trong khung ngày này</div>';
+        return `<section class="dock-door">
+            <div class="dock-door-head">
+                <div>
+                    <div class="dock-door-title">${escapeDockText(door.dockDoor)}</div>
+                    <div class="dock-door-meta">${escapeDockText(door.warehouseName)} - ${escapeDockText(door.doorType)}</div>
+                </div>
+                <div class="dock-door-counts">
+                    <span class="badge badge-info">${door.activeCount} hoạt động</span>
+                    <span class="badge badge-danger">${door.delayedCount} đang trễ</span>
+                    <span class="badge badge-success">${door.completedTodayCount} hoàn tất</span>
+                </div>
+            </div>
+            <div class="dock-appointments">${appointments}</div>
+        </section>`;
+    }
+
+    async function refreshDockBoard() {
+        const params = new URLSearchParams(window.location.search);
+        const dockGrid = document.getElementById('dockGrid');
+        const busy = window.wmsLoading?.begin(dockGrid, { text: 'Đang cập nhật bảng cửa bến...', delay: 700, disable: false });
+        try {
+            const response = await fetch(dockBoardDataUrl + '?' + params.toString(), { headers: { 'Accept': 'application/json' } });
+            if (!response.ok) return;
+            const data = await response.json();
+            document.getElementById('countScheduled').textContent = data.counts.scheduled;
+            document.getElementById('countArrived').textContent = data.counts.arrived;
+            document.getElementById('countUnloading').textContent = data.counts.unloading;
+            document.getElementById('countCompleted').textContent = data.counts.completed;
+            document.getElementById('countDelayed').textContent = data.counts.delayed;
+            document.getElementById('dockClock').textContent = new Date(data.now).toLocaleTimeString('vi-VN', vietnamClockOptions);
+            dockGrid.innerHTML = (data.doors || []).map(renderDoor).join('');
+        } finally {
+            window.wmsLoading?.end(busy);
+        }
+    }
+
+    setInterval(refreshDockBoard, @Model.RefreshSeconds * 1000);
+    setInterval(function () {
+        document.getElementById('dockClock').textContent = new Date().toLocaleTimeString('vi-VN', vietnamClockOptions);
+    }, 1000);
+</script>
+}

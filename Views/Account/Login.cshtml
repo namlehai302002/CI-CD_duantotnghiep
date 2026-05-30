@@ -1,0 +1,92 @@
+@model LoginViewModel
+@{ ViewData["Title"] = "Đăng nhập"; Layout = "_Layout"; }
+
+<div class="login-page enterprise-auth-page">
+    <div class="enterprise-auth-stage">
+        <section class="enterprise-auth-visual" aria-label="Tổng quan WMS Pro">
+            <div class="enterprise-auth-brand-signal">
+                <img src="~/images/logo-full.svg" asp-append-version="true" alt="WMS - Quản lý kho nội bộ" class="enterprise-auth-lockup" />
+                <h2>WMS Pro</h2>
+                <p>Quản lý nhập kho, xuất kho, tồn kho và vận hành kho tập trung.</p>
+            </div>
+
+            <div class="enterprise-auth-summary">
+                <span class="enterprise-auth-summary-label">Cổng truy cập hệ thống kho nội bộ</span>
+                <strong>Sẵn sàng cho ca vận hành hôm nay</strong>
+            </div>
+
+            <div class="enterprise-auth-status enterprise-auth-feature-grid">
+                <div class="enterprise-auth-feature-card">
+                    <span class="enterprise-auth-feature-icon"><i class="fas fa-boxes-stacked"></i></span>
+                    <span>Theo dõi tồn kho thời gian thực</span>
+                </div>
+                <div class="enterprise-auth-feature-card">
+                    <span class="enterprise-auth-feature-icon"><i class="fas fa-arrow-right-arrow-left"></i></span>
+                    <span>Quản lý nhập - xuất - chuyển kho</span>
+                </div>
+                <div class="enterprise-auth-feature-card">
+                    <span class="enterprise-auth-feature-icon"><i class="fas fa-barcode"></i></span>
+                    <span>Hỗ trợ quét mã và xử lý đơn nhanh</span>
+                </div>
+                <div class="enterprise-auth-feature-card">
+                    <span class="enterprise-auth-feature-icon"><i class="fas fa-users-gear"></i></span>
+                    <span>Phân quyền theo vai trò vận hành</span>
+                </div>
+                <div class="enterprise-auth-feature-card wide">
+                    <span class="enterprise-auth-feature-icon"><i class="fas fa-chart-line"></i></span>
+                    <span>Báo cáo cho quản lý kho và điều phối vận hành</span>
+                </div>
+            </div>
+        </section>
+
+        <section class="enterprise-auth-panel login-card" aria-labelledby="loginTitle">
+            <div class="login-logo enterprise-auth-form-head">
+                <div class="logo-icon"><img src="~/images/logo.svg" asp-append-version="true" alt="Biểu trưng WMS Pro" class="brand-mark-img" /></div>
+                <h1 id="loginTitle">Đăng nhập WMS Pro</h1>
+                <p>Cổng truy cập hệ thống kho nội bộ</p>
+            </div>
+
+            @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+            {
+                <div class="alert alert-danger enterprise-auth-error">
+                    <i class="fas fa-circle-exclamation"></i>
+                    <span>Không thể đăng nhập. Vui lòng kiểm tra thông tin hoặc liên hệ quản trị viên.</span>
+                </div>
+            }
+
+            <form method="post" asp-action="Login" asp-antiforgery="true" class="enterprise-auth-form">
+                <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl" />
+                <div class="form-group">
+                    <label class="form-label">Email Hoặc Tên đăng nhập</label>
+                    <input type="text" name="UserName" class="form-control" placeholder="Email Hoặc Tên đăng nhập" value="@Model.UserName" autocomplete="username" required autofocus />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Mật khẩu</label>
+                    <input type="password" name="Password" class="form-control" placeholder="Mật khẩu" autocomplete="current-password" required />
+                </div>
+                <div class="enterprise-auth-options">
+                    <label for="rememberMe" class="inline-check">
+                        <input type="checkbox" name="RememberMe" value="true" id="rememberMe" />
+                        <span>Ghi nhớ đăng nhập</span>
+                    </label>
+                </div>
+                <div class="enterprise-auth-help access-help-cta" role="note">
+                    <i class="fas fa-circle-info"></i>
+                    <span class="enterprise-auth-help-copy">
+                        <strong>Quên mật khẩu hoặc tài khoản bị khóa?</strong>
+                        <small>Gửi yêu cầu để quản trị kho hoặc bộ phận công nghệ thông tin kiểm tra và liên hệ lại.</small>
+                    </span>
+                    <a class="enterprise-auth-help-link enterprise-auth-help-button" asp-action="AccessHelp">Gửi yêu cầu</a>
+                </div>
+                <button type="submit" class="btn btn-primary btn-lg full-width-action mt-8 enterprise-auth-submit">
+                    <i class="fas fa-right-to-bracket"></i> Đăng nhập
+                </button>
+            </form>
+
+            <div class="enterprise-auth-form-note">
+                <i class="fas fa-building-lock"></i>
+                <span>Chỉ dành cho tài khoản nội bộ được cấp quyền.</span>
+            </div>
+        </section>
+    </div>
+</div>

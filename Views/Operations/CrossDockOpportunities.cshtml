@@ -1,0 +1,211 @@
+@{
+    ViewData["Title"] = "Chuyển thẳng";
+    var opportunities = ViewBag.Opportunities as List<dynamic> ?? new List<dynamic>();
+    var crossDockTasks = ViewBag.CrossDockTasks as List<WMS.Models.CrossDockTask> ?? new();
+    var warehouses = ViewBag.Warehouses as List<WMS.Models.Warehouse> ?? new();
+    int? warehouseId = ViewBag.WarehouseId;
+
+    string TaskStatusLabel(WMS.Models.CrossDockTaskStatusEnum status) => status switch
+    {
+        WMS.Models.CrossDockTaskStatusEnum.Pending => "Chờ xử lý",
+        WMS.Models.CrossDockTaskStatusEnum.InProgress => "Đang thực hiện",
+        WMS.Models.CrossDockTaskStatusEnum.Completed => "Hoàn tất",
+        WMS.Models.CrossDockTaskStatusEnum.Short => "Thiếu hàng",
+        WMS.Models.CrossDockTaskStatusEnum.Cancelled => "Đã hủy",
+        _ => "Không xác định"
+    };
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-shuffle text-accent"></i> Chuyển thẳng</h1>
+        <p class="page-subtitle">Chuyển hàng vừa nhận sang khu vực xuất khi nhu cầu xuất đã khớp, giảm lưu kho trung gian.</p>
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-info-circle"></i> Chuyển thẳng là gì?</div>
+    <div class="user-guide-text">
+        Khi hàng <strong>đang nhập kho</strong> khớp với hàng <strong>đang chờ xuất</strong>, bạn có thể chuyển thẳng
+        từ khu vực tiếp nhận sang khu vực xuất hàng mà <strong>không cần lưu vào ô kho</strong>. Điều này giúp:
+        <div class="step-list mt-3">
+            <span class="step-chip"><i class="fas fa-clock"></i> Giảm thời gian xử lý</span>
+            <span class="step-chip"><i class="fas fa-warehouse"></i> Tiết kiệm diện tích kho</span>
+            <span class="step-chip"><i class="fas fa-truck-fast"></i> Giao hàng nhanh hơn</span>
+        </div>
+    </div>
+</div>
+
+<div class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select class="form-control" data-wms-redirect-route='@Url.Action("CrossDockOpportunities", "Operations")' data-wms-redirect-param="warehouseId">
+            <option value="">-- Tất cả kho --</option>
+            @foreach (var w in warehouses)
+            {
+                <option value="@w.WarehouseId" selected="@(warehouseId == w.WarehouseId)">@w.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <span class="badge badge-accent badge-roomy">@opportunities.Count mặt hàng có thể chuyển thẳng</span>
+    </div>
+</div>
+
+@if (opportunities.Count == 0)
+{
+    <div class="empty-state">
+        <div class="empty-icon"><i class="fas fa-shuffle"></i></div>
+        <div class="empty-text">Không có mặt hàng nào có thể chuyển thẳng</div>
+        <div class="empty-sub">Hiện tại không có phiếu nhập nào có hàng khớp với phiếu xuất đang chờ.</div>
+    </div>
+}
+else
+{
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Vật tư</th>
+                    <th>Phiếu nhập</th>
+                    <th class="td-number">Số lượng nhập</th>
+                    <th><i class="fas fa-arrow-right"></i></th>
+                    <th>Phiếu xuất</th>
+                    <th class="td-number">Số lượng xuất</th>
+                    <th class="td-number">Số lượng chuyển thẳng</th>
+                    <th>Thao tác</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var opp in opportunities)
+                {
+                    <tr>
+                        <td>
+                            <div class="td-name">@opp.ItemName</div>
+                            <div class="td-code fs-xs">@opp.ItemCode</div>
+                        </td>
+                        <td>
+                            <a asp-controller="Vouchers" asp-action="Details" asp-route-id="@opp.InboundVoucherId" class="td-code">@opp.InboundVoucherCode</a>
+                        </td>
+                        <td class="td-number">@(((decimal)opp.InboundQty).ToString("N2"))</td>
+                        <td class="text-center"><i class="fas fa-arrow-right text-accent"></i></td>
+                        <td>
+                            <a asp-controller="Vouchers" asp-action="Details" asp-route-id="@opp.OutboundVoucherId" class="td-code">@opp.OutboundVoucherCode</a>
+                        </td>
+                        <td class="td-number">@(((decimal)opp.OutboundQty).ToString("N2"))</td>
+                        <td class="td-number">
+                            <span class="badge badge-success fs-sm">@(((decimal)opp.CrossDockQty).ToString("N2"))</span>
+                        </td>
+                        <td>
+                            <div class="td-code fs-sm mb-2">Khu chờ: @opp.StageLocationCode</div>
+                            <form method="post" asp-action="ExecuteCrossDock" asp-controller="Operations" class="crossdock-form d-inline">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="inboundVoucherId" value="@opp.InboundVoucherId" />
+                                <input type="hidden" name="inboundVoucherDetailId" value="@opp.InboundVoucherDetailId" />
+                                <input type="hidden" name="outboundVoucherId" value="@opp.OutboundVoucherId" />
+                                <input type="hidden" name="outboundVoucherDetailId" value="@opp.OutboundVoucherDetailId" />
+                                <input type="hidden" name="itemId" value="@opp.ItemId" />
+                                <input type="hidden" name="qty" value="@opp.CrossDockQty" />
+                                <input type="hidden" name="stageLocationId" value="@opp.StageLocationId" />
+                                <button type="button" class="btn btn-sm btn-accent crossdock-btn"
+                                    data-item="@opp.ItemName"
+                                    data-qty="@(((decimal)opp.CrossDockQty).ToString("N2"))"
+                                    data-from="@opp.InboundVoucherCode"
+                                    data-to="@opp.OutboundVoucherCode">
+                                    <i class="fas fa-shuffle"></i> Thực hiện
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (crossDockTasks.Count > 0)
+{
+    <div class="table-container mt-3">
+        <table>
+            <thead>
+                <tr>
+                    <th>Nhiệm vụ</th>
+                    <th>Luồng phiếu</th>
+                    <th>Vật tư</th>
+                    <th>Khu chờ</th>
+                    <th class="td-number">Số lượng</th>
+                    <th>Trạng thái</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var task in crossDockTasks)
+            {
+                var badge = task.Status == WMS.Models.CrossDockTaskStatusEnum.Completed ? "badge-success"
+                    : task.Status == WMS.Models.CrossDockTaskStatusEnum.Short ? "badge-danger"
+                    : "badge-info";
+                <tr>
+                    <td class="td-code">@task.TaskCode</td>
+                    <td>
+                        <div class="td-code fs-xs">@task.InboundVoucher?.VoucherCode</div>
+                        <div class="td-code fs-xs">@task.OutboundVoucher?.VoucherCode</div>
+                    </td>
+                    <td>
+                        <div class="td-name">@task.Item?.ItemName</div>
+                        <div class="td-code fs-xs">@task.Item?.ItemCode</div>
+                    </td>
+                    <td class="td-code">@task.StageLocation?.LocationCode</td>
+                    <td class="td-number">@task.ScheduledQty.ToString("N2")</td>
+                    <td><span class="badge @badge">@TaskStatusLabel(task.Status)</span></td>
+                    <td>
+                        @if (task.Status is WMS.Models.CrossDockTaskStatusEnum.Pending or WMS.Models.CrossDockTaskStatusEnum.InProgress)
+                        {
+                            <form method="post" asp-action="CompleteCrossDockTask" asp-controller="Operations" class="d-inline"
+                                  data-enterprise-confirm="Hoàn tất nhiệm vụ chuyển thẳng này?"
+                                  data-enterprise-confirm-title="Xác nhận hoàn tất cross-dock"
+                                  data-enterprise-confirm-ok="Hoàn tất">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="id" value="@task.CrossDockTaskId" />
+                                <button class="btn btn-sm btn-primary" type="submit">Hoàn tất</button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@section Scripts{
+<script>
+document.querySelectorAll('.crossdock-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        var form = this.closest('form');
+        var item = this.dataset.item;
+        var qty = this.dataset.qty;
+        var fromCode = this.dataset.from;
+        var toCode = this.dataset.to;
+
+        enterpriseConfirm({
+            title: 'Xác nhận chuyển thẳng?',
+            html: '<div class="crossdock-confirm-body">' +
+                '<div class="crossdock-confirm-row"><strong>Vật tư:</strong> ' + item + '</div>' +
+                '<div class="crossdock-confirm-row"><strong>Số lượng:</strong> <span class="crossdock-confirm-qty">' + qty + '</span></div>' +
+                '<div class="crossdock-confirm-row"><strong>Từ phiếu nhập:</strong> ' + fromCode + '</div>' +
+                '<div><strong>Sang phiếu xuất:</strong> ' + toCode + '</div>' +
+            '</div>',
+            icon: 'question',
+            confirmButtonText: '<i class="fas fa-shuffle"></i> Xác nhận chuyển thẳng',
+            cancelButtonText: 'Hủy',
+            confirmButtonColor: 'var(--accent, #0ea5e9)',
+            focusCancel: true
+        }).then(function(ok) {
+            if (ok) form.submit();
+        });
+    });
+});
+</script>
+}

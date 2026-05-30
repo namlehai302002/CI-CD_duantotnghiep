@@ -1,0 +1,426 @@
+@model List<WMS.Models.AppUser>
+@{
+    ViewData["Title"] = "Quản lý người dùng";
+    var roles = (List<WMS.Models.AppRole>)(ViewBag.Roles ?? new List<WMS.Models.AppRole>());
+    var warehouses = (List<WMS.Models.Warehouse>)(ViewBag.Warehouses ?? new List<WMS.Models.Warehouse>());
+    var roleVN = new Dictionary<string, string>
+    {
+        { "Admin", "Quản trị viên" },
+        { "Manager", "Quản lý kho" },
+        { "Staff", "Nhân viên kho" },
+        { "Viewer", "Chỉ xem" }
+    };
+    string GetVNRole(string? name) => name != null && roleVN.TryGetValue(name, out var label) ? label : (name ?? "Chưa gán");
+    string RoleBadge(string? name) => name switch
+    {
+        "Admin" => "badge-danger",
+        "Manager" => "badge-warning",
+        "Staff" => "badge-info",
+        "Viewer" => "badge-secondary",
+        _ => "badge-secondary"
+    };
+    string RoleDescription(string? name) => name switch
+    {
+        "Admin" => "Toàn quyền hệ thống, quản lý tài khoản, phân quyền và cấu hình trọng yếu.",
+        "Manager" => "Điều phối kho, duyệt nghiệp vụ, xem báo cáo và xử lý ngoại lệ.",
+        "Staff" => "Thực hiện nhận hàng, lấy hàng, di chuyển, đóng gói và thao tác điện thoại.",
+        "Viewer" => "Chỉ xem dữ liệu được phân quyền, không thực hiện thao tác làm đổi tồn kho.",
+        _ => "Vai trò tùy chỉnh, cần kiểm tra quyền chi tiết trước khi cấp cho người dùng."
+    };
+    var adminCount = Model.Count(u => u.Role?.RoleName == "Admin");
+    var managerCount = Model.Count(u => u.Role?.RoleName == "Manager");
+    var staffCount = Model.Count(u => u.Role?.RoleName == "Staff");
+    var scopedCount = Model.Count(u => u.WarehouseId.HasValue);
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Quản lý người dùng</h1>
+        <p class="page-subtitle">Tạo tài khoản, gán vai trò, giới hạn kho thao tác và kiểm soát truy cập cho hệ thống quản lý kho nội bộ.</p>
+    </div>
+    <div class="page-actions">
+        <button type="button" class="btn btn-secondary" data-wms-export-table="#identityUserTable" data-wms-export-filename="danh_sach_nguoi_dung">
+            <i class="fas fa-download"></i> Tải danh sách
+        </button>
+        <button type="button" class="btn btn-primary" data-wms-call="openUserModal">
+            <i class="fas fa-user-plus"></i> Tạo tài khoản
+        </button>
+        <a asp-controller="Operations" asp-action="TenantOwnerScopes" class="btn btn-secondary">
+            <i class="fas fa-building-user"></i> Phạm vi chủ hàng
+        </a>
+        <a asp-controller="Operations" asp-action="ZoneAssignment" class="btn btn-secondary">
+            <i class="fas fa-map-location-dot"></i> Phân quyền khu vực
+        </a>
+    </div>
+</div>
+
+<section class="identity-dashboard">
+    <div class="stat-card danger">
+        <div class="stat-icon"><i class="fas fa-shield-halved"></i></div>
+        <div class="stat-value">@adminCount</div>
+        <div class="stat-label">Quản trị viên</div>
+    </div>
+    <div class="stat-card warning">
+        <div class="stat-icon"><i class="fas fa-user-tie"></i></div>
+        <div class="stat-value">@managerCount</div>
+        <div class="stat-label">Quản lý kho</div>
+    </div>
+    <div class="stat-card info">
+        <div class="stat-icon"><i class="fas fa-users-gear"></i></div>
+        <div class="stat-value">@staffCount</div>
+        <div class="stat-label">Nhân viên vận hành</div>
+    </div>
+    <div class="stat-card success">
+        <div class="stat-icon"><i class="fas fa-warehouse"></i></div>
+        <div class="stat-value">@scopedCount</div>
+        <div class="stat-label">Tài khoản giới hạn kho</div>
+    </div>
+</section>
+
+<section class="identity-layout">
+    <div class="identity-main">
+        <div class="filter-panel identity-filter">
+            <div class="form-group">
+                <label class="form-label" for="userSearchInput">Tìm người dùng</label>
+                <input id="userSearchInput" class="form-control" type="search" placeholder="Tên đăng nhập, họ tên, thư điện tử..." />
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="roleFilterInput">Vai trò</label>
+                <select id="roleFilterInput" class="form-control">
+                    <option value="">Tất cả vai trò</option>
+                    @foreach (var role in roles.OrderBy(r => r.RoleName))
+                    {
+                        <option value="@role.RoleName">@GetVNRole(role.RoleName)</option>
+                    }
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="warehouseFilterInput">Kho</label>
+                <select id="warehouseFilterInput" class="form-control">
+                    <option value="">Tất cả kho</option>
+                    <option value="__all">Toàn hệ thống</option>
+                    @foreach (var warehouse in warehouses.OrderBy(w => w.WarehouseName))
+                    {
+                        <option value="@warehouse.WarehouseId">@warehouse.WarehouseCode - @warehouse.WarehouseName</option>
+                    }
+                </select>
+            </div>
+            <div class="form-group identity-filter-actions">
+                <label class="form-label">&nbsp;</label>
+                <button type="button" class="btn btn-secondary" data-wms-call="resetUserFilters">
+                    <i class="fas fa-rotate-left"></i> Xóa lọc
+                </button>
+            </div>
+        </div>
+
+        <div class="table-container data-table identity-table-wrap">
+            <div class="table-toolbar">
+                <strong>Danh sách tài khoản đang hoạt động</strong>
+                <span class="text-muted" id="userFilterSummary">@Model.Count tài khoản</span>
+            </div>
+            <table id="identityUserTable" class="identity-users-table">
+                <colgroup>
+                    <col class="identity-col-account" />
+                    <col class="identity-col-person" />
+                    <col class="identity-col-role" />
+                    <col class="identity-col-scope" />
+                    <col class="identity-col-contact" />
+                    <col class="identity-col-created" />
+                    <col class="identity-col-actions" />
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>Tài khoản</th>
+                        <th>Nhân sự</th>
+                        <th>Vai trò</th>
+                        <th>Phạm vi kho</th>
+                        <th>Liên hệ</th>
+                        <th>Ngày tạo</th>
+                        <th>Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody id="userTableBody">
+                    @foreach (var u in Model)
+                    {
+                        var roleName = u.Role?.RoleName ?? "";
+                        var warehouseKey = u.WarehouseId.HasValue ? u.WarehouseId.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "__all";
+                        var searchable = $"{u.UserName} {u.FullName} {u.Email} {GetVNRole(roleName)} {u.Warehouse?.WarehouseName}".ToLowerInvariant();
+                        var displaySeed = !string.IsNullOrWhiteSpace(u.FullName) ? u.FullName : (!string.IsNullOrWhiteSpace(u.UserName) ? u.UserName : "?");
+                        <tr class="identity-row" data-search="@searchable" data-role="@roleName" data-warehouse="@warehouseKey">
+                            <td>
+                                <div class="identity-user-cell">
+                                    <span class="identity-avatar">@displaySeed.Trim().Substring(0, 1).ToUpperInvariant()</span>
+                                    <span>
+                                        <strong class="td-code">@u.UserName</strong>
+                                        <small>Mã người dùng: @u.UserId</small>
+                                    </span>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="td-name fw-600">@u.FullName</div>
+                                <div class="text-muted">@(string.IsNullOrWhiteSpace(u.Email) ? "Chưa cập nhật thư điện tử" : u.Email)</div>
+                            </td>
+                            <td>
+                                <span class="badge @RoleBadge(roleName)">@GetVNRole(roleName)</span>
+                                <div class="identity-role-note">@RoleDescription(roleName)</div>
+                            </td>
+                            <td>
+                                @if (u.WarehouseId.HasValue)
+                                {
+                                    <span class="badge badge-soft-info">@u.Warehouse?.WarehouseName</span>
+                                }
+                                else
+                                {
+                                    <span class="badge badge-danger">Toàn hệ thống</span>
+                                }
+                            </td>
+                            <td>@(string.IsNullOrWhiteSpace(u.Email) ? "Chưa cập nhật" : u.Email)</td>
+                            <td>@u.CreatedAt.ToString("dd/MM/yyyy HH:mm")</td>
+                            <td class="td-actions">
+                                <button type="button"
+                                        class="btn btn-sm btn-secondary js-reset-password"
+                                        title="Đổi mật khẩu"
+                                        data-reset-user-id="@u.UserId"
+                                        data-reset-user-name="@u.UserName">
+                                    <i class="fas fa-key"></i>
+                                </button>
+                                <form method="post" asp-controller="Users" asp-action="Delete" asp-route-id="@u.UserId" class="inline-form"
+                                      data-enterprise-confirm="Khóa tài khoản này? Người dùng sẽ không thể đăng nhập, nhưng lịch sử thao tác vẫn được giữ lại."
+                                      data-enterprise-confirm-title="Xác nhận khóa tài khoản"
+                                      data-enterprise-confirm-icon="warning"
+                                      data-enterprise-confirm-ok="Khóa tài khoản">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn-sm btn-danger" title="Khóa tài khoản"><i class="fas fa-user-lock"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <aside class="identity-aside">
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title"><i class="fas fa-list-check text-accent"></i> Quy trình tạo tài khoản</span>
+            </div>
+            <div class="card-body">
+                <ol class="identity-checklist">
+                    <li>Chọn vai trò theo đúng nhiệm vụ thực tế.</li>
+                    <li>Gán kho cho mọi tài khoản không phải quản trị viên.</li>
+                    <li>Dùng mật khẩu mạnh khi khởi tạo và yêu cầu đổi sau khi bàn giao.</li>
+                    <li>Gán phạm vi chủ hàng hoặc khu vực nếu nhân sự chỉ vận hành một phần kho.</li>
+                    <li>Khóa tài khoản ngay khi nhân sự nghỉ hoặc chuyển bộ phận.</li>
+                </ol>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title"><i class="fas fa-shield text-warning"></i> Ma trận vai trò</span>
+            </div>
+            <div class="card-body identity-role-list">
+                @foreach (var role in roles.OrderBy(r => r.RoleName))
+                {
+                    <div class="identity-role-card">
+                        <span class="badge @RoleBadge(role.RoleName)">@GetVNRole(role.RoleName)</span>
+                        <p>@RoleDescription(role.RoleName)</p>
+                    </div>
+                }
+            </div>
+        </div>
+    </aside>
+</section>
+
+<div class="modal-overlay" id="modalUser">
+    <div class="modal identity-modal">
+        <form method="post" asp-controller="Users" asp-action="Create">
+            @Html.AntiForgeryToken()
+            <div class="modal-header">
+                <div>
+                    <div class="modal-title">Tạo tài khoản nhân sự</div>
+                    <div class="text-muted">Cấp quyền tối thiểu cần thiết, gắn đúng kho và kiểm tra thông tin trước khi lưu.</div>
+                </div>
+                <button type="button" class="modal-close" data-wms-call="closeUserModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <section class="form-section">
+                    <div class="form-section-header">Thông tin đăng nhập</div>
+                    <div class="form-section-body form-grid">
+                        <div class="form-group">
+                            <label class="form-label">Tên đăng nhập *</label>
+                            <input type="text" name="userName" class="form-control" required autocomplete="new-password" placeholder="vd: nvan.a" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Mật khẩu tạm *</label>
+                            <input type="password" name="password" class="form-control" required autocomplete="new-password" placeholder="Tối thiểu 8 ký tự mạnh" />
+                            <small class="field-hint">Cần có chữ hoa, chữ thường, số và ký tự đặc biệt.</small>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="form-section">
+                    <div class="form-section-header">Thông tin nhân sự</div>
+                    <div class="form-section-body form-grid">
+                        <div class="form-group">
+                            <label class="form-label">Họ và tên *</label>
+                            <input type="text" name="fullName" class="form-control" required placeholder="Tên hiển thị trong hệ thống" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Thư điện tử</label>
+                            <input type="email" name="email" class="form-control" placeholder="ten@congty.vn" />
+                        </div>
+                    </div>
+                </section>
+
+                <section class="form-section">
+                    <div class="form-section-header">Phân quyền vận hành</div>
+                    <div class="form-section-body form-grid">
+                        <div class="form-group">
+                            <label class="form-label">Vai trò *</label>
+                            <select name="roleId" class="form-control" required>
+                                @foreach (var r in roles.OrderBy(r => r.RoleName))
+                                {
+                                    <option value="@r.RoleId">@GetVNRole(r.RoleName) - @RoleDescription(r.RoleName)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Kho thao tác</label>
+                            <select name="warehouseId" class="form-control">
+                                <option value="">Toàn hệ thống (chỉ dùng cho quản trị viên)</option>
+                                @foreach (var w in warehouses.OrderBy(w => w.WarehouseName))
+                                {
+                                    <option value="@w.WarehouseId">@w.WarehouseCode - @w.WarehouseName</option>
+                                }
+                            </select>
+                            <small class="field-hint">Tài khoản không phải quản trị viên bắt buộc phải gán kho.</small>
+                        </div>
+                    </div>
+                </section>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-wms-call="closeUserModal">Hủy</button>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-user-plus"></i> Tạo tài khoản</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal-overlay" id="modalReset">
+    <div class="modal identity-reset-modal">
+        <form method="post" asp-controller="Users" asp-action="ResetPassword">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="id" id="resetUserId" />
+            <div class="modal-header">
+                <div>
+                    <div class="modal-title">Đổi mật khẩu</div>
+                    <div class="text-muted">Tài khoản: <span id="resetUserName" class="text-accent"></span></div>
+                </div>
+                <button type="button" class="modal-close" data-wms-call="closeResetModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Mật khẩu mới *</label>
+                    <input type="password" name="newPassword" id="resetPasswordInput" class="form-control" required autocomplete="new-password" />
+                    <small class="field-hint">Tối thiểu 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-wms-call="closeResetModal">Hủy</button>
+                <button type="submit" class="btn btn-danger"><i class="fas fa-key"></i> Cập nhật mật khẩu</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    function setIdentityModalState(id, active) {
+        const modal = document.getElementById(id);
+        if (!modal) return;
+        modal.classList.toggle('active', active);
+        modal.setAttribute('aria-hidden', active ? 'false' : 'true');
+    }
+
+    function openUserModal() {
+        setIdentityModalState('modalUser', true);
+    }
+
+    function closeUserModal() {
+        setIdentityModalState('modalUser', false);
+    }
+
+    function openResetModal(id, name) {
+        const idInput = document.getElementById('resetUserId');
+        const nameLabel = document.getElementById('resetUserName');
+        const passwordInput = document.getElementById('resetPasswordInput');
+        if (idInput) idInput.value = id;
+        if (nameLabel) nameLabel.innerText = name || '';
+        if (passwordInput) passwordInput.value = '';
+        setIdentityModalState('modalReset', true);
+        window.setTimeout(function () { passwordInput?.focus(); }, 80);
+    }
+
+    function closeResetModal() {
+        setIdentityModalState('modalReset', false);
+    }
+
+    function applyUserFilters() {
+        const search = (document.getElementById('userSearchInput')?.value || '').trim().toLowerCase();
+        const role = document.getElementById('roleFilterInput')?.value || '';
+        const warehouse = document.getElementById('warehouseFilterInput')?.value || '';
+        let visible = 0;
+
+        document.querySelectorAll('.identity-row').forEach(function(row) {
+            const matchedSearch = !search || (row.dataset.search || '').includes(search);
+            const matchedRole = !role || row.dataset.role === role;
+            const matchedWarehouse = !warehouse || row.dataset.warehouse === warehouse;
+            const show = matchedSearch && matchedRole && matchedWarehouse;
+            row.style.display = show ? '' : 'none';
+            if (show) visible++;
+        });
+
+        const summary = document.getElementById('userFilterSummary');
+        if (summary) summary.textContent = visible + ' tài khoản đang hiển thị';
+    }
+
+    function resetUserFilters() {
+        document.getElementById('userSearchInput').value = '';
+        document.getElementById('roleFilterInput').value = '';
+        document.getElementById('warehouseFilterInput').value = '';
+        applyUserFilters();
+    }
+
+    document.querySelectorAll('.js-reset-password').forEach(function(button) {
+        button.addEventListener('click', function() {
+            openResetModal(button.dataset.resetUserId, button.dataset.resetUserName);
+        });
+    });
+
+    document.querySelectorAll('.modal-overlay').forEach(function(modal) {
+        modal.addEventListener('click', function(event) {
+            if (event.target !== modal) return;
+            if (modal.id === 'modalUser') closeUserModal();
+            if (modal.id === 'modalReset') closeResetModal();
+        });
+    });
+
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            closeUserModal();
+            closeResetModal();
+        }
+    });
+
+    document.getElementById('userSearchInput')?.addEventListener('input', applyUserFilters);
+    document.getElementById('roleFilterInput')?.addEventListener('change', applyUserFilters);
+    document.getElementById('warehouseFilterInput')?.addEventListener('change', applyUserFilters);
+
+    window.openUserModal = openUserModal;
+    window.closeUserModal = closeUserModal;
+    window.openResetModal = openResetModal;
+    window.closeResetModal = closeResetModal;
+    window.resetUserFilters = resetUserFilters;
+</script>
+}

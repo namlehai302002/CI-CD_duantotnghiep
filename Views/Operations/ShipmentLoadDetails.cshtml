@@ -1,0 +1,251 @@
+@model WMS.ViewModels.ShipmentLoadDetailsViewModel
+@{
+    string LoadStatusLabel(WMS.Models.ShipmentLoadStatusEnum status) => status switch
+    {
+        WMS.Models.ShipmentLoadStatusEnum.Planned => "Đã lập kế hoạch",
+        WMS.Models.ShipmentLoadStatusEnum.Staged => "Đã gom tại khu chờ",
+        WMS.Models.ShipmentLoadStatusEnum.Loading => "Đang xếp hàng",
+        WMS.Models.ShipmentLoadStatusEnum.Loaded => "Đã xếp xong",
+        WMS.Models.ShipmentLoadStatusEnum.Departed => "Đã rời kho",
+        WMS.Models.ShipmentLoadStatusEnum.Closed => "Đã đóng chuyến",
+        WMS.Models.ShipmentLoadStatusEnum.Cancelled => "Đã hủy",
+        _ => "Không xác định"
+    };
+
+    string FulfillmentStatusLabel(WMS.Models.FulfillmentStatusEnum status) => status switch
+    {
+        WMS.Models.FulfillmentStatusEnum.Draft => "Nháp",
+        WMS.Models.FulfillmentStatusEnum.WaitingForPick => "Chờ lấy hàng",
+        WMS.Models.FulfillmentStatusEnum.Picking => "Đang lấy hàng",
+        WMS.Models.FulfillmentStatusEnum.Picked => "Đã lấy hàng",
+        WMS.Models.FulfillmentStatusEnum.Completed => "Hoàn tất",
+        WMS.Models.FulfillmentStatusEnum.PartiallyIssued => "Xuất một phần",
+        WMS.Models.FulfillmentStatusEnum.Packed => "Đã đóng gói",
+        WMS.Models.FulfillmentStatusEnum.Shipped => "Đã giao hàng",
+        _ => "Không xác định"
+    };
+
+    ViewData["Title"] = $"Chuyến xe {Model.Load.LoadCode}";
+    var canManage = User.IsInRole("Admin") || User.IsInRole("Manager");
+    var canScan = canManage || User.IsInRole("Staff");
+    var editable = Model.Load.Status is not WMS.Models.ShipmentLoadStatusEnum.Departed
+        and not WMS.Models.ShipmentLoadStatusEnum.Closed
+        and not WMS.Models.ShipmentLoadStatusEnum.Cancelled;
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">@Model.Load.LoadCode</h1>
+        <p class="page-subtitle">@Model.Load.Warehouse?.WarehouseName | @LoadStatusLabel(Model.Load.Status)</p>
+    </div>
+    <div class="page-actions">
+        <form method="post" asp-controller="Labels" asp-action="PrintShipmentLoadPackageLabels" class="d-inline">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="shipmentLoadId" value="@Model.Load.ShipmentLoadId" />
+            <button class="btn btn-secondary" type="submit"><i class="fas fa-print"></i> In nhãn kiện</button>
+        </form>
+        <form method="post" asp-controller="Labels" asp-action="PrintShipmentLoadManifest" class="d-inline">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="shipmentLoadId" value="@Model.Load.ShipmentLoadId" />
+            <button class="btn btn-secondary" type="submit"><i class="fas fa-list-check"></i> In bản kê</button>
+        </form>
+        <form method="post" asp-controller="Labels" asp-action="PrintShipmentLoadHandover" class="d-inline">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="shipmentLoadId" value="@Model.Load.ShipmentLoadId" />
+            <button class="btn btn-secondary" type="submit"><i class="fas fa-file-signature"></i> In biên bản</button>
+        </form>
+        <form method="post" asp-action="SyncShipmentLoadTms" class="d-inline">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="shipmentLoadId" value="@Model.Load.ShipmentLoadId" />
+            <button class="btn btn-secondary" type="submit"><i class="fas fa-arrows-rotate"></i> Đồng bộ TMS</button>
+        </form>
+        <a asp-controller="Operations" asp-action="ShipmentLoads" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Bảng chuyến xe</a>
+    </div>
+</div>
+
+<div class="stats-grid mb-3">
+    <div class="stat-card accent"><div class="stat-value">@Model.Vouchers.Count</div><div class="stat-label">Phiếu</div></div>
+    <div class="stat-card success"><div class="stat-value">@Model.Packages.Count(p => p.IsLoaded)</div><div class="stat-label">Kiện đã quét</div></div>
+    <div class="stat-card warning"><div class="stat-value">@Model.Packages.Sum(p => p.TotalQuantity ?? 0).ToString("N2")</div><div class="stat-label">Số lượng kiện</div></div>
+</div>
+
+@if (editable && (canManage || canScan))
+{
+    <div class="filter-bar">
+        @if (canManage)
+        {
+            <form method="post" asp-action="AddVoucherToShipmentLoad" class="enterprise-inline-controls">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="loadId" value="@Model.Load.ShipmentLoadId" />
+                <div class="form-group">
+                    <label class="form-label">Thêm phiếu đã đóng gói</label>
+                    <select name="voucherId" class="form-control" required>
+                        @foreach (var v in Model.CandidateVouchers)
+                        {
+                            <option value="@v.VoucherId">@v.VoucherCode - @(v.Partner?.PartnerName ?? "---")</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Điểm dừng</label>
+                    <input type="number" name="stopNumber" class="form-control w-100px" min="1" />
+                </div>
+                <button class="btn btn-primary" type="submit"><i class="fas fa-plus"></i> Thêm phiếu</button>
+            </form>
+        }
+        @if (canScan)
+        {
+            <form method="post" asp-action="ScanShipmentLoadPackage" id="shipment-load-scan-form"
+                  data-offline-queue="true"
+                  data-offline-operation-type="Quét kiện lên chuyến"
+                  data-offline-description="Quét kiện lên chuyến @Model.Load.LoadCode"
+                  class="enterprise-inline-controls">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="loadId" value="@Model.Load.ShipmentLoadId" />
+                <div class="form-group">
+                    <label class="form-label">Quét kiện / mã kiện</label>
+                    <div class="scan-input-row">
+                        <input id="shipment-load-package-code" name="packageCode" class="form-control font-mono" required />
+                        <button type="button" class="btn btn-secondary scan-camera-btn" data-wms-call="scanShipmentLoadPackage" title="Mở camera quét kiện">
+                            <i class="fas fa-camera"></i>
+                        </button>
+                    </div>
+                </div>
+                <button class="btn btn-success" type="submit"><i class="fas fa-qrcode"></i> Quét</button>
+            </form>
+        }
+    </div>
+}
+
+<div class="table-container mb-3">
+    <table>
+        <thead>
+            <tr>
+                <th>Phiếu</th>
+                <th>Đối tác</th>
+                <th>Thứ tự / điểm dừng</th>
+                <th>Trạng thái</th>
+                <th>Đã đóng gói</th>
+                <th>Đã giao hàng</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var row in Model.Vouchers)
+        {
+            <tr>
+                <td><a class="td-code" asp-controller="Vouchers" asp-action="Details" asp-route-id="@row.VoucherId">@row.VoucherCode</a></td>
+                <td>@(row.PartnerName ?? "---")</td>
+                <td>@row.Sequence / @(row.StopNumber?.ToString() ?? "---")</td>
+                <td><span class="badge badge-info">@FulfillmentStatusLabel(row.FulfillmentStatus)</span></td>
+                <td>@(row.PackedAt.HasValue ? row.PackedAt.Value.ToString("dd/MM HH:mm") : "---")</td>
+                <td>@(row.ShippedAt.HasValue ? row.ShippedAt.Value.ToString("dd/MM HH:mm") : "---")</td>
+                <td>
+                    @if (editable && canManage)
+                    {
+                        <form method="post" asp-action="RemoveVoucherFromShipmentLoad" class="d-inline" data-enterprise-confirm="Gỡ phiếu khỏi chuyến xe này?">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="loadId" value="@Model.Load.ShipmentLoadId" />
+                            <input type="hidden" name="voucherId" value="@row.VoucherId" />
+                            <button class="btn btn-sm btn-secondary" type="submit"><i class="fas fa-xmark"></i> Gỡ</button>
+                        </form>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Kiện</th>
+                <th>Phiếu</th>
+                <th>Đã xếp lên xe</th>
+                <th>Người quét</th>
+                <th>Thời điểm</th>
+                <th>Vận đơn</th>
+                <th class="cell-right">Số lượng</th>
+                <th class="cell-right">Cân thực tế</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var row in Model.Packages)
+        {
+            <tr>
+                <td><span class="badge badge-accent font-mono">@row.PackageCode</span></td>
+                <td>@row.VoucherCode</td>
+                <td><span class="badge @(row.IsLoaded ? "badge-success" : "badge-warning")">@(row.IsLoaded ? "Đã quét" : "Chưa quét")</span></td>
+                <td>@(row.LoadedBy ?? "---")</td>
+                <td>@(row.LoadedAt.HasValue ? row.LoadedAt.Value.ToString("dd/MM HH:mm") : "---")</td>
+                <td>
+                    <div>@(row.CarrierName ?? "---")</div>
+                    <span class="badge @(row.CarrierStatus == WMS.Models.CarrierShipmentStatusEnum.Failed || row.CarrierStatus == WMS.Models.CarrierShipmentStatusEnum.DeliveryFailed ? "badge-danger" : row.CarrierStatus == WMS.Models.CarrierShipmentStatusEnum.Created || row.CarrierStatus == WMS.Models.CarrierShipmentStatusEnum.Delivered ? "badge-success" : "badge-secondary")">@row.CarrierStatusLabel</span>
+                    @if (!string.IsNullOrWhiteSpace(row.CarrierTrackingNumber))
+                    {
+                        <div class="font-mono fs-xs">@row.CarrierTrackingNumber</div>
+                    }
+                </td>
+                <td class="td-number">@(row.TotalQuantity.HasValue ? row.TotalQuantity.Value.ToString("N2") : "---")</td>
+                <td class="td-number">@(row.ActualCatchWeight.HasValue ? row.ActualCatchWeight.Value.ToString("N4") : "---")</td>
+                <td class="td-actions">
+                    <form method="post" asp-controller="Labels" asp-action="PrintShippingPackage" class="d-inline">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="outboundPackageId" value="@row.OutboundPackageId" />
+                        <button class="btn btn-sm btn-success" type="submit"><i class="fas fa-print"></i> Nhãn vận chuyển</button>
+                    </form>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+@if (editable && canManage)
+{
+    <div class="action-bar mt-4 justify-content-end">
+        <form method="post" asp-action="MarkShipmentLoadStatus" class="d-inline" data-enterprise-confirm="Đánh dấu chuyến xe đã xếp xong?">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="loadId" value="@Model.Load.ShipmentLoadId" />
+            <input type="hidden" name="status" value="@WMS.Models.ShipmentLoadStatusEnum.Loaded" />
+            <button class="btn btn-secondary" type="submit"><i class="fas fa-check"></i> Đánh dấu đã xếp xong</button>
+        </form>
+        <form method="post" asp-action="DepartShipmentLoad" class="d-inline" data-enterprise-confirm="Xác nhận xe đã rời kho?">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="loadId" value="@Model.Load.ShipmentLoadId" />
+            <input type="hidden" name="trackingNumber" value="@Model.Load.TrackingNumber" />
+            <input type="hidden" name="manifestCode" value="@(Model.Load.ManifestCode ?? Model.Load.LoadCode)" />
+            <button class="btn btn-primary" type="submit"><i class="fas fa-truck-fast"></i> Cho xe rời kho</button>
+        </form>
+        <form method="post" asp-action="CancelShipmentLoad" class="d-inline" data-enterprise-confirm="Hủy chuyến xe này?">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="loadId" value="@Model.Load.ShipmentLoadId" />
+            <button class="btn btn-danger" type="submit"><i class="fas fa-ban"></i> Hủy chuyến</button>
+        </form>
+    </div>
+}
+else if (Model.Load.Status == WMS.Models.ShipmentLoadStatusEnum.Departed && canManage)
+{
+    <div class="action-bar mt-4 justify-content-end">
+        <form method="post" asp-action="MarkShipmentLoadStatus" data-enterprise-confirm="Đóng chuyến xe này?">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="loadId" value="@Model.Load.ShipmentLoadId" />
+            <input type="hidden" name="status" value="@WMS.Models.ShipmentLoadStatusEnum.Closed" />
+            <button class="btn btn-success" type="submit"><i class="fas fa-lock"></i> Đóng chuyến</button>
+        </form>
+    </div>
+}
+
+@section Scripts {
+<script>
+function scanShipmentLoadPackage() {
+    window.wmsScanner.scanToField('shipment-load-package-code', {
+        closeOnSuccess: true,
+        submitForm: true
+    });
+}
+</script>
+}

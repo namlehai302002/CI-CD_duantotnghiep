@@ -1,0 +1,119 @@
+@model WMS.ViewModels.PartnerLabelTemplateFormViewModel
+@using WMS.Models
+@{
+    var isEdit = Model.PartnerLabelTemplateId > 0;
+    ViewData["Title"] = isEdit ? "Sửa mẫu nhãn khách hàng" : "Tạo mẫu nhãn khách hàng";
+    var formAction = Url.Action(isEdit ? "EditTemplate" : "CreateTemplate", "Labels") ?? "";
+    string PurposeText(LabelPurposeEnum p) => p switch
+    {
+        LabelPurposeEnum.OutboundVoucher => "Phiếu xuất",
+        LabelPurposeEnum.OutboundPackage => "Kiện xuất",
+        _ => "Khác"
+    };
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-tags text-accent"></i> @ViewData["Title"]</h1>
+        <p class="page-subtitle">Dùng placeholder có kiểm soát để nhân viên in nhãn đúng nội dung theo từng khách hàng, phiếu, kiện và chứng từ vận chuyển.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-secondary" asp-controller="Labels" asp-action="Templates"><i class="fas fa-arrow-left"></i> Danh sách</a>
+    </div>
+</div>
+
+<form method="post" action="@formAction" class="labelops-template-editor">
+    @Html.AntiForgeryToken()
+    <input type="hidden" asp-for="PartnerLabelTemplateId" />
+
+    <section class="enterprise-section">
+        <div class="enterprise-section-header">
+            <div>
+                <div class="enterprise-section-title">Thông tin áp dụng</div>
+                <div class="enterprise-section-subtitle">Chọn đúng phạm vi chủ hàng, mục đích in và khổ nhãn trước khi nhập nội dung mẫu.</div>
+            </div>
+        </div>
+        <div class="enterprise-form-grid">
+            <div class="form-group">
+                <label class="form-label">Tên mẫu *</label>
+                <input class="form-control" asp-for="TemplateName" required />
+                <span asp-validation-for="TemplateName" class="text-danger"></span>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Khách hàng</label>
+                <select class="form-control" asp-for="PartnerId">
+                    <option value="">Mẫu mặc định toàn hệ thống</option>
+                    @foreach (var p in Model.Partners)
+                    {
+                        <option value="@p.PartnerId">@p.PartnerCode - @p.PartnerName</option>
+                    }
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Loại nhãn *</label>
+                <select class="form-control" asp-for="LabelPurpose">
+                    @foreach (LabelPurposeEnum p in Enum.GetValues<LabelPurposeEnum>())
+                    {
+                        <option value="@p">@PurposeText(p)</option>
+                    }
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Khổ nhãn *</label>
+                <select class="form-control" asp-for="LabelSize">
+                    <option value="50x30">50 x 30 mm</option>
+                    <option value="100x50">100 x 50 mm</option>
+                    <option value="a4grid">A4 nhiều tem</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Loại mã *</label>
+                <select class="form-control" asp-for="CodeType">
+                    <option value="barcode">Mã vạch</option>
+                    <option value="qr">QR</option>
+                </select>
+            </div>
+            <div class="form-check-grid align-end">
+                <label class="form-check-option">
+                    <input class="checkbox-lg" type="checkbox" asp-for="IsDefault" /> Mẫu ưu tiên
+                </label>
+                <label class="form-check-option">
+                    <input class="checkbox-lg" type="checkbox" asp-for="IsActive" /> Đang dùng
+                </label>
+            </div>
+        </div>
+    </section>
+
+    <section class="enterprise-section">
+        <div class="enterprise-section-header">
+            <div>
+                <div class="enterprise-section-title">Nội dung nhãn</div>
+                <div class="enterprise-section-subtitle">Placeholder hỗ trợ: {TenKhachHang}, {MaKhachHang}, {MaPhieu}, {MaKien}, {MaVanDon}, {MaHangNoiBo}, {TenHangNoiBo}, {MaHangKhach}, {TenHangKhach}, {SoLuong}, {NgayIn}, {GhiChuRieng}.</div>
+            </div>
+        </div>
+        <div class="enterprise-form-grid">
+            <div class="form-group">
+                <label class="form-label">Dòng đầu nhãn</label>
+                <input class="form-control" asp-for="HeaderTemplate" />
+            </div>
+            <div class="form-group form-span-2">
+                <label class="form-label">Thân nhãn *</label>
+                <textarea class="form-control labelops-template-body" asp-for="BodyTemplate" rows="6" required></textarea>
+                <span asp-validation-for="BodyTemplate" class="text-danger"></span>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Dòng cuối nhãn</label>
+                <input class="form-control" asp-for="FooterTemplate" />
+            </div>
+        </div>
+    </section>
+
+    <div class="form-footer">
+        <a class="btn btn-secondary" asp-controller="Labels" asp-action="Templates"><i class="fas fa-xmark"></i> Hủy</a>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-save"></i> Lưu mẫu nhãn</button>
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

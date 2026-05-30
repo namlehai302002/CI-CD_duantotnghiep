@@ -1,0 +1,43 @@
+@model WMS.ViewModels.AuditAnalyticsViewModel
+@{
+    ViewData["Title"] = "Phân tích nhật ký";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Phân tích nhật ký</h1>
+        <p class="page-subtitle">Phát hiện xuất dữ liệu nhạy cảm, truy cập ngoài giờ, phạm vi bị chặn và tần suất thao tác bất thường.</p>
+    </div>
+</div>
+
+<div class="metric-grid">
+    <div class="metric-card warning"><div class="metric-value">@Model.SensitiveExportCount</div><div class="metric-label">Xuất nhạy cảm</div></div>
+    <div class="metric-card"><div class="metric-value">@Model.OutOfHoursCount</div><div class="metric-label">Ngoài giờ</div></div>
+    <div class="metric-card danger"><div class="metric-value">@Model.ScopeDeniedCount</div><div class="metric-label">Bị chặn phạm vi</div></div>
+    <div class="metric-card"><div class="metric-value">@Model.AbnormalMutationCount</div><div class="metric-label">Thao tác bất thường</div></div>
+</div>
+
+<section class="enterprise-section">
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead><tr><th>Thời gian</th><th>Loại</th><th>Mức</th><th>Người dùng</th><th>Tiêu đề</th><th>Bằng chứng</th></tr></thead>
+            <tbody>
+                @if (!Model.Findings.Any())
+                {
+                    <tr><td colspan="6" class="empty-state">Chưa có phát hiện nhật ký trong kỳ rà soát.</td></tr>
+                }
+                @foreach (var finding in Model.Findings)
+                {
+                    <tr>
+                        <td>@finding.OccurredAt.ToString("dd/MM HH:mm")</td>
+                        <td><span class="status-badge">@finding.FindingType</span></td>
+                        <td><span class="status-badge">@finding.Severity</span></td>
+                        <td>@finding.UserName</td>
+                        <td>@finding.Title</td>
+                        <td class="td-code">@finding.ReferenceType #@finding.ReferenceId</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

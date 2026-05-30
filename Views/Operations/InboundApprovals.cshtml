@@ -1,0 +1,158 @@
+@model WMS.ViewModels.InboundApprovalQueueViewModel
+@{
+    ViewData["Title"] = "Duyệt phiếu nhập";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Duyệt phiếu nhập</h1>
+        <p class="page-subtitle">Hàng đợi phiếu nhập đã được nhân viên gửi duyệt và đang chờ quản lý xác nhận.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Operations" asp-action="Receiving" class="btn btn-secondary"><i class="fas fa-truck-loading"></i> Tiếp nhận hàng</a>
+        <a asp-controller="Vouchers" asp-action="Index" asp-route-type="1" asp-route-inboundStatus="2" class="btn btn-secondary"><i class="fas fa-file-invoice"></i> Tra cứu phiếu chờ duyệt</a>
+    </div>
+</div>
+
+<div class="approval-summary-grid">
+    <div class="approval-summary-card pending">
+        <span class="approval-summary-icon"><i class="fas fa-clipboard-check"></i></span>
+        <div>
+            <strong>@Model.PendingCount</strong>
+            <span>Phiếu chờ duyệt</span>
+        </div>
+    </div>
+    <div class="approval-summary-card">
+        <span class="approval-summary-icon"><i class="fas fa-user-shield"></i></span>
+        <div>
+            <strong>4 mắt</strong>
+            <span>Người duyệt khác người tạo</span>
+        </div>
+    </div>
+    <div class="approval-summary-card">
+        <span class="approval-summary-icon"><i class="fas fa-warehouse"></i></span>
+        <div>
+            <strong>@(Model.WarehouseId.HasValue ? "Đã lọc kho" : "Tất cả kho")</strong>
+            <span>Phạm vi vận hành</span>
+        </div>
+    </div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select class="form-control" name="warehouseId">
+            <option value="">Tất cả</option>
+            @foreach (var warehouse in Model.Warehouses)
+            {
+                <option value="@warehouse.WarehouseId" selected="@(Model.WarehouseId == warehouse.WarehouseId)">@warehouse.WarehouseCode - @warehouse.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Tìm nhanh</label>
+        <input type="text" class="form-control" name="search" value="@Model.Search" placeholder="Mã phiếu, ASN, đối tác, biển số, cửa nhận hàng..." />
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-search"></i> Lọc hàng đợi</button>
+    </div>
+</form>
+
+<div class="table-container approval-queue-table">
+    <table>
+        <thead>
+            <tr>
+                <th>Phiếu / lịch nhận</th>
+                <th>Kho</th>
+                <th>Đối tác</th>
+                <th>Người tạo</th>
+                <th>Gửi duyệt</th>
+                <th>Lịch xe</th>
+                <th class="cell-right">Dòng hàng</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @if (!Model.Rows.Any())
+        {
+            <tr>
+                <td colspan="8" class="cell-zero-padding">
+                    <div class="empty-state">
+                        <div class="empty-icon"><i class="fas fa-clipboard-check"></i></div>
+                        <div class="empty-text">Không có phiếu nhập chờ duyệt</div>
+                        <div class="empty-sub">Khi nhân viên bấm Lưu và gửi duyệt, phiếu sẽ xuất hiện tại đây.</div>
+                    </div>
+                </td>
+            </tr>
+        }
+        else
+        {
+            foreach (var row in Model.Rows)
+            {
+                <tr>
+                    <td>
+                        <a class="td-code" asp-controller="Vouchers" asp-action="Details" asp-route-id="@row.VoucherId">@row.VoucherCode</a>
+                        <div class="table-subtext-xs">ASN: <span class="font-mono">@(row.AsnCode ?? "Chưa cập nhật")</span></div>
+                    </td>
+                    <td>@row.WarehouseName</td>
+                    <td>@(row.PartnerName ?? "Chưa cập nhật")</td>
+                    <td>@row.CreatedBy</td>
+                    <td>
+                        <div>@(row.SubmittedAt?.ToString("dd/MM/yyyy HH:mm") ?? "Chưa cập nhật")</div>
+                        <div class="table-subtext-xs">@(row.SubmittedBy ?? "Chưa cập nhật")</div>
+                    </td>
+                    <td>
+                        <div>@(row.ExpectedArrivalAt?.ToString("dd/MM/yyyy HH:mm") ?? "Chưa cập nhật")</div>
+                        <div class="table-subtext-sm">@(!string.IsNullOrWhiteSpace(row.DockDoor) ? row.DockDoor : "Chưa gán cửa")</div>
+                    </td>
+                    <td class="td-number">@row.TotalLines</td>
+                    <td class="td-actions">
+                        <a asp-controller="Vouchers" asp-action="Details" asp-route-id="@row.VoucherId" class="btn btn-sm btn-secondary"><i class="fas fa-eye"></i> Mở phiếu</a>
+                        <form method="post" asp-controller="Vouchers" asp-action="ApproveInbound" class="inline-form" data-enterprise-confirm="Duyệt phiếu nhập @row.VoucherCode?" data-enterprise-confirm-ok="Duyệt phiếu">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="id" value="@row.VoucherId" />
+                            <button type="submit" class="btn btn-sm btn-success"><i class="fas fa-check"></i> Duyệt</button>
+                        </form>
+                        <button type="button" class="btn btn-sm btn-danger reject-inbound-btn" data-id="@row.VoucherId" data-code="@row.VoucherCode">
+                            <i class="fas fa-times"></i> Từ chối
+                        </button>
+                    </td>
+                </tr>
+            }
+        }
+        </tbody>
+    </table>
+</div>
+
+<form id="rejectInboundQueueForm" method="post" asp-controller="Vouchers" asp-action="RejectInbound" class="d-none">
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="id" id="rejectInboundQueueId" />
+    <input type="hidden" name="rejectionReason" id="rejectInboundQueueReason" />
+</form>
+
+@section Scripts {
+<script>
+document.querySelectorAll('.reject-inbound-btn').forEach(function(button) {
+    button.addEventListener('click', async function() {
+        var id = button.dataset.id;
+        var code = button.dataset.code || '';
+        var reason = null;
+        if (window.enterprisePrompt) {
+            reason = await window.enterprisePrompt({
+                title: 'Từ chối phiếu ' + code,
+                text: 'Nhập lý do để nhân viên chỉnh lại phiếu.',
+                inputPlaceholder: 'Ví dụ: thiếu chứng từ NCC, sai lịch xe, sai số lượng...',
+                confirmButtonText: 'Từ chối phiếu'
+            });
+        } else {
+            reason = prompt('Nhập lý do từ chối phiếu ' + code);
+        }
+        if (!reason || !reason.trim()) return;
+        document.getElementById('rejectInboundQueueId').value = id;
+        document.getElementById('rejectInboundQueueReason').value = reason.trim();
+        document.getElementById('rejectInboundQueueForm').submit();
+    });
+});
+</script>
+}

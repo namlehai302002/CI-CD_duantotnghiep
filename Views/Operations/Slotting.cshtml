@@ -1,0 +1,251 @@
+﻿@model List<WMS.ViewModels.SlottingSuggestionRow>
+@{
+    ViewData["Title"] = "Tối ưu vị trí mặc định";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Tối ưu vị trí mặc định</h1>
+        <p class="page-subtitle">Đề xuất cập nhật vị trí mặc định để cất hàng, bổ sung hàng và tìm hàng nhất quán hơn.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Operations" asp-action="LaborProductivity" class="btn btn-secondary"><i class="fas fa-chart-bar"></i> Hiệu suất nhân sự</a>
+        <a asp-controller="Operations" asp-action="CapacitySimulation" class="btn btn-secondary"><i class="fas fa-warehouse"></i> Sức chứa</a>
+        <a asp-controller="Operations" asp-action="SlottingSimulation" class="btn btn-secondary"><i class="fas fa-flask"></i> Mô phỏng</a>
+        <a asp-controller="Operations" asp-action="Replenishment" class="btn btn-secondary"><i class="fas fa-arrows-left-right"></i> Bổ sung hàng lấy</a>
+        <a asp-controller="Operations" asp-action="MovementTasks" class="btn btn-secondary"><i class="fas fa-list-check"></i> Nhiệm vụ luân chuyển</a>
+    </div>
+</div>
+
+<!-- P3.1: Velocity Analysis Card -->
+<div class="enterprise-card mb-4">
+    <div class="enterprise-card-header">
+        <div>
+            <h3 class="enterprise-card-title"><i class="fas fa-fire text-warning"></i> Phân tích Tốc độ luân chuyển (ABC/XYZ)</h3>
+            <p class="enterprise-card-subtitle">Phân loại vật tư theo tần suất di chuyển để tối ưu vị trí lấy hàng (pick-face)</p>
+        </div>
+    </div>
+    <div class="enterprise-card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <div class="velocity-stat-card velocity-a">
+                    <div class="velocity-stat-value">AX-AY</div>
+                    <div class="velocity-stat-label">Hàng đi nhanh (≥80%)</div>
+                    <div class="velocity-stat-desc">Đặt ở vị trí gần cửa xuất hàng nhất</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="velocity-stat-card velocity-b">
+                    <div class="velocity-stat-value">BX-BY</div>
+                    <div class="velocity-stat-label">Tốc độ trung bình</div>
+                    <div class="velocity-stat-desc">Vị trí trung bình, độ cao vừa phải</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="velocity-stat-card velocity-c">
+                    <div class="velocity-stat-value">CX-CY</div>
+                    <div class="velocity-stat-label">Hàng đi chậm</div>
+                    <div class="velocity-stat-desc">Vị trí xa hơn, độ cao lớn</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="velocity-stat-card velocity-z">
+                    <div class="velocity-stat-value">CZ</div>
+                    <div class="velocity-stat-label">Hàng tồn đọng</div>
+                    <div class="velocity-stat-desc">Cân nhắc giảm tồn hoặc xử lý</div>
+                </div>
+            </div>
+        </div>
+        <div class="mt-3">
+            <form method="post" asp-controller="Operations" asp-action="AnalyzeItemVelocity" class="d-inline">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="warehouseId" value="@ViewBag.WarehouseId" />
+                <input type="hidden" name="periodDays" value="90" />
+                <button class="btn btn-primary" type="submit"><i class="fas fa-sync"></i> Chạy phân tích luân chuyển 90 ngày</button>
+            </form>
+            <button class="btn btn-secondary" type="button" id="showVelocityHeatmapBtn"><i class="fas fa-th"></i> Xem Bản đồ nhiệt</button>
+        </div>
+    </div>
+</div>
+
+<!-- Velocity Heatmap Modal -->
+<div class="modal" id="velocityHeatmapModal">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-th"></i> Bản đồ nhiệt luân chuyển - Phân loại ABC/XYZ</h5>
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+            </div>
+            <div class="modal-body modal-body-scroll">
+                <div id="heatmapContent">
+                    <div class="text-center p-4">
+                        <i class="fas fa-spinner fa-spin fa-2x"></i>
+                        <p>Đang tải dữ liệu...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-compass"></i> Cách hiểu nhanh</div>
+    <div class="step-list">
+        <span class="step-chip"><i class="fas fa-chart-column"></i> 1) Hệ thống nhìn vị trí đang chứa nhiều hàng nhất</span>
+        <span class="step-chip"><i class="fas fa-location-dot"></i> 2) So với vị trí mặc định hiện tại</span>
+        <span class="step-chip"><i class="fas fa-list-check"></i> 3) Tạo nhiệm vụ di dời, màn quét xác nhận xong mới cập nhật mặc định</span>
+    </div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select class="form-control" name="warehouseId">
+            <option value="">Tất cả</option>
+            @foreach (var w in (List<WMS.Models.Warehouse>)ViewBag.Warehouses)
+            {
+                <option value="@w.WarehouseId" selected="@(ViewBag.WarehouseId != null && (int)ViewBag.WarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Tìm nhanh</label>
+        <input type="text" class="form-control" name="search" value="@ViewBag.Search" placeholder="Vật tư, vị trí..." />
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc dữ liệu</button>
+    </div>
+</form>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Vật tư</th>
+                <th>Kho</th>
+                <th>Vị trí mặc định hiện tại</th>
+                <th>Vị trí đề xuất</th>
+                <th>Phân hạng / Thuận tiện</th>
+                <th class="cell-right">Điểm đánh giá</th>
+                <th class="cell-right">Tồn toàn kho</th>
+                <th class="cell-right">Tồn tại vị trí đề xuất</th>
+                <th class="cell-right">Tỷ trọng</th>
+                <th>Lý do</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @if (!Model.Any())
+        {
+            <tr>
+                <td colspan="11" class="cell-empty cell-empty-md">Hiện chưa có đề xuất vị trí mặc định nào.</td>
+            </tr>
+        }
+        else
+        {
+            foreach (var row in Model)
+            {
+                <tr>
+                    <td>
+                        <div class="fw-700">@row.ItemCode</div>
+                        <div class="text-muted fs-sm">@row.ItemName</div>
+                    </td>
+                    <td>@row.WarehouseName</td>
+                    <td>@(row.CurrentDefaultLocationCode ?? "---")</td>
+                    <td>
+                        <span class="badge badge-accent">@row.SuggestedLocationCode</span>
+                        <div class="text-muted fs-sm mt-2">
+                            Tầng @row.SuggestedHeightLevel
+                            @if (row.SuggestedIsGoldenZone)
+                            {
+                                <span class="badge badge-warning ms-1">Vị trí Vàng</span>
+                            }
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge @(row.AbcClass == "A" ? "badge-danger" : row.AbcClass == "B" ? "badge-warning" : "badge-secondary")">@row.AbcClass</span>
+                        <div class="text-muted fs-sm mt-2">@row.VelocityBasis</div>
+                        <div class="text-muted fs-sm">@(row.ItemWeightKg.HasValue ? $"{row.ItemWeightKg.Value:N2} kg" : "Không có trọng lượng")</div>
+                    </td>
+                    <td class="td-number">
+                        <div class="fw-700">@row.SlottingScore</div>
+                        <div class="text-muted fs-xs">Tốc độ @row.VelocityScore / Thuận tiện @row.ErgonomicScore / Sức chứa @row.CapacityScore</div>
+                    </td>
+                    <td class="td-number">@row.TotalStockQty.ToString("N2")</td>
+                    <td class="td-number">@row.SuggestedLocationQty.ToString("N2")</td>
+                    <td class="td-number">@row.DominancePercent.ToString("N0")%</td>
+                    <td class="fs-body-sm">@row.Reason</td>
+                    <td class="td-actions">
+                        @if (row.CanApply)
+                        {
+                            <form method="post" asp-controller="Operations" asp-action="ApplySlotting" data-enterprise-confirm="Tạo nhiệm vụ đổi vị trí mặc định cho vật tư này?">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="itemId" value="@row.ItemId" />
+                                <input type="hidden" name="suggestedLocationId" value="@row.SuggestedLocationId" />
+                                <button class="btn btn-primary" type="submit"><i class="fas fa-list-check"></i> Tạo nhiệm vụ đổi vị trí</button>
+                            </form>
+                        }
+                        else
+                        {
+                            <span class="badge badge-warning">Cần kiểm tra lại</span>
+                        }
+                    </td>
+                </tr>
+            }
+        }
+        </tbody>
+    </table>
+</div>
+
+<script>
+const velocityHeatmapUrl = '@Url.Action("GetVelocityHeatmap", "Operations")';
+
+function escapeSlottingText(value) {
+    var div = document.createElement('div');
+    div.textContent = value == null || value === '' ? '---' : String(value);
+    return div.innerHTML;
+}
+
+function showVelocityHeatmap() {
+    var whId = $('select[name="warehouseId"]').val() || '@ViewBag.WarehouseId';
+    $('#velocityHeatmapModal').modal('show');
+    var heatmapTarget = document.getElementById('heatmapContent');
+    var busy = window.wmsLoading?.begin(heatmapTarget, { text: 'Đang tải bản đồ luân chuyển...', delay: 700, disable: false });
+    $.get(velocityHeatmapUrl, { warehouseId: whId }, function(data) {
+        if (!data || data.length === 0) {
+            $('#heatmapContent').html('<div class="alert alert-info">Chưa có dữ liệu luân chuyển. Vui lòng chạy "Phân tích luân chuyển" trước.</div>');
+            return;
+        }
+        var html = '<table class="table"><thead><tr><th>Mã VT</th><th>Tên VT</th><th>ABC</th><th>XYZ</th><th>Phân loại chung</th><th class="text-right">Số lần lấy</th><th>Tần suất/ngày</th><th>Vị trí hiện tại</th><th>Điểm số</th><th>Khuyến nghị</th></tr></thead><tbody>';
+        data.forEach(function(item) {
+            var combinedClass = item.combinedClass == null ? '' : String(item.combinedClass);
+            var abcClass = item.abcClass == null ? '' : String(item.abcClass);
+            var badgeClass = combinedClass.startsWith('A') ? 'badge-danger' :
+                             combinedClass.startsWith('B') ? 'badge-warning' : 'badge-secondary';
+            var dailyFrequency = Number(item.dailyFrequency || 0);
+            var score = Number(item.score || 0);
+            html += '<tr>' +
+                '<td>' + escapeSlottingText(item.itemCode) + '</td>' +
+                '<td>' + escapeSlottingText(item.itemName) + '</td>' +
+                '<td><span class="badge badge-' + (abcClass === 'A' ? 'danger' : abcClass === 'B' ? 'warning' : 'secondary') + '">' + escapeSlottingText(abcClass) + '</span></td>' +
+                '<td><span class="badge badge-info">' + escapeSlottingText(item.xyzClass) + '</span></td>' +
+                '<td><span class="badge ' + badgeClass + '">' + escapeSlottingText(combinedClass) + '</span></td>' +
+                '<td class="text-right">' + Number(item.pickCount || 0).toLocaleString('vi-VN') + '</td>' +
+                '<td>' + dailyFrequency.toFixed(2) + '</td>' +
+                '<td>' + escapeSlottingText(item.currentLocation) + '</td>' +
+                '<td>' + score.toLocaleString('vi-VN') + '</td>' +
+                '<td>' + (score >= 80 ? 'Khu lấy hàng gần cửa' : score >= 50 ? 'Vị trí trung bình' : 'Vị trí xa/Kho phụ') + '</td>' +
+                '</tr>';
+        });
+        html += '</tbody></table>';
+        $('#heatmapContent').html(html);
+    }).fail(function() {
+        $('#heatmapContent').html('<div class="alert alert-danger">Lỗi khi tải dữ liệu.</div>');
+    }).always(function() {
+        window.wmsLoading?.end(busy);
+    });
+}
+
+document.getElementById('showVelocityHeatmapBtn')?.addEventListener('click', showVelocityHeatmap);
+</script>

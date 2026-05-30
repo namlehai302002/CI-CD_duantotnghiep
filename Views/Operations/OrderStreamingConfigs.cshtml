@@ -1,0 +1,130 @@
+@model List<WMS.Models.WarehouseOrderStreamingConfig>
+@{
+    ViewData["Title"] = "Cấu hình phát hành trực tiếp";
+    var warehouses = (List<WMS.Models.Warehouse>)ViewBag.Warehouses;
+    int? selectedWarehouseId = ViewBag.WarehouseId as int?;
+    var current = selectedWarehouseId.HasValue ? Model.FirstOrDefault(c => c.WarehouseId == selectedWarehouseId.Value && c.IsActive) : null;
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Cấu hình phát hành trực tiếp</h1>
+        <p class="page-subtitle">Bật phát hành phiếu xuất thẳng xuống màn hình quét lấy hàng, không cần lập đợt lấy hàng.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Vouchers" asp-action="WavePlanning" class="btn btn-secondary"><i class="fas fa-layer-group"></i> Lập đợt lấy hàng</a>
+        <a asp-controller="Operations" asp-action="RfPicking" class="btn btn-secondary"><i class="fas fa-mobile-screen"></i> Quét lấy hàng</a>
+    </div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select class="form-control" name="warehouseId" data-wms-submit-form="true">
+            <option value="">-- Chọn kho --</option>
+            @foreach (var warehouse in warehouses)
+            {
+                <option value="@warehouse.WarehouseId" selected="@(selectedWarehouseId == warehouse.WarehouseId)">
+                    @warehouse.WarehouseCode - @warehouse.WarehouseName
+                </option>
+            }
+        </select>
+    </div>
+</form>
+
+@if (selectedWarehouseId.HasValue)
+{
+    <div class="card mb-3">
+        <div class="card-header">
+            <span class="card-title"><i class="fas fa-bolt"></i> Thiết lập phát hành trực tiếp</span>
+        </div>
+        <div class="card-body">
+            <form method="post" asp-controller="Operations" asp-action="SaveOrderStreamingConfig" class="filter-bar">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="warehouseId" value="@selectedWarehouseId.Value" />
+                <div class="form-group">
+                    <label class="form-label">Trạng thái</label>
+                    <select class="form-control" name="isEnabled">
+                        <option value="true" selected="@(current?.IsEnabled != false)">Đang bật</option>
+                        <option value="false" selected="@(current?.IsEnabled == false)">Đang tắt</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Ưu tiên tối thiểu</label>
+                    <input class="form-control" type="number" name="minPriority" min="1" max="100" value="@(current?.MinPriority ?? 80)" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Cửa sổ ngày giao (giờ)</label>
+                    <input class="form-control" type="number" name="deliveryWindowHours" min="1" max="168" value="@(current?.DeliveryWindowHours ?? 24)" />
+                </div>
+                <div class="form-group form-min-260">
+                    <label class="form-label">Ghi chú</label>
+                    <input class="form-control" name="notes" maxlength="300" value="@(current?.Notes ?? "")" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">&nbsp;</label>
+                    <button class="btn btn-primary" type="submit"><i class="fas fa-save"></i> Lưu cấu hình</button>
+                </div>
+            </form>
+        </div>
+    </div>
+}
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Kho</th>
+                <th>Trạng thái</th>
+                <th>Ưu tiên tối thiểu</th>
+                <th>Cửa sổ ngày giao</th>
+                <th>Ghi chú</th>
+                <th>Cập nhật</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!Model.Any())
+            {
+                <tr>
+                    <td colspan="7" class="cell-zero-padding">
+                        <div class="empty-state">
+                            <div class="empty-icon"><i class="fas fa-bolt"></i></div>
+                            <div class="empty-text">Chưa có cấu hình phát hành trực tiếp</div>
+                            <div class="empty-sub">Chọn kho và lưu cấu hình để bắt đầu sử dụng.</div>
+                        </div>
+                    </td>
+                </tr>
+            }
+            else
+            {
+                foreach (var config in Model)
+                {
+                    <tr>
+                        <td class="td-code">@config.Warehouse?.WarehouseCode - @config.Warehouse?.WarehouseName</td>
+                        <td>
+                            <span class="badge @(config.IsActive && config.IsEnabled ? "badge-success" : "badge-secondary")">
+                                @(config.IsActive && config.IsEnabled ? "Đang bật" : "Đang tắt")
+                            </span>
+                        </td>
+                        <td class="td-number">@config.MinPriority</td>
+                        <td class="td-number">@config.DeliveryWindowHours giờ</td>
+                        <td>@(string.IsNullOrWhiteSpace(config.Notes) ? "-" : config.Notes)</td>
+                        <td>@((config.UpdatedAt ?? config.CreatedAt).ToString("dd/MM/yyyy HH:mm"))</td>
+                        <td>
+                            @if (config.IsActive)
+                            {
+                                <form method="post" asp-controller="Operations" asp-action="DisableOrderStreamingConfig" class="inline-post-form" data-enterprise-confirm="Tắt cấu hình phát hành trực tiếp của kho này?" data-enterprise-confirm-ok="Tắt cấu hình">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@config.WarehouseOrderStreamingConfigId" />
+                                    <input type="hidden" name="warehouseId" value="@selectedWarehouseId" />
+                                    <button class="btn btn-secondary" type="submit">Tắt cấu hình</button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>

@@ -1,0 +1,397 @@
+@model WMS.ViewModels.DashboardViewModel
+@{
+    ViewData["Title"] = "Trang chính";
+    var canSeeFinancial = (bool)(ViewBag.CanSeeFinancial ?? false);
+    var canOperate = User.IsInRole("Staff") || User.IsInRole("Manager") || User.IsInRole("Admin");
+    var isManagerOrAdmin = User.IsInRole("Manager") || User.IsInRole("Admin");
+    var inboundApprovalWork = isManagerOrAdmin ? Model.PendingInboundApprovals : 0;
+    var pendingWork = Model.OpenPickTasks + Model.PendingOutboundVouchers + Model.UnassignedPickTasks + Model.ShortPickTasks + inboundApprovalWork;
+    var urgentWork = Model.StalePickTasks + Model.OverdueVouchers;
+    var roleWorkspace = ViewBag.RoleWorkspace as WMS.ViewModels.RoleWorkspaceViewModel;
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Trang chính</h1>
+        <p class="page-subtitle">Bảng điều hành giúp nhân viên kho đi thẳng vào việc cần làm, theo dõi tồn kho và xử lý cảnh báo vận hành trong cùng một nơi.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Vouchers" asp-action="Create" asp-route-type="1" class="btn btn-primary"><i class="fas fa-plus"></i> Tạo phiếu nhập</a>
+        <a asp-controller="Vouchers" asp-action="Create" asp-route-type="2" class="btn btn-secondary"><i class="fas fa-minus"></i> Tạo phiếu xuất</a>
+        <a asp-controller="Operations" asp-action="NextTask" class="btn btn-outline-primary"><i class="fas fa-forward"></i> Nhiệm vụ tiếp theo</a>
+    </div>
+</div>
+
+@if (roleWorkspace != null)
+{
+    <section class="enterprise-section role-workspace-panel" data-role-workspace="@roleWorkspace.RoleKey">
+        <div class="enterprise-section-header">
+            <div>
+                <div class="enterprise-section-title">@roleWorkspace.Title</div>
+                <div class="enterprise-section-subtitle">@roleWorkspace.Description</div>
+            </div>
+            <span class="badge badge-accent">@roleWorkspace.RoleLabel</span>
+        </div>
+        <div class="role-workspace-actions">
+            @foreach (var action in roleWorkspace.QuickActions)
+            {
+                <a class="btn btn-@action.Variant" href="@action.Url"><i class="fas @action.Icon"></i> @action.Label</a>
+            }
+        </div>
+    </section>
+}
+
+<section class="enterprise-section">
+    <div class="enterprise-section-header">
+        <div>
+            <div class="enterprise-section-title">Bàn làm việc nhanh</div>
+            <div class="enterprise-section-subtitle">Các lối vào chính được nhóm theo nghiệp vụ để không phải kéo menu dài.</div>
+        </div>
+        <span class="badge badge-accent">Chuẩn hóa theo ca vận hành</span>
+    </div>
+    <div class="app-springboard">
+        <a class="springboard-card" asp-controller="Operations" asp-action="Receiving">
+            <span class="springboard-icon"><i class="fas fa-truck-loading"></i></span>
+            <span class="springboard-content">
+                <span class="springboard-title">Nhập kho</span>
+                <span class="springboard-desc">Tiếp nhận hàng, kiểm phẩm, nhận số sê-ri và cất hàng theo vị trí.</span>
+                <span class="springboard-meta"><i class="fas fa-arrow-right"></i> Mở khu nhập kho</span>
+            </span>
+        </a>
+        <a class="springboard-card" asp-controller="Operations" asp-action="PickTasks">
+            <span class="springboard-icon"><i class="fas fa-list-check"></i></span>
+            <span class="springboard-content">
+                <span class="springboard-title">Xuất kho</span>
+                <span class="springboard-desc">Giữ chỗ, lấy hàng, đóng gói, giao hàng và theo dõi nhiệm vụ lấy hàng.</span>
+                <span class="springboard-meta"><i class="fas fa-arrow-right"></i> Mở khu xuất kho</span>
+            </span>
+        </a>
+        <a class="springboard-card" asp-controller="Reports" asp-action="Inventory">
+            <span class="springboard-icon"><i class="fas fa-boxes-stacked"></i></span>
+            <span class="springboard-content">
+                <span class="springboard-title">Tồn kho</span>
+                <span class="springboard-desc">Xem số lượng, vị trí, mã kiện, số sê-ri và sổ giao dịch tồn kho.</span>
+                <span class="springboard-meta"><i class="fas fa-arrow-right"></i> Kiểm tra tồn</span>
+            </span>
+        </a>
+        <a class="springboard-card" asp-controller="Operations" asp-action="ShippingDispatch">
+            <span class="springboard-icon"><i class="fas fa-route"></i></span>
+            <span class="springboard-content">
+                <span class="springboard-title">Vận chuyển</span>
+                <span class="springboard-desc">Điều phối vận đơn, chuyến xe, chứng từ bàn giao, đối soát giao hàng và bộ kết nối vận tải.</span>
+                <span class="springboard-meta"><i class="fas fa-arrow-right"></i> Điều phối giao hàng</span>
+            </span>
+        </a>
+        <a class="springboard-card" asp-controller="Reports" asp-action="OpsKpi">
+            <span class="springboard-icon"><i class="fas fa-chart-line"></i></span>
+            <span class="springboard-content">
+                <span class="springboard-title">Báo cáo</span>
+                <span class="springboard-desc">Theo dõi chỉ số vận hành, cảnh báo, kiểm kê và hiệu suất kho.</span>
+                <span class="springboard-meta"><i class="fas fa-arrow-right"></i> Xem báo cáo</span>
+            </span>
+        </a>
+        <a class="springboard-card" asp-controller="Warehouses" asp-action="Index">
+            <span class="springboard-icon"><i class="fas fa-sliders"></i></span>
+            <span class="springboard-content">
+                <span class="springboard-title">Cấu hình</span>
+                <span class="springboard-desc">Quản lý kho, đối tác, danh mục vật tư, đơn vị tính và quy tắc vận hành.</span>
+                <span class="springboard-meta"><i class="fas fa-arrow-right"></i> Mở cấu hình</span>
+            </span>
+        </a>
+    </div>
+</section>
+
+@if (canOperate)
+{
+    <section class="enterprise-section">
+        <div class="enterprise-section-header">
+            <div>
+                <div class="enterprise-section-title">Công việc cần xử lý</div>
+                <div class="enterprise-section-subtitle">Ưu tiên theo trạng thái chờ xử lý, quá hạn hoặc cần phân công.</div>
+            </div>
+            <span class="badge @(urgentWork > 0 ? "badge-danger" : pendingWork > 0 ? "badge-warning" : "badge-success")">
+                @(pendingWork + urgentWork) mục cần theo dõi
+            </span>
+        </div>
+        <div class="task-card-grid">
+            <a class="task-card" asp-controller="Operations" asp-action="RfReceiving">
+                <span class="task-card-icon"><i class="fas fa-mobile-screen"></i></span>
+                <span class="task-card-content">
+                    <span class="task-card-title">Nhận hàng bằng điện thoại</span>
+                    <span class="task-card-desc">Quét phiếu nhập, nhận thực tế và chuyển tiếp kiểm phẩm hoặc cất hàng.</span>
+                    <span class="task-card-meta"><i class="fas fa-qrcode"></i> Mở màn quét nhận</span>
+                </span>
+            </a>
+            @if (isManagerOrAdmin)
+            {
+                <a class="task-card" asp-controller="Operations" asp-action="InboundApprovals">
+                    <span class="task-card-icon"><i class="fas fa-clipboard-check"></i></span>
+                    <span class="task-card-content">
+                        <span class="task-card-title">Phiếu nhập chờ duyệt</span>
+                        <span class="task-card-desc">@Model.PendingInboundApprovals phiếu nhập đã được nhân viên gửi duyệt, cần quản lý kiểm tra trước khi tiếp nhận hàng.</span>
+                        <span class="task-card-meta"><i class="fas fa-user-check"></i> Mở hàng đợi duyệt</span>
+                    </span>
+                </a>
+            }
+            <a class="task-card" asp-controller="Operations" asp-action="RfPicking">
+                <span class="task-card-icon"><i class="fas fa-hand-pointer"></i></span>
+                <span class="task-card-content">
+                    <span class="task-card-title">Lấy hàng bằng điện thoại</span>
+                    <span class="task-card-desc">@Model.OpenPickTasks nhiệm vụ lấy hàng đang mở, @Model.ShortPickTasks nhiệm vụ lấy thiếu.</span>
+                    <span class="task-card-meta"><i class="fas fa-list-check"></i> Xử lý nhiệm vụ</span>
+                </span>
+            </a>
+            <a class="task-card" asp-controller="Operations" asp-action="RfMovement">
+                <span class="task-card-icon"><i class="fas fa-dolly"></i></span>
+                <span class="task-card-content">
+                    <span class="task-card-title">Di chuyển tồn kho</span>
+                    <span class="task-card-desc">Quét mã kiện hoặc vị trí nguồn/đích để hoàn tất nhiệm vụ di chuyển.</span>
+                    <span class="task-card-meta"><i class="fas fa-arrows-left-right"></i> Mở màn di chuyển</span>
+                </span>
+            </a>
+            <a class="task-card" asp-controller="Operations" asp-action="ShipmentLoads">
+                <span class="task-card-icon"><i class="fas fa-truck-ramp-box"></i></span>
+                <span class="task-card-content">
+                    <span class="task-card-title">Xếp kiện lên chuyến</span>
+                    <span class="task-card-desc">@Model.OverdueVouchers phiếu giao trễ hạn cần được kiểm tra trước khi bàn giao.</span>
+                    <span class="task-card-meta"><i class="fas fa-truck-fast"></i> Mở chuyến xe</span>
+                </span>
+            </a>
+        </div>
+    </section>
+}
+
+<section class="enterprise-section">
+    <div class="enterprise-section-header">
+        <div>
+            <div class="enterprise-section-title">Chỉ số vận hành</div>
+            <div class="enterprise-section-subtitle">Các chỉ số chính để quản lý ca làm việc và phát hiện rủi ro nhanh.</div>
+        </div>
+    </div>
+    <div class="stats-grid">
+        <div class="stat-card accent">
+            <div class="stat-icon"><i class="fas fa-boxes-stacked"></i></div>
+            <div class="stat-value">@Model.TotalItems</div>
+            <div class="stat-label">Tổng số vật tư</div>
+        </div>
+        @if (canSeeFinancial)
+        {
+            <div class="stat-card success">
+                <div class="stat-icon"><i class="fas fa-coins"></i></div>
+                <div class="stat-value">@Model.TotalStockValue.ToString("N0")</div>
+                <div class="stat-label">Tổng giá trị tồn kho</div>
+            </div>
+        }
+        <div class="stat-card warning">
+            <div class="stat-icon"><i class="fas fa-exclamation-triangle"></i></div>
+            <div class="stat-value">@Model.LowStockCount</div>
+            <div class="stat-label">Mã hàng sắp thiếu</div>
+        </div>
+        <div class="stat-card purple">
+            <div class="stat-icon"><i class="fas fa-file-invoice"></i></div>
+            <div class="stat-value">@Model.TodayVouchers</div>
+            <div class="stat-label">Phiếu phát sinh hôm nay</div>
+        </div>
+        <div class="stat-card info">
+            <div class="stat-icon"><i class="fas fa-layer-group"></i></div>
+            <div class="stat-value">@Model.OpenWaves</div>
+            <div class="stat-label">Đợt lấy hàng đang mở</div>
+        </div>
+        <div class="stat-card @(Model.ReservationFillRate >= 99 ? "success" : "warning")">
+            <div class="stat-icon"><i class="fas fa-percent"></i></div>
+            <div class="stat-value">@Model.ReservationFillRate.ToString("N1")%</div>
+            <div class="stat-label">Tỷ lệ đáp ứng giữ chỗ</div>
+        </div>
+    </div>
+</section>
+
+@if (isManagerOrAdmin && urgentWork > 0)
+{
+    <div class="alert alert-danger enterprise-section">
+        <i class="fas fa-triangle-exclamation"></i>
+        <div>
+            <strong>Cảnh báo vận hành cần chú ý.</strong>
+            @if (Model.StalePickTasks > 0) { <span>Có <b>@Model.StalePickTasks</b> nhiệm vụ lấy hàng quá hạn. </span> }
+            @if (Model.OverdueVouchers > 0) { <span>Có <b>@Model.OverdueVouchers</b> phiếu xuất trễ hạn giao. </span> }
+            <a asp-controller="Operations" asp-action="PickTasks">Mở danh sách xử lý</a>
+        </div>
+    </div>
+}
+
+<section class="enterprise-section workbench-grid">
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title"><i class="fas fa-clock text-accent"></i> Phiếu gần đây</span>
+            <a asp-controller="Vouchers" asp-action="Index" class="btn btn-sm btn-secondary">Xem tất cả</a>
+        </div>
+        <div class="table-container flat data-table">
+            <table>
+                <thead>
+                    <tr><th>Mã phiếu</th><th>Loại</th><th>Kho</th><th>Ngày</th><th>Trạng thái</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @if (Model.RecentVouchers.Any())
+                    {
+                        @foreach (var v in Model.RecentVouchers)
+                        {
+                            <tr>
+                                <td><a asp-controller="Vouchers" asp-action="Details" asp-route-id="@v.VoucherId" class="td-code">@v.VoucherCode</a></td>
+                                <td><span class="badge badge-soft-info">@v.VoucherTypeName</span></td>
+                                <td>@v.Warehouse?.WarehouseName</td>
+                                <td>@v.VoucherDate.ToString("dd/MM/yyyy")</td>
+                                <td><span class="badge @v.StatusBadgeClass">@v.StatusDisplay</span></td>
+                                <td><a asp-controller="Vouchers" asp-action="Details" asp-route-id="@v.VoucherId" class="btn btn-sm btn-ghost" title="Xem chi tiết"><i class="fas fa-external-link-alt"></i></a></td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr><td colspan="6"><div class="empty-state">Chưa có phiếu phát sinh gần đây.</div></td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title"><i class="fas fa-triangle-exclamation text-warning"></i> Hàng sắp thiếu</span>
+            <a asp-controller="Items" asp-action="Index" asp-route-stockStatus="low" class="btn btn-sm btn-secondary">Xem tất cả</a>
+        </div>
+        <div class="table-container flat data-table">
+            <table>
+                <thead>
+                    <tr><th>Mã</th><th>Tên vật tư</th><th>Tồn</th><th>Trạng thái</th></tr>
+                </thead>
+                <tbody>
+                    @if (Model.LowStockItems.Any())
+                    {
+                        @foreach (var item in Model.LowStockItems.Take(8))
+                        {
+                            <tr>
+                                <td class="td-code">@item.ItemCode</td>
+                                <td class="td-name">@item.ItemName</td>
+                                <td class="td-number">@item.CurrentStock.ToString("N0")</td>
+                                <td>
+                                    @if (item.CurrentStock <= 0)
+                                    {
+                                        <span class="badge badge-danger">Hết hàng</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge badge-warning">Sắp thiếu</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr><td colspan="4"><div class="empty-state">Không có cảnh báo thiếu hàng ở thời điểm hiện tại.</div></td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<section class="enterprise-section grid-2">
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title"><i class="fas fa-chart-bar text-accent"></i> Cơ cấu phiếu trong 30 ngày</span>
+        </div>
+        <div class="card-body">
+            @if (Model.VouchersByType.Any())
+            {
+                <div class="detail-grid">
+                    @foreach (var entry in Model.VouchersByType.OrderByDescending(x => x.Value))
+                    {
+                        <div class="detail-item">
+                            <div class="detail-label">@entry.Key</div>
+                            <div class="detail-value text-accent">@entry.Value</div>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="empty-state">Chưa có dữ liệu phiếu trong 30 ngày gần đây.</div>
+            }
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title"><i class="fas fa-chart-pie text-accent"></i> Tồn kho theo danh mục</span>
+        </div>
+        <div class="card-body">
+            @if (Model.StockByCategory.Any())
+            {
+                <div class="detail-grid">
+                    @foreach (var entry in Model.StockByCategory.OrderByDescending(x => x.Value).Take(8))
+                    {
+                        <div class="detail-item">
+                            <div class="detail-label">@entry.Key</div>
+                            <div class="detail-value">@(canSeeFinancial ? entry.Value.ToString("N0") : "Có dữ liệu")</div>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="empty-state">Chưa có dữ liệu tồn kho theo danh mục.</div>
+            }
+        </div>
+    </div>
+</section>
+
+@if (User.IsInRole("Admin"))
+{
+    <section class="enterprise-section card">
+        <div class="card-header">
+            <span class="card-title"><i class="fas fa-bell text-warning"></i> Cảnh báo mới chưa xử lý</span>
+            <a asp-controller="Reports" asp-action="Alerts" class="btn btn-sm btn-secondary">Mở trang cảnh báo</a>
+        </div>
+        <div class="table-container flat data-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Loại cảnh báo</th>
+                        <th>Mã vật tư</th>
+                        <th>Tên vật tư</th>
+                        <th>SL / ngưỡng</th>
+                        <th>Thời gian</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.UnresolvedAlerts != null && Model.UnresolvedAlerts.Any())
+                    {
+                        foreach (var a in Model.UnresolvedAlerts)
+                        {
+                            var badge = a.AlertType switch
+                            {
+                                WMS.Models.AlertTypeEnum.LowStock => "badge-warning",
+                                WMS.Models.AlertTypeEnum.OverStock => "badge-info",
+                                WMS.Models.AlertTypeEnum.Expiry => "badge-danger",
+                                _ => "badge-secondary"
+                            };
+                            var sub = a.AlertType == WMS.Models.AlertTypeEnum.Expiry
+                                ? $"{a.CurrentStock:#,##0.##} (<= {(int)a.Threshold} ngày)"
+                                : $"{a.CurrentStock:#,##0.##} / {a.Threshold:#,##0.##}";
+                            <tr>
+                                <td><span class="badge @badge">@a.AlertTypeName</span></td>
+                                <td class="td-code text-accent">@a.Item?.ItemCode</td>
+                                <td class="td-name">@a.Item?.ItemName</td>
+                                <td class="td-number">@sub</td>
+                                <td>@a.CreatedAt.ToString("dd/MM/yyyy HH:mm")</td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr><td colspan="5"><div class="empty-state">Chưa có cảnh báo mới cần xử lý.</div></td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+}

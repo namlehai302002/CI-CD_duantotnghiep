@@ -1,0 +1,173 @@
+@model WMS.ViewModels.PartnerItemLabelRulePageViewModel
+@{
+    ViewData["Title"] = "Mã hàng theo khách hàng";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-link text-accent"></i> Mã hàng theo khách hàng</h1>
+        <p class="page-subtitle">Khai báo mã hàng, tên hàng và ghi chú riêng mà từng khách hàng muốn thấy trên nhãn phụ.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-secondary" asp-controller="Labels" asp-action="Templates"><i class="fas fa-tags"></i> Mẫu nhãn</a>
+        <a class="btn btn-secondary" asp-controller="Labels" asp-action="PrintJobs"><i class="fas fa-clock-rotate-left"></i> Nhật ký in</a>
+    </div>
+</div>
+
+<section class="enterprise-command-strip labelops-summary">
+    <div class="enterprise-command-card">
+        <span class="enterprise-field-label">Mapping hiện có</span>
+        <strong class="stat-value">@Model.Rules.Count</strong>
+        <span class="table-subtext text-muted">Tối đa 500 dòng theo bộ lọc hiện tại.</span>
+    </div>
+    <div class="enterprise-command-card">
+        <span class="enterprise-field-label">Đang dùng</span>
+        <strong class="stat-value text-success">@Model.Rules.Count(r => r.IsActive)</strong>
+        <span class="table-subtext text-muted">Được ưu tiên khi in nhãn khách hàng.</span>
+    </div>
+    <div class="enterprise-command-card">
+        <span class="enterprise-field-label">SKU có thể chọn</span>
+        <strong class="stat-value text-accent">@Model.Items.Count</strong>
+        <span class="table-subtext text-muted">Danh sách theo tìm kiếm để thao tác nhanh.</span>
+    </div>
+</section>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Khách hàng</label>
+        <select class="form-control" name="partnerId">
+            <option value="">Tất cả</option>
+            @foreach (var p in Model.Partners)
+            {
+                <option value="@p.PartnerId" selected="@(Model.PartnerId == p.PartnerId)">@p.PartnerCode - @p.PartnerName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Tìm nhanh</label>
+        <input class="form-control" name="search" value="@Model.Search" placeholder="Mã nội bộ, tên hàng, mã khách..." />
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc</button>
+    </div>
+</form>
+
+<section class="enterprise-section">
+    <div class="enterprise-section-header">
+        <div>
+            <div class="enterprise-section-title">Thêm hoặc cập nhật mã hàng</div>
+            <div class="enterprise-section-subtitle">Nếu cùng khách hàng và SKU đã tồn tại, hệ thống cập nhật dòng hiện có để tránh trùng mapping.</div>
+        </div>
+    </div>
+    <form method="post" asp-controller="Labels" asp-action="SaveItemRule" class="enterprise-form-grid labelops-rule-form">
+        @Html.AntiForgeryToken()
+        <div class="form-group">
+            <label class="form-label">Khách hàng *</label>
+            <select class="form-control" name="partnerId" required>
+                <option value="">Chọn khách hàng</option>
+                @foreach (var p in Model.Partners)
+                {
+                    <option value="@p.PartnerId" selected="@(Model.PartnerId == p.PartnerId)">@p.PartnerCode - @p.PartnerName</option>
+                }
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">SKU nội bộ *</label>
+            <select class="form-control" name="itemId" required>
+                <option value="">Chọn SKU</option>
+                @foreach (var item in Model.Items)
+                {
+                    <option value="@item.ItemId">@item.ItemCode - @item.ItemName</option>
+                }
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Mã hàng khách hàng *</label>
+            <input class="form-control" name="customerItemCode" required maxlength="80" />
+        </div>
+        <div class="form-group">
+            <label class="form-label">Tên hàng khách hàng</label>
+            <input class="form-control" name="customerItemName" maxlength="200" />
+        </div>
+        <div class="form-group">
+            <label class="form-label">Ghi chú riêng</label>
+            <input class="form-control" name="customText" maxlength="300" />
+        </div>
+        <div class="form-check-grid align-end">
+            <input type="hidden" name="isActive" value="false" />
+            <label class="form-check-option">
+                <input class="checkbox-lg" type="checkbox" name="isActive" value="true" checked /> Đang dùng
+            </label>
+        </div>
+        <div class="enterprise-form-actions align-end">
+            <button class="btn btn-primary" type="submit"><i class="fas fa-save"></i> Lưu mã hàng</button>
+        </div>
+    </form>
+</section>
+
+<section class="enterprise-section">
+    <div class="enterprise-section-header">
+        <div>
+            <div class="enterprise-section-title">Danh sách mã hàng theo khách hàng</div>
+            <div class="enterprise-section-subtitle">Dùng để chuyển đổi tên/mã SKU nội bộ sang ngôn ngữ nhãn của từng khách hàng.</div>
+        </div>
+        <button type="button" class="btn-export" data-wms-export-table="#partnerItemRuleTable" data-wms-export-filename="ma_hang_theo_khach_hang">
+            <i class="fas fa-file-excel"></i> Xuất Excel
+        </button>
+    </div>
+    <div class="table-container">
+        <table id="partnerItemRuleTable" class="data-table">
+            <thead>
+                <tr>
+                    <th>Khách hàng</th>
+                    <th>SKU nội bộ</th>
+                    <th>Mã khách hàng</th>
+                    <th>Tên khách hàng</th>
+                    <th>Ghi chú riêng</th>
+                    <th>Trạng thái</th>
+                    <th class="table-actions-col"></th>
+                </tr>
+            </thead>
+            <tbody>
+            @if (!Model.Rules.Any())
+            {
+                <tr>
+                    <td colspan="7" class="cell-compact">
+                        <div class="empty-state">
+                            <div class="empty-icon"><i class="fas fa-link"></i></div>
+                            <div class="empty-text">Chưa có mã hàng theo khách hàng</div>
+                            <div class="empty-sub">Chọn khách hàng và SKU nội bộ ở biểu mẫu phía trên để tạo mapping đầu tiên.</div>
+                        </div>
+                    </td>
+                </tr>
+            }
+            @foreach (var r in Model.Rules)
+            {
+                <tr>
+                    <td>@r.Partner?.PartnerCode - @r.Partner?.PartnerName</td>
+                    <td>
+                        <div class="fw-700">@r.Item?.ItemCode</div>
+                        <div class="table-subtext text-muted">@r.Item?.ItemName</div>
+                    </td>
+                    <td><span class="td-code">@r.CustomerItemCode</span></td>
+                    <td>@(r.CustomerItemName ?? "---")</td>
+                    <td>@(r.CustomText ?? "---")</td>
+                    <td><span class="badge @(r.IsActive ? "badge-success" : "badge-secondary")">@(r.IsActive ? "Đang dùng" : "Đã tắt")</span></td>
+                    <td class="td-actions">
+                        <form method="post" asp-controller="Labels" asp-action="DeleteItemRule"
+                              data-enterprise-confirm="Xóa mã hàng theo khách hàng này?"
+                              data-enterprise-confirm-title="Xác nhận xóa mapping mã hàng"
+                              data-enterprise-confirm-icon="warning"
+                              data-enterprise-confirm-ok="Xóa">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="id" value="@r.PartnerItemLabelRuleId" />
+                            <button class="btn btn-sm btn-danger" type="submit"><i class="fas fa-trash"></i> Xóa</button>
+                        </form>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</section>

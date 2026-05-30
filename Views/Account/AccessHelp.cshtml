@@ -1,0 +1,110 @@
+@model WMS.ViewModels.AccessHelpRequestViewModel
+@using WMS.Models
+@{ ViewData["Title"] = "Hỗ trợ truy cập"; Layout = "_Layout"; }
+
+<div class="login-page enterprise-auth-page access-help-page">
+    <div class="enterprise-auth-stage access-help-stage">
+        <section class="enterprise-auth-visual" aria-label="Hỗ trợ tài khoản WMS Pro">
+            <div class="enterprise-auth-brand-signal">
+                <img src="~/images/logo-full.svg" asp-append-version="true" alt="WMS - Quản lý kho nội bộ" class="enterprise-auth-lockup" />
+                <p>Gửi yêu cầu cho quản trị kho hoặc bộ phận công nghệ thông tin khi tài khoản không thể đăng nhập hoặc cần được cấp quyền vận hành.</p>
+            </div>
+
+            <div class="enterprise-auth-summary">
+                <span class="enterprise-auth-summary-label">Quy trình hỗ trợ nội bộ</span>
+                <strong>Tiếp nhận, kiểm tra và phản hồi theo ca vận hành</strong>
+            </div>
+
+            <div class="enterprise-auth-status enterprise-auth-feature-grid">
+                <div class="enterprise-auth-feature-card">
+                    <span class="enterprise-auth-feature-icon"><i class="fas fa-id-badge"></i></span>
+                    <span>Xác minh người yêu cầu</span>
+                </div>
+                <div class="enterprise-auth-feature-card">
+                    <span class="enterprise-auth-feature-icon"><i class="fas fa-warehouse"></i></span>
+                    <span>Đối chiếu kho hoặc bộ phận</span>
+                </div>
+                <div class="enterprise-auth-feature-card">
+                    <span class="enterprise-auth-feature-icon"><i class="fas fa-user-check"></i></span>
+                    <span>Quản trị viên xử lý</span>
+                </div>
+                <div class="enterprise-auth-feature-card">
+                    <span class="enterprise-auth-feature-icon"><i class="fas fa-phone-volume"></i></span>
+                    <span>Liên hệ lại theo thông tin bạn cung cấp</span>
+                </div>
+            </div>
+        </section>
+
+        <section class="enterprise-auth-panel login-card" aria-labelledby="accessHelpTitle">
+            <div class="login-logo enterprise-auth-form-head">
+                <div class="logo-icon"><img src="~/images/logo.svg" asp-append-version="true" alt="Biểu trưng WMS Pro" class="brand-mark-img" /></div>
+                <h1 id="accessHelpTitle">Không truy cập được tài khoản?</h1>
+                <p>Điền thông tin để quản trị kho hoặc bộ phận công nghệ thông tin kiểm tra và liên hệ lại.</p>
+            </div>
+
+            @if (!ViewData.ModelState.IsValid)
+            {
+                <div class="alert alert-danger enterprise-auth-error">
+                    <i class="fas fa-circle-exclamation"></i>
+                    <span>Vui lòng kiểm tra lại thông tin yêu cầu.</span>
+                </div>
+            }
+
+            <form method="post" asp-action="AccessHelp" asp-antiforgery="true" class="enterprise-auth-form access-help-form">
+                <input type="text" name="CompanyWebsite" value="" class="access-help-trap" tabindex="-1" autocomplete="off" aria-hidden="true" />
+
+                <div class="form-group">
+                    <label class="form-label" for="FullName">Họ tên</label>
+                    <input id="FullName" type="text" name="FullName" class="form-control" value="@Model.FullName" autocomplete="name" maxlength="120" required autofocus />
+                    <span asp-validation-for="FullName" class="text-danger"></span>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="LoginIdentifier">Email Hoặc Tên đăng nhập</label>
+                    <input id="LoginIdentifier" type="text" name="LoginIdentifier" class="form-control" value="@Model.LoginIdentifier" autocomplete="username" maxlength="200" required />
+                    <span asp-validation-for="LoginIdentifier" class="text-danger"></span>
+                </div>
+
+                <div class="form-grid compact-form-grid">
+                    <div class="form-group">
+                        <label class="form-label" for="ContactPhone">Số điện thoại liên hệ</label>
+                        <input id="ContactPhone" type="tel" name="ContactPhone" class="form-control" value="@Model.ContactPhone" autocomplete="tel" inputmode="tel" maxlength="40" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="WarehouseOrDepartment">Kho hoặc bộ phận</label>
+                        <input id="WarehouseOrDepartment" type="text" name="WarehouseOrDepartment" class="form-control" value="@Model.WarehouseOrDepartment" maxlength="120" />
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="Reason">Lý do cần hỗ trợ</label>
+                    <select id="Reason" name="Reason" class="form-control" asp-for="Reason">
+                        <option value="@LoginHelpRequestReasonEnum.ForgotPassword">Quên mật khẩu</option>
+                        <option value="@LoginHelpRequestReasonEnum.LockedAccount">Tài khoản bị khóa</option>
+                        <option value="@LoginHelpRequestReasonEnum.NoAccess">Chưa được cấp quyền truy cập</option>
+                        <option value="@LoginHelpRequestReasonEnum.DeviceChanged">Đổi thiết bị hoặc trình duyệt</option>
+                        <option value="@LoginHelpRequestReasonEnum.Other">Lý do khác</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="Notes">Ghi chú</label>
+                    <textarea id="Notes" name="Notes" class="form-control" rows="3" maxlength="1000" placeholder="Ví dụ: ca làm việc, kho đang phụ trách, thời điểm cần hỗ trợ...">@Model.Notes</textarea>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-lg full-width-action enterprise-auth-submit">
+                    <i class="fas fa-paper-plane"></i> Gửi yêu cầu hỗ trợ
+                </button>
+            </form>
+
+            <div class="enterprise-auth-form-note">
+                <i class="fas fa-building-lock"></i>
+                <span>Yêu cầu chỉ dùng để quản trị viên kiểm tra truy cập nội bộ. Không nhập mật khẩu vào biểu mẫu này.</span>
+            </div>
+
+            <div class="enterprise-auth-backlink">
+                <a asp-action="Login"><i class="fas fa-arrow-left"></i> Quay lại đăng nhập</a>
+            </div>
+        </section>
+    </div>
+</div>

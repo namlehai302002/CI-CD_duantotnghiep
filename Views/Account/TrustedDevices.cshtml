@@ -1,0 +1,316 @@
+@{
+    ViewData["Title"] = "Thiết bị tin cậy";
+
+    var rawRoleName = (string)(ViewBag.RoleName ?? "Viewer");
+    var roleName = rawRoleName switch
+    {
+        "Admin" => "Quản trị viên",
+        "Manager" => "Quản lý kho",
+        "Staff" => "Nhân viên kho",
+        _ => "Chỉ xem"
+    };
+    var trustedDays = (int)(ViewBag.TrustedDays ?? 30);
+    var trustedWindow = trustedDays >= 3650 ? "Không hết hạn theo ngày" : $"{trustedDays} ngày";
+    var recentDevices = (ViewBag.RecentDevices as IEnumerable<WMS.Controllers.AccountController.RecentDeviceModel> ?? new List<WMS.Controllers.AccountController.RecentDeviceModel>())
+        .OrderByDescending(d => d.CreatedAt)
+        .ToList();
+    var totalDevices = recentDevices.Count;
+    var latestDevice = recentDevices.FirstOrDefault();
+    var currentUserAgent = Context.Request.Headers.UserAgent.ToString();
+    var currentIpAddress = Context.Connection.RemoteIpAddress?.ToString();
+    var currentDeviceName = DeviceName(currentUserAgent);
+    var currentBrowserName = BrowserName(currentUserAgent);
+    var latestAuthText = latestDevice == null ? "Chưa có" : latestDevice.CreatedAt.ToString("dd/MM HH:mm");
+
+    string DeviceName(string? userAgent)
+    {
+        if (string.IsNullOrWhiteSpace(userAgent)) return "Chưa nhận diện thiết bị";
+        var text = userAgent.ToLowerInvariant();
+        if (text.Contains("iphone")) return "Điện thoại iPhone";
+        if (text.Contains("android")) return "Thiết bị Android";
+        if (text.Contains("ipad")) return "Máy tính bảng iPad";
+        if (text.Contains("windows")) return "Máy tính Windows";
+        if (text.Contains("macintosh") || text.Contains("mac os")) return "Máy tính macOS";
+        return "Trình duyệt đã xác thực";
+    }
+
+    string BrowserName(string? userAgent)
+    {
+        if (string.IsNullOrWhiteSpace(userAgent)) return "Chưa cập nhật trình duyệt";
+        var text = userAgent.ToLowerInvariant();
+        if (text.Contains("edg/")) return "Microsoft Edge";
+        if (text.Contains("chrome/")) return "Google Chrome";
+        if (text.Contains("firefox/")) return "Mozilla Firefox";
+        if (text.Contains("safari/") && !text.Contains("chrome/")) return "Safari";
+        return "Trình duyệt khác";
+    }
+
+    bool IsLatestDevice(WMS.Controllers.AccountController.RecentDeviceModel device)
+        => latestDevice != null
+            && latestDevice.IpAddress == device.IpAddress
+            && latestDevice.UserAgent == device.UserAgent
+            && latestDevice.CreatedAt == device.CreatedAt;
+
+    bool IsCurrentDevice(WMS.Controllers.AccountController.RecentDeviceModel device)
+        => !string.IsNullOrWhiteSpace(currentIpAddress)
+            && currentIpAddress == device.IpAddress
+            && !string.IsNullOrWhiteSpace(currentUserAgent)
+            && currentUserAgent == device.UserAgent;
+
+    string RiskLabel(WMS.Controllers.AccountController.RecentDeviceModel device)
+    {
+        if (string.IsNullOrWhiteSpace(device.IpAddress) || string.IsNullOrWhiteSpace(device.UserAgent)) return "Cần kiểm tra";
+        if (device.CreatedAt < WMS.Common.VietnamTime.Now.AddDays(-7)) return "Theo dõi định kỳ";
+        return "Bình thường";
+    }
+
+    string RiskClass(WMS.Controllers.AccountController.RecentDeviceModel device)
+    {
+        var label = RiskLabel(device);
+        return label == "Bình thường" ? "normal" : label == "Theo dõi định kỳ" ? "watch" : "review";
+    }
+
+    string RiskRecommendation(WMS.Controllers.AccountController.RecentDeviceModel device)
+    {
+        var risk = RiskLabel(device);
+        if (risk == "Cần kiểm tra") return "Kiểm tra lại người dùng, địa chỉ mạng và thời điểm xác thực.";
+        if (risk == "Theo dõi định kỳ") return "Giữ nếu còn dùng; thu hồi nếu là máy chung hoặc đã đổi ca.";
+        return IsLatestDevice(device) ? "Thiết bị gần nhất, tiếp tục theo dõi bình thường." : "Không cần xử lý nếu đúng thiết bị của bạn.";
+    }
+}
+
+<div class="trusted-device-workspace">
+    <div class="trusted-page-header">
+        <div class="trusted-page-header-copy">
+            <div class="trusted-breadcrumb" aria-label="Vị trí trang">
+                <span>Bảo mật</span>
+                <span class="trusted-breadcrumb-sep" aria-hidden="true">›</span>
+                <span class="trusted-breadcrumb-current">Thiết bị tin cậy</span>
+            </div>
+            <h1 class="trusted-page-title">Thiết bị tin cậy</h1>
+            <p class="trusted-page-subtitle">Quản lý các trình duyệt đã vượt qua xác thực bổ sung để bảo vệ tài khoản vận hành kho.</p>
+        </div>
+        <div class="trusted-page-actions">
+                <a asp-controller="Home" asp-action="Index" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Quay lại trang chính</a>
+        </div>
+    </div>
+
+    <section class="trusted-posture-banner" aria-label="Trạng thái bảo vệ tài khoản">
+        <div class="trusted-posture-main">
+            <span class="trusted-posture-emblem" aria-hidden="true"><i class="fas fa-shield-halved"></i></span>
+            <div class="trusted-posture-copy">
+                <div class="trusted-posture-kicker">Bảo mật tài khoản</div>
+                <h2>Trạng thái bảo vệ tài khoản đang hoạt động</h2>
+                <p>Thiết bị tin cậy giúp giảm bước xác thực bổ sung trên trình duyệt đã được xác minh. Khi dùng máy chung, đổi ca hoặc nghi ngờ rủi ro, hãy thu hồi ngay.</p>
+            </div>
+        </div>
+        <div class="trusted-posture-meta">
+            <span class="trusted-chip trusted-chip--success"><i class="fas fa-circle-check"></i> Đang bảo vệ</span>
+            <span class="trusted-chip trusted-chip--neutral">@roleName</span>
+            <span class="trusted-chip trusted-chip--info">Thời hạn: @trustedWindow</span>
+        </div>
+    </section>
+
+    <section class="trusted-kpi-strip" aria-label="Chỉ số thiết bị tin cậy">
+        <article class="trusted-kpi trusted-kpi--info">
+            <span class="trusted-kpi-icon" aria-hidden="true"><i class="fas fa-laptop"></i></span>
+            <div class="trusted-kpi-body">
+                <div class="trusted-kpi-label">Thiết bị hiện tại</div>
+                <div class="trusted-kpi-value">@currentDeviceName</div>
+                <div class="trusted-kpi-note">@currentBrowserName</div>
+            </div>
+        </article>
+        <article class="trusted-kpi trusted-kpi--accent">
+            <span class="trusted-kpi-icon" aria-hidden="true"><i class="fas fa-desktop"></i></span>
+            <div class="trusted-kpi-body">
+                <div class="trusted-kpi-label">Tổng thiết bị tin cậy</div>
+                <div class="trusted-kpi-value">@totalDevices</div>
+                <div class="trusted-kpi-note">Trong thời hạn đang áp dụng</div>
+            </div>
+        </article>
+        <article class="trusted-kpi trusted-kpi--success">
+            <span class="trusted-kpi-icon" aria-hidden="true"><i class="fas fa-clock-rotate-left"></i></span>
+            <div class="trusted-kpi-body">
+                <div class="trusted-kpi-label">Lần xác thực gần nhất</div>
+                <div class="trusted-kpi-value">@latestAuthText</div>
+                <div class="trusted-kpi-note">Theo lịch sử đăng nhập</div>
+            </div>
+        </article>
+        <article class="trusted-kpi trusted-kpi--warning">
+            <span class="trusted-kpi-icon" aria-hidden="true"><i class="fas fa-calendar-check"></i></span>
+            <div class="trusted-kpi-body">
+                <div class="trusted-kpi-label">Thời hạn tin cậy</div>
+                <div class="trusted-kpi-value">@trustedWindow</div>
+                <div class="trusted-kpi-note">Phụ thuộc vai trò</div>
+            </div>
+        </article>
+        <article class="trusted-kpi trusted-kpi--neutral">
+            <span class="trusted-kpi-icon" aria-hidden="true"><i class="fas fa-user-shield"></i></span>
+            <div class="trusted-kpi-body">
+                <div class="trusted-kpi-label">Vai trò hiện tại</div>
+                <div class="trusted-kpi-value">@roleName</div>
+                <div class="trusted-kpi-note">Quyền thao tác bảo mật</div>
+            </div>
+        </article>
+    </section>
+
+    <section class="trusted-device-main-grid">
+        <div class="trusted-device-panel">
+            <header class="trusted-panel-header">
+                <div class="trusted-panel-title-block">
+                    <div class="trusted-panel-kicker">Danh sách kiểm soát</div>
+                    <h2>Thiết bị đã xác thực</h2>
+                </div>
+                <span class="trusted-chip trusted-chip--neutral">@totalDevices bản ghi</span>
+            </header>
+
+            @if (totalDevices > 0)
+            {
+                <div class="trusted-device-table-wrap">
+                    <table class="trusted-device-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">Địa chỉ mạng</th>
+                                <th scope="col">Loại thiết bị</th>
+                                <th scope="col">Trình duyệt</th>
+                                <th scope="col">Thời điểm tin cậy</th>
+                                <th scope="col">Trạng thái</th>
+                                <th scope="col">Mức rủi ro</th>
+                                <th scope="col">Khuyến nghị xử lý</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var device in recentDevices)
+                            {
+                                var isLatest = IsLatestDevice(device);
+                                var isCurrent = IsCurrentDevice(device);
+                                var riskClass = RiskClass(device);
+                                <tr class="@(isCurrent ? "is-current-device" : "")">
+                                    <td>
+                                        <span class="trusted-cell-mono">@(string.IsNullOrWhiteSpace(device.IpAddress) ? "Chưa cập nhật" : device.IpAddress)</span>
+                                        @if (isCurrent)
+                                        {
+                                            <div class="trusted-table-note">Trùng địa chỉ hiện tại</div>
+                                        }
+                                    </td>
+                                    <td>
+                                        <div class="trusted-device-name">@DeviceName(device.UserAgent)</div>
+                                        <div class="trusted-device-agent">@(!string.IsNullOrWhiteSpace(device.UserAgent) ? device.UserAgent : "Chưa cập nhật thông tin trình duyệt")</div>
+                                    </td>
+                                    <td>@BrowserName(device.UserAgent)</td>
+                                    <td><span class="trusted-cell-mono">@device.CreatedAt.ToString("dd/MM/yyyy HH:mm")</span></td>
+                                    <td>
+                                        @if (isCurrent)
+                                        {
+                                            <span class="trusted-state-badge trusted-state-badge--current">Đang dùng</span>
+                                        }
+                                        else if (isLatest)
+                                        {
+                                            <span class="trusted-state-badge trusted-state-badge--latest">Gần nhất</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="trusted-state-badge trusted-state-badge--recorded">Đang tin cậy</span>
+                                        }
+                                    </td>
+                                    <td><span class="trusted-risk-badge trusted-risk-badge--@riskClass">@RiskLabel(device)</span></td>
+                                    <td class="trusted-recommendation">@RiskRecommendation(device)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div class="trusted-empty-state">
+                    <span class="trusted-empty-icon" aria-hidden="true"><i class="fas fa-shield-halved"></i></span>
+                    <div class="trusted-empty-copy">
+                        <h3>Chưa có thiết bị tin cậy</h3>
+                        <p>Thiết bị sẽ xuất hiện sau khi tài khoản đăng nhập thành công qua bước xác thực bổ sung và được đánh dấu tin cậy.</p>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <aside class="trusted-action-panel">
+            <div class="trusted-action-card">
+                <header class="trusted-action-head">
+                    <span class="trusted-action-icon" aria-hidden="true"><i class="fas fa-rotate"></i></span>
+                    <div>
+                        <div class="trusted-panel-kicker">Thao tác</div>
+                        <h2>Thu hồi tin cậy</h2>
+                    </div>
+                </header>
+                <p class="trusted-action-copy">Áp dụng khi đổi ca, dùng máy chung hoặc nghi ngờ đăng nhập bất thường. Thao tác sẽ bắt buộc xác thực bổ sung ở lần đăng nhập kế tiếp.</p>
+                <form id="revokeCurrentForm" method="post" asp-action="RevokeCurrentTrustedDevice" class="trusted-action-form">
+                    @Html.AntiForgeryToken()
+                    <button type="button" class="btn btn-warning trusted-action-btn" data-wms-call="confirmRevokeCurrent">
+                        <i class="fas fa-arrow-rotate-left"></i> Thu hồi thiết bị hiện tại
+                    </button>
+                </form>
+                <form id="revokeAllForm" method="post" asp-action="RevokeAllTrustedDevices" class="trusted-action-form">
+                    @Html.AntiForgeryToken()
+                    <button type="button" class="btn btn-danger trusted-action-btn" data-wms-call="confirmRevokeAll">
+                        <i class="fas fa-trash-can"></i> Thu hồi tất cả thiết bị
+                    </button>
+                </form>
+                <a asp-controller="Home" asp-action="Index" class="btn btn-secondary trusted-action-btn"><i class="fas fa-arrow-left"></i> Quay lại trang chính</a>
+            </div>
+
+            <div class="trusted-action-card trusted-action-card--compact">
+                <header class="trusted-action-head">
+                    <span class="trusted-action-icon trusted-action-icon--info" aria-hidden="true"><i class="fas fa-clipboard-list"></i></span>
+                    <div>
+                        <div class="trusted-panel-kicker">Hướng dẫn</div>
+                        <h2>Khi nào cần thu hồi?</h2>
+                    </div>
+                </header>
+                <ul class="trusted-rule-list">
+                    <li>Dùng máy mượn, máy chung hoặc máy ở khu vực công cộng.</li>
+                    <li>Nhân sự đổi ca, đổi vai trò hoặc bàn giao thiết bị.</li>
+                    <li>Thiết bị bị mất, đổi chủ hoặc không còn thuộc phạm vi vận hành.</li>
+                    <li>Phát hiện đăng nhập lạ, địa chỉ mạng lạ hoặc nghi ngờ lộ mật khẩu.</li>
+                </ul>
+            </div>
+        </aside>
+    </section>
+</div>
+
+@section Scripts {
+    <script>
+        function confirmRevokeCurrent() {
+            Swal.fire({
+                title: 'Thu hồi thiết bị hiện tại?',
+                text: 'Lần đăng nhập tiếp theo trên trình duyệt này sẽ yêu cầu xác thực bổ sung.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#b66a00',
+                cancelButtonColor: '#6b7280',
+                confirmButtonText: '<i class="fas fa-ban"></i> Thu hồi',
+                cancelButtonText: 'Hủy'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('revokeCurrentForm').submit();
+                }
+            });
+        }
+
+        function confirmRevokeAll() {
+            Swal.fire({
+                title: 'Thu hồi tất cả thiết bị?',
+                text: 'Tất cả trình duyệt đã tin cậy sẽ phải xác thực lại. Hãy dùng khi nghi ngờ tài khoản hoặc thiết bị có rủi ro.',
+                icon: 'error',
+                showCancelButton: true,
+                confirmButtonColor: '#C74634',
+                cancelButtonColor: '#6b7280',
+                confirmButtonText: '<i class="fas fa-trash-can"></i> Thu hồi tất cả',
+                cancelButtonText: 'Hủy'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('revokeAllForm').submit();
+                }
+            });
+        }
+    </script>
+}

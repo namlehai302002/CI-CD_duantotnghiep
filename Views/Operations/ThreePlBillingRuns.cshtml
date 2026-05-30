@@ -1,0 +1,216 @@
+@model WMS.ViewModels.ThreePlBillingRunBoardViewModel
+@using WMS.Models
+@using System.Globalization
+@{
+    ViewData["Title"] = "Kỳ tính phí kho nhiều chủ hàng";
+
+    var runs = Model.Runs;
+    var draftCount = runs.Count(r => r.Status == ThreePlBillingRunStatusEnum.Draft);
+    var confirmedCount = runs.Count(r => r.Status == ThreePlBillingRunStatusEnum.Confirmed);
+    var voidedCount = runs.Count(r => r.Status == ThreePlBillingRunStatusEnum.Voided);
+    var totalAmount = runs.Where(r => r.Status != ThreePlBillingRunStatusEnum.Voided).Sum(r => r.TotalAmount);
+    var defaultWarehouseId = Model.WarehouseId ?? Model.Warehouses.FirstOrDefault()?.WarehouseId;
+    var defaultOwnerId = Model.OwnerPartnerId ?? Model.Owners.FirstOrDefault()?.PartnerId;
+    var vietnamToday = WMS.Common.VietnamTime.Today;
+    var defaultFrom = (Model.PeriodFrom ?? vietnamToday.AddDays(-30)).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    var defaultTo = (Model.PeriodTo ?? vietnamToday).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    string RunStatusLabel(ThreePlBillingRunStatusEnum status) => status switch
+    {
+        ThreePlBillingRunStatusEnum.Draft => "Nháp",
+        ThreePlBillingRunStatusEnum.Confirmed => "Đã xác nhận",
+        ThreePlBillingRunStatusEnum.Voided => "Đã hủy",
+        _ => "Không xác định"
+    };
+
+    string RunStatusClass(ThreePlBillingRunStatusEnum status) => status switch
+    {
+        ThreePlBillingRunStatusEnum.Draft => "warning",
+        ThreePlBillingRunStatusEnum.Confirmed => "success",
+        ThreePlBillingRunStatusEnum.Voided => "danger",
+        _ => "neutral"
+    };
+}
+
+<div class="yardops-shell">
+    <div class="yardops-pagehead">
+        <div>
+            <h1 class="yardops-title">Kỳ tính phí kho nhiều chủ hàng</h1>
+            <p class="yardops-subtitle">Tạo kỳ tính phí kho nhiều chủ hàng theo kho, chủ hàng và giai đoạn; theo dõi nháp, xác nhận, hủy và tải bảng tổng hợp để đối soát.</p>
+        </div>
+        <div class="yardops-head-actions">
+            <a asp-action="ThreePlContracts" class="btn btn-secondary">
+                <i class="fas fa-file-contract"></i> Hợp đồng kho nhiều chủ hàng
+            </a>
+            <a asp-action="ThreePlClientPortal" class="btn btn-secondary">
+                <i class="fas fa-user-shield"></i> Khu vực chủ hàng
+            </a>
+            <a asp-action="ThreePlBillingRates" class="btn btn-secondary">
+                <i class="fas fa-tags"></i> Bảng giá kho nhiều chủ hàng
+            </a>
+            <button type="button" class="btn btn-secondary" data-wms-export-table="#threePlRunsTable" data-wms-export-filename="ky_tinh_phi_kho_nhieu_chu_hang">
+                <i class="fas fa-download"></i> Tải bảng
+            </button>
+        </div>
+    </div>
+
+    <div class="yardops-kpis">
+        <div class="yardops-kpi">
+            <div class="yardops-kpi-value">@runs.Count <span class="yardops-kpi-unit">kỳ</span></div>
+            <div class="yardops-kpi-label">Tổng kỳ hiển thị</div>
+        </div>
+        <div class="yardops-kpi warning">
+            <div class="yardops-kpi-value">@draftCount <span class="yardops-kpi-unit">kỳ</span></div>
+            <div class="yardops-kpi-label">Đang nháp</div>
+        </div>
+        <div class="yardops-kpi success">
+            <div class="yardops-kpi-value">@confirmedCount <span class="yardops-kpi-unit">kỳ</span></div>
+            <div class="yardops-kpi-label">Đã xác nhận</div>
+        </div>
+        <div class="yardops-kpi info">
+            <div class="yardops-kpi-value">@totalAmount.ToString("N0") <span class="yardops-kpi-unit">VND</span></div>
+            <div class="yardops-kpi-label">Tổng phí hợp lệ</div>
+        </div>
+    </div>
+
+    <form method="get" class="yardops-filter">
+        <div class="form-group yardops-span-2">
+            <label class="form-label">Kho</label>
+            <select name="warehouseId" class="form-control">
+                <option value="">Tất cả kho</option>
+                @foreach (var wh in Model.Warehouses)
+                {
+                    <option value="@wh.WarehouseId" selected="@(Model.WarehouseId == wh.WarehouseId)">@wh.WarehouseCode - @wh.WarehouseName</option>
+                }
+            </select>
+        </div>
+        <div class="form-group yardops-span-2">
+            <label class="form-label">Chủ hàng</label>
+            <select name="ownerPartnerId" class="form-control">
+                <option value="">Tất cả chủ hàng</option>
+                @foreach (var owner in Model.Owners)
+                {
+                    <option value="@owner.PartnerId" selected="@(Model.OwnerPartnerId == owner.PartnerId)">@owner.PartnerCode - @owner.PartnerName</option>
+                }
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Từ ngày</label>
+            <input name="periodFrom" type="date" value="@defaultFrom" class="form-control" />
+        </div>
+        <div class="form-group">
+            <label class="form-label">Đến ngày</label>
+            <input name="periodTo" type="date" value="@defaultTo" class="form-control" />
+        </div>
+        <div class="form-group yardops-filter-actions">
+            <label class="form-label">&nbsp;</label>
+            <button type="submit" class="btn btn-secondary"><i class="fas fa-rotate"></i> Tải dữ liệu</button>
+        </div>
+    </form>
+
+    <section class="yardops-panel">
+        <div class="yardops-panel-head">
+            <div>
+                <h2 class="yardops-panel-title">Tạo kỳ tính phí mới</h2>
+                <p class="yardops-panel-subtitle">Chọn đúng kho, chủ hàng và giai đoạn cần đối soát. Hệ thống tạo kỳ nháp để kiểm tra trước khi xác nhận.</p>
+            </div>
+            <span class="yardops-context-pill">Tính phí kho nhiều chủ hàng</span>
+        </div>
+        <div class="yardops-panel-body">
+            <form asp-action="GenerateThreePlBillingRun" method="post" class="yardops-form-grid">
+                @Html.AntiForgeryToken()
+                <div class="form-group">
+                    <label class="form-label">Kho <span class="text-danger">*</span></label>
+                    <select name="warehouseId" class="form-control" required>
+                        @foreach (var wh in Model.Warehouses)
+                        {
+                            <option value="@wh.WarehouseId" selected="@(defaultWarehouseId == wh.WarehouseId)">@wh.WarehouseCode - @wh.WarehouseName</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group yardops-wide">
+                    <label class="form-label">Chủ hàng <span class="text-danger">*</span></label>
+                    <select name="ownerPartnerId" class="form-control" required>
+                        @foreach (var owner in Model.Owners)
+                        {
+                            <option value="@owner.PartnerId" selected="@(defaultOwnerId == owner.PartnerId)">@owner.PartnerCode - @owner.PartnerName</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Từ ngày <span class="text-danger">*</span></label>
+                    <input name="periodFrom" type="date" value="@defaultFrom" class="form-control" required />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Đến ngày <span class="text-danger">*</span></label>
+                    <input name="periodTo" type="date" value="@defaultTo" class="form-control" required />
+                </div>
+                <div class="form-group yardops-filter-actions">
+                    <label class="form-label">&nbsp;</label>
+                    <button class="btn btn-primary" type="submit" disabled="@(!Model.Warehouses.Any() || !Model.Owners.Any())">
+                        <i class="fas fa-calculator"></i> Tính phí
+                    </button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <section class="yardops-panel">
+        <div class="yardops-panel-head">
+            <div>
+                <h2 class="yardops-panel-title">Danh sách kỳ tính phí</h2>
+                <p class="yardops-panel-subtitle">Theo dõi tối đa 300 kỳ gần nhất theo bộ lọc đang chọn.</p>
+            </div>
+            <span class="yardops-context-pill">@runs.Count.ToString("N0") dòng</span>
+        </div>
+        <div class="yardops-table-wrap">
+            <table class="yardops-table" id="threePlRunsTable">
+                <thead>
+                    <tr>
+                        <th>Kỳ tính phí</th>
+                        <th>Kho</th>
+                        <th>Chủ hàng</th>
+                        <th>Giai đoạn</th>
+                        <th>Trạng thái</th>
+                        <th class="text-end">Tổng tiền</th>
+                        <th>Ngày tạo</th>
+                        <th class="text-end">Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var run in runs)
+                    {
+                        <tr>
+                            <td>
+                                <div class="yardops-rule-title">@run.RunCode</div>
+                                <div class="yardops-subline">ID @run.ThreePlBillingRunId</div>
+                            </td>
+                            <td>@run.WarehouseName</td>
+                            <td>@run.OwnerName</td>
+                            <td>@run.PeriodFrom.ToString("dd/MM/yyyy") - @run.PeriodTo.ToString("dd/MM/yyyy")</td>
+                            <td><span class="yardops-status @RunStatusClass(run.Status)">@RunStatusLabel(run.Status)</span></td>
+                            <td class="text-end"><strong>@run.TotalAmount.ToString("N2")</strong> @run.Currency</td>
+                            <td>@run.CreatedAt.ToString("dd/MM/yyyy HH:mm")</td>
+                            <td class="text-end text-nowrap">
+                                <a asp-action="ThreePlBillingRunDetails" asp-route-id="@run.ThreePlBillingRunId" class="btn btn-sm btn-secondary" title="Xem chi tiết">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                            </td>
+                        </tr>
+                    }
+                    @if (!runs.Any())
+                    {
+                        <tr>
+                            <td colspan="8">
+                                <div class="yardops-empty">
+                                    <i class="fas fa-file-invoice-dollar"></i>
+                                    Chưa có kỳ tính phí phù hợp bộ lọc. Hãy tạo kỳ nháp mới để bắt đầu đối soát.
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>

@@ -1,0 +1,185 @@
+@model List<WMS.ViewModels.LpnLookupRow>
+@{
+    ViewData["Title"] = "Tra cứu mã kiện (LPN)";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Tra cứu / quét mã kiện (LPN)</h1>
+        <p class="page-subtitle">Tìm nhanh pallet, kiện hàng và vị trí hiện tại chỉ bằng một lần quét.</p>
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-barcode"></i> Cách dùng nhanh</div>
+    <div class="step-list">
+        <span class="step-chip"><i class="fas fa-qrcode"></i> 1) Quét hoặc nhập mã kiện (LPN)</span>
+        <span class="step-chip"><i class="fas fa-location-dot"></i> 2) Kiểm tra vật tư, vị trí, lô</span>
+        <span class="step-chip"><i class="fas fa-file-lines"></i> 3) Mở phiếu nguồn nếu cần truy vết</span>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="form-row lpn-lookup-row">
+            <div class="form-group lpn-lookup-main">
+                <label class="form-label">Quét nhanh mã kiện (LPN)</label>
+                <div class="scan-input-row">
+                    <input type="text" id="lpnScanInput" class="form-control" placeholder="Quét mã kiện rồi nhấn Enter" autocomplete="off" />
+                    <button type="button" class="btn btn-secondary scan-camera-btn" data-wms-call="openLpnCamera" title="Mở camera quét mã kiện">
+                        <i class="fas fa-camera"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">&nbsp;</label>
+                <button type="button" class="btn btn-primary" data-wms-call="scanLpnNow"><i class="fas fa-magnifying-glass"></i> Tra cứu nhanh</button>
+            </div>
+        </div>
+        <div id="lpnScanResult" class="form-help lpn-scan-result"></div>
+    </div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select class="form-control" name="warehouseId">
+            <option value="">Tất cả</option>
+            @foreach (var w in (List<WMS.Models.Warehouse>)ViewBag.Warehouses)
+            {
+                <option value="@w.WarehouseId" selected="@(ViewBag.WarehouseId != null && (int)ViewBag.WarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Tìm nhanh</label>
+        <input type="text" class="form-control" name="search" value="@ViewBag.Search" placeholder="Mã kiện (LPN), vật tư, phiếu, vị trí..." />
+    </div>
+    <div class="form-group">
+        <label class="form-label">Hiển thị</label>
+        <select class="form-control" name="activeOnly">
+            <option value="true" selected="@((bool)(ViewBag.ActiveOnly ?? true))">Chỉ mã kiện đang hiệu lực</option>
+            <option value="false" selected="@(!(bool)(ViewBag.ActiveOnly ?? true))">Tất cả mã kiện</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc dữ liệu</button>
+    </div>
+</form>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Mã kiện (LPN)</th>
+                <th>Kho</th>
+                <th>Phiếu nguồn</th>
+                <th>Vật tư</th>
+                <th>Vị trí</th>
+                <th class="cell-right">Số lượng</th>
+                <th>Lô / HSD</th>
+                <th>Trạng thái</th>
+            </tr>
+        </thead>
+        <tbody>
+        @if (!Model.Any())
+        {
+            <tr>
+                <td colspan="8" class="text-center text-muted cell-empty-md">Chưa có mã kiện phù hợp điều kiện lọc.</td>
+            </tr>
+        }
+        else
+        {
+            foreach (var row in Model)
+            {
+                <tr>
+                    <td><span class="badge badge-accent">@row.LpnCode</span></td>
+                    <td>@row.WarehouseName</td>
+                    <td><a asp-controller="Vouchers" asp-action="Details" asp-route-id="@row.VoucherId" class="td-code lpn-source-link">@row.VoucherCode</a></td>
+                    <td>
+                        <div class="fw-700">@row.ItemCode</div>
+                        <div class="text-muted fs-xs">@row.ItemName</div>
+                    </td>
+                    <td>@(row.LocationCode ?? "---")</td>
+                    <td class="td-number">@row.Quantity.ToString("N2")</td>
+                    <td>@((row.LotNumber ?? "---") + (row.ExpiryDate.HasValue ? $" / {row.ExpiryDate.Value:dd/MM/yyyy}" : ""))</td>
+                    <td>
+                        <span class="badge @(row.IsActive ? "badge-success" : "badge-secondary")">
+                            @(row.IsActive ? "Đang hiệu lực" : "Đã vô hiệu")
+                        </span>
+                    </td>
+                </tr>
+            }
+        }
+        </tbody>
+    </table>
+</div>
+
+@section Scripts {
+<script>
+function escapeLookupText(value) {
+    const div = document.createElement('div');
+    div.textContent = value == null || value === '' ? '---' : String(value);
+    return div.innerHTML;
+}
+
+async function scanLpnNow() {
+    const input = document.getElementById('lpnScanInput');
+    const resultBox = document.getElementById('lpnScanResult');
+    const code = input?.value?.trim();
+    if (!code) {
+        resultBox.textContent = 'Vui lòng quét hoặc nhập mã kiện (LPN).';
+        resultBox.style.color = '#ef4444';
+        return;
+    }
+
+    resultBox.textContent = 'Đang tra cứu...';
+    resultBox.style.color = 'var(--text-muted)';
+    const busy = window.wmsLoading?.begin(resultBox, { text: 'Đang tra cứu mã kiện...', delay: 700, disable: false });
+
+    try {
+        const scanLpnUrl = '@Url.Action("ScanLpn", "Operations")';
+        const res = await fetch(`${scanLpnUrl}?code=${encodeURIComponent(code)}`);
+        const payload = await res.json();
+        if (!payload.success) {
+            resultBox.textContent = payload.message || 'Không tìm thấy mã kiện.';
+            resultBox.style.color = '#ef4444';
+            return;
+        }
+
+        const info = payload.data;
+        resultBox.innerHTML =
+            `<span class="lookup-result-code">✓ ${escapeLookupText(info.lpnCode)}</span> | `
+            + `${escapeLookupText(info.itemCode)} - ${escapeLookupText(info.itemName)} | `
+            + `Vị trí: ${escapeLookupText(info.locationCode)} | `
+            + `SL: ${Number(info.quantity).toLocaleString('vi-VN')}`;
+        resultBox.style.color = '#10b981';
+    } catch {
+        resultBox.textContent = 'Không thể tra cứu mã kiện lúc này. Vui lòng thử lại.';
+        resultBox.style.color = '#ef4444';
+    } finally {
+        window.wmsLoading?.end(busy);
+    }
+}
+
+document.getElementById('lpnScanInput')?.addEventListener('keydown', function (event) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        scanLpnNow();
+    }
+});
+
+function openLpnCamera() {
+    openScannerModal(async function(decodedText) {
+        const input = document.getElementById('lpnScanInput');
+        if (input) {
+            input.value = decodedText;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        scanLpnNow();
+    }, { closeOnSuccess: true });
+}
+</script>
+}

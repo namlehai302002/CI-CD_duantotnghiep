@@ -1,0 +1,263 @@
+@model WMS.ViewModels.IntegrationEnterpriseDashboardViewModel
+@using WMS.Models
+@using WMS.ViewModels
+@{
+    ViewData["Title"] = "Tích hợp hệ thống";
+
+    string MaskSignature(string? signature)
+        => string.IsNullOrWhiteSpace(signature)
+            ? "Chưa có"
+            : "[đã che]";
+
+    string EdiMessageTypeLabel(EdiMessageTypeEnum type) => type switch
+    {
+        EdiMessageTypeEnum.Asn => "Thông báo hàng sắp đến",
+        EdiMessageTypeEnum.Order940 => "Lệnh xuất kho",
+        EdiMessageTypeEnum.ShipAdvice945 => "Xác nhận xuất kho",
+        EdiMessageTypeEnum.Shipment856 => "Thông báo giao hàng",
+        _ => "Thông điệp khác"
+    };
+
+    string EdiDirectionLabel(EdiDirectionEnum direction) => direction switch
+    {
+        EdiDirectionEnum.Inbound => "Nhận vào",
+        EdiDirectionEnum.Outbound => "Gửi ra",
+        _ => "Không xác định"
+    };
+
+    string EdiStatusLabel(EdiMessageStatusEnum status) => status switch
+    {
+        EdiMessageStatusEnum.Received => "Đã nhận",
+        EdiMessageStatusEnum.Validated => "Đã kiểm tra",
+        EdiMessageStatusEnum.Rejected => "Từ chối",
+        EdiMessageStatusEnum.Exported => "Đã xuất",
+        EdiMessageStatusEnum.Replayed => "Đã phát lại",
+        _ => "Không xác định"
+    };
+
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Tích hợp hệ thống</h1>
+        <p class="page-subtitle">Điều phối EDI, điểm nhận tự động, hàng đợi gửi đi và các bộ kết nối ERP/TMS/OMS.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-secondary" asp-action="IntegrationOpenApiContract" target="_blank"><i class="fas fa-code"></i> Tài liệu giao tiếp</a>
+    </div>
+</div>
+
+<div class="metric-grid">
+    <div class="metric-card"><div class="metric-value">@Model.EdiMessages.Count</div><div class="metric-label">Thông điệp dữ liệu</div></div>
+    <div class="metric-card"><div class="metric-value">@Model.WebhookDeliveries.Count(x => x.Status == WebhookDeliveryStatusEnum.DeadLetter)</div><div class="metric-label">Điểm nhận vào hàng lỗi</div></div>
+    <div class="metric-card"><div class="metric-value">@Model.Connectors.Count(x => x.HealthStatus == EnterpriseConnectorHealthEnum.Healthy)</div><div class="metric-label">Bộ kết nối ổn định</div></div>
+    <div class="metric-card"><div class="metric-value">@Model.Outbox.Count(x => x.Status == OutboxStatusEnum.Pending)</div><div class="metric-label">Hàng đợi chờ gửi</div></div>
+</div>
+
+<div class="enterprise-workbench">
+    <section class="enterprise-section">
+        <div class="enterprise-section-header">
+            <div>
+                <div class="enterprise-section-title">EDI - trao đổi dữ liệu điện tử</div>
+                <div class="enterprise-section-subtitle">Nhập và xuất thông điệp nghiệp vụ qua kênh EDI có kiểm soát.</div>
+            </div>
+        </div>
+        <div class="enterprise-admin-grid">
+            <form method="post" asp-action="ImportEdiMessage" class="enterprise-form-card">
+                @Html.AntiForgeryToken()
+                <h3>Nhập thông điệp EDI</h3>
+                <div class="form-group">
+                    <label class="form-label">Loại thông điệp</label>
+                    <select class="form-control" name="messageType">
+                        @foreach (EdiMessageTypeEnum value in Enum.GetValues<EdiMessageTypeEnum>())
+                        {
+                            <option value="@value">@EdiMessageTypeLabel(value)</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tên tệp nguồn</label>
+                    <input class="form-control" name="fileName" placeholder="VD: thong-bao-856.edi" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Nội dung thông điệp</label>
+                    <textarea class="form-control" name="payload" rows="4" placeholder="VD: ISA*...~ST*856*0001~...~SE*...~"></textarea>
+                </div>
+                <div class="enterprise-form-actions">
+                    <button class="btn btn-primary" type="submit"><i class="fas fa-file-import"></i> Nhập dữ liệu</button>
+                </div>
+            </form>
+            <form method="post" asp-action="ExportEdiMessage" class="enterprise-form-card">
+                @Html.AntiForgeryToken()
+                <h3>Xuất thông điệp EDI</h3>
+                <div class="form-group">
+                    <label class="form-label">Loại thông điệp</label>
+                    <select class="form-control" name="messageType">
+                        @foreach (EdiMessageTypeEnum value in Enum.GetValues<EdiMessageTypeEnum>())
+                        {
+                            <option value="@value">@EdiMessageTypeLabel(value)</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Mã nguồn tham chiếu</label>
+                    <input class="form-control" name="referenceId" type="number" placeholder="VD: 1024" />
+                </div>
+                <div class="enterprise-form-actions">
+                    <button class="btn btn-secondary" type="submit"><i class="fas fa-file-export"></i> Xuất dữ liệu</button>
+                </div>
+            </form>
+        </div>
+    </section>
+    <section class="enterprise-section">
+        <div class="enterprise-section-header">
+            <div>
+                <div class="enterprise-section-title">Điểm nhận tự động và bộ kết nối</div>
+                <div class="enterprise-section-subtitle">Khai báo webhook và tạo bộ kết nối doanh nghiệp để kiểm thử luồng gửi nhận.</div>
+            </div>
+        </div>
+        <div class="enterprise-admin-grid">
+            <form method="post" asp-action="SaveWebhookSubscription" class="enterprise-form-card">
+                @Html.AntiForgeryToken()
+                <h3>Điểm nhận tự động</h3>
+                <div class="form-group">
+                    <label class="form-label">Mã sự kiện</label>
+                    <input class="form-control" name="eventType" placeholder="VD: InventoryChanged" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Địa chỉ nhận</label>
+                    <input class="form-control" name="targetUrl" placeholder="VD: mock://ton-kho" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Khóa ký</label>
+                    <input class="form-control" name="signingSecret" type="password" autocomplete="new-password" aria-label="Khóa ký webhook" placeholder="VD: khoa-ky-noi-bo" />
+                </div>
+                <div class="enterprise-form-actions">
+                    <button class="btn btn-primary" type="submit"><i class="fas fa-link"></i> Lưu điểm nhận</button>
+                </div>
+            </form>
+            <form method="post" asp-action="EnsureEnterpriseConnectorPack" class="enterprise-form-card">
+                @Html.AntiForgeryToken()
+                <h3>Bộ kết nối mô phỏng</h3>
+                <div class="enterprise-form-actions">
+                    <button class="btn btn-secondary" type="submit"><i class="fas fa-plug"></i> Tạo bộ kết nối kiểm thử</button>
+                </div>
+            </form>
+        </div>
+    </section>
+</div>
+
+<div class="enterprise-section">
+    <h2>Thông điệp trao đổi dữ liệu</h2>
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead><tr><th>Mã</th><th>Loại</th><th>Chiều</th><th>Số kiểm soát</th><th>Trạng thái</th><th>Báo cáo từ chối</th><th>Phát lại</th></tr></thead>
+            <tbody>
+                @if (!Model.EdiMessages.Any())
+                {
+                    <tr><td colspan="7" class="empty-state">Chưa có thông điệp trao đổi dữ liệu.</td></tr>
+                }
+                @foreach (var message in Model.EdiMessages)
+                {
+                    <tr>
+                        <td>@message.EdiMessageId</td>
+                        <td>@EdiMessageTypeLabel(message.MessageType)</td>
+                        <td>@EdiDirectionLabel(message.Direction)</td>
+                        <td>@message.ControlNumber</td>
+                        <td><span class="status-badge">@EdiStatusLabel(message.Status)</span></td>
+                        <td>@message.RejectReport</td>
+                        <td>
+                            <form method="post" asp-action="ReplayEdiMessage">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="ediMessageId" value="@message.EdiMessageId" />
+                                <button class="btn btn-sm btn-secondary" type="submit">Phát lại</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="yardops-two-column">
+    <section class="enterprise-section">
+        <h2>Lần gửi đến điểm nhận tự động</h2>
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead><tr><th>Sự kiện</th><th>Trạng thái</th><th>Số lần thử lại</th><th>Chữ ký</th><th>Phát lại</th></tr></thead>
+                <tbody>
+                    @if (!Model.WebhookDeliveries.Any())
+                    {
+                        <tr><td colspan="5" class="empty-state">Chưa có lần gửi đến điểm nhận tự động.</td></tr>
+                    }
+                    @foreach (var d in Model.WebhookDeliveries.Take(50))
+                    {
+                        <tr>
+                            <td>@EnterpriseUiLabels.IntegrationEvent(d.EventType)</td>
+                            <td><span class="status-badge">@EnterpriseUiLabels.DeliveryStatus(d.Status)</span></td>
+                            <td>@d.RetryCount</td>
+                            <td class="font-mono" data-redacted="webhook-signature">@MaskSignature(d.Signature)</td>
+                            <td>
+                                <form method="post" asp-action="ReplayWebhookDelivery">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="webhookDeliveryId" value="@d.WebhookDeliveryId" />
+                                    <button class="btn btn-sm btn-secondary" type="submit">Phát lại</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+    <section class="enterprise-section">
+        <h2>Bộ kết nối doanh nghiệp</h2>
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead><tr><th>Loại</th><th>Mã</th><th>Tình trạng</th><th>Địa chỉ nhận</th><th>Thao tác</th></tr></thead>
+                <tbody>
+                    @if (!Model.Connectors.Any())
+                    {
+                        <tr><td colspan="5" class="empty-state">Chưa có bộ kết nối doanh nghiệp.</td></tr>
+                    }
+                    @foreach (var c in Model.Connectors)
+                    {
+                        <tr>
+                            <td>@EnterpriseUiLabels.ConnectorType(c.ConnectorType)</td>
+                            <td class="td-code">@c.ConnectorCode</td>
+                            <td><span class="status-badge">@EnterpriseUiLabels.ConnectorHealth(c.HealthStatus)</span></td>
+                            <td>@c.EndpointUrl</td>
+                            <td>
+                                <form method="post" asp-action="CheckEnterpriseConnectorHealth">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="connectorId" value="@c.EnterpriseConnectorId" />
+                                    <button class="btn btn-sm btn-secondary" type="submit">Kiểm tra</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+<div class="enterprise-section">
+    <h2>Hàng đợi gửi đi gần nhất</h2>
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead><tr><th>Sự kiện</th><th>Hệ thống nhận</th><th>Trạng thái</th><th>Số lần thử lại</th><th>Khóa chống trùng</th></tr></thead>
+            <tbody>
+                @if (!Model.Outbox.Any())
+                {
+                    <tr><td colspan="5" class="empty-state">Chưa có hàng đợi gửi đi.</td></tr>
+                }
+                @foreach (var o in Model.Outbox.Take(50))
+                {
+                    <tr><td>@EnterpriseUiLabels.IntegrationEvent(o.EventType)</td><td>@EnterpriseUiLabels.TargetSystem(o.TargetSystem)</td><td><span class="status-badge">@EnterpriseUiLabels.OutboxStatus(o.Status)</span></td><td>@o.RetryCount</td><td class="font-mono">@o.IdempotencyKey</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

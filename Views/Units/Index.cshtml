@@ -1,0 +1,197 @@
+@model List<WMS.Models.UnitOfMeasure>
+@{
+    ViewData["Title"] = "Đơn vị tính";
+}
+
+@functions {
+    public string GetUomGroup(string code)
+    {
+        code = (code ?? "").ToLower().Trim();
+        var mass = new[] { "kg", "g", "mg", "tấn", "lạng", "yến", "tạ" };
+        var vol = new[] { "l", "ml", "m³", "cm³", "gal" };
+        var length = new[] { "m", "cm", "mm", "km", "in", "ft" };
+        var area = new[] { "m²", "cm²" };
+        var time = new[] { "giờ", "ngày", "tháng", "năm", "phút", "giây", "mili giây" };
+        var commerce = new[] { "cái", "chiếc", "bộ", "đôi", "cặp", "con", "tờ", "cuộn", "thanh", "ống", "viên", "gói", "túi", "chai", "lon", "lọ", "hũ", "bình", "can", "xô" };
+        var pack = new[] { "thùng", "hộp", "bao", "kiện", "pallet", "lô", "két", "khay", "bịch" };
+
+        if (mass.Contains(code)) return "Khối lượng";
+        if (vol.Contains(code)) return "Thể tích";
+        if (length.Contains(code)) return "Độ dài";
+        if (area.Contains(code)) return "Diện tích";
+        if (time.Contains(code)) return "Thời gian";
+        if (pack.Contains(code)) return "Đóng gói";
+        if (commerce.Contains(code)) return "Thương mại";
+        return "Thương mại";
+    }
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Đơn vị tính</h1>
+        <p class="page-subtitle">Quản lý đơn vị tính cơ sở để dùng thống nhất trong vật tư, phiếu, tồn kho và báo cáo.</p>
+    </div>
+</div>
+
+<div class="enterprise-form-layout">
+    <div class="card enterprise-form-card wide">
+        <div class="card-header">
+            <span class="card-title"><i class="fas fa-ruler text-accent"></i> Danh sách đơn vị tính</span>
+            <span class="badge badge-info">@Model.Count đơn vị</span>
+        </div>
+        <div class="card-body">
+            <div class="user-guide mb-12">
+                <div class="user-guide-title"><i class="fas fa-list-check"></i> Chuẩn nhập đơn vị tính</div>
+                <div class="step-list">
+                    <span class="step-chip"><i class="fas fa-keyboard"></i> Mã ngắn gọn, dễ nhớ</span>
+                    <span class="step-chip"><i class="fas fa-pen"></i> Tên đầy đủ để người mới dễ hiểu</span>
+                    <span class="step-chip"><i class="fas fa-layer-group"></i> Chọn đúng nhóm đo lường</span>
+                </div>
+            </div>
+
+        <form method="post" asp-controller="Units" asp-action="Create" id="uomCreateForm" class="form-inline-create" novalidate>
+                @Html.AntiForgeryToken()
+                <div class="form-group">
+                    <label class="form-label" for="uomCodeInput">Mã đơn vị *</label>
+                    <input type="text" id="uomCodeInput" name="uomCode" class="form-control" placeholder="VD: KG" />
+                    <small id="uomCodeError" class="text-danger field-hint" hidden>Vui lòng nhập mã đơn vị tính.</small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="uomNameInput">Tên đơn vị *</label>
+                    <input type="text" id="uomNameInput" name="uomName" class="form-control" placeholder="VD: Kilogram" />
+                    <small id="uomNameError" class="text-danger field-hint" hidden>Vui lòng nhập tên đơn vị tính.</small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="uomGroupInput">Nhóm đo lường</label>
+                    <select id="uomGroupInput" name="uomGroup" class="form-control">
+                        <option value="Khoi luong">Khối lượng</option>
+                        <option value="The tich">Thể tích</option>
+                        <option value="Do dai">Độ dài</option>
+                        <option value="Dien tich">Diện tích</option>
+                        <option value="Thoi gian">Thời gian</option>
+                        <option value="Thuong mai" selected>Thương mại</option>
+                        <option value="Dong goi">Đóng gói</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">&nbsp;</label>
+                    <button type="submit" class="btn btn-primary full-width-action"><i class="fas fa-plus"></i> Thêm</button>
+                </div>
+            </form>
+            <div class="field-hint mb-12">Lỗi nhập liệu sẽ hiển thị ngay dưới trường cần xử lý.</div>
+
+            <div class="table-container flat data-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mã đơn vị</th>
+                            <th>Tên đơn vị</th>
+                            <th>Nhóm</th>
+                            <th class="text-right">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (!Model.Any())
+                        {
+                            <tr>
+                                <td colspan="4" class="table-empty-cell">
+                                    <div class="table-empty-content">Chưa có đơn vị tính nào. Hãy thêm đơn vị cơ sở trước khi tạo vật tư.</div>
+                                </td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var u in Model.OrderBy(x => GetUomGroup(x.UomCode)).ThenBy(x => x.UomCode))
+                            {
+                                <tr>
+                                    <td class="td-code text-accent">@u.UomCode</td>
+                                    <td class="td-name">@u.UomName</td>
+                                    <td><span class="badge badge-purple">@(!string.IsNullOrEmpty(u.UomGroup) ? u.UomGroup : GetUomGroup(u.UomCode))</span></td>
+                                    <td class="td-actions">
+                                        <form asp-controller="Units" asp-action="Delete" asp-route-id="@u.UomId" method="post" class="js-confirm-uom-delete inline-form">
+                                            @Html.AntiForgeryToken()
+                                            <button type="submit" class="btn btn-sm btn-danger" title="Xóa đơn vị tính"><i class="fas fa-trash"></i></button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <aside class="enterprise-form-aside">
+        <div class="card">
+            <div class="card-header"><span class="card-title">Nguyên tắc vận hành</span></div>
+            <div class="card-body">
+                <ol class="audit-checklist">
+                    <li>Đơn vị cơ sở của vật tư phải ổn định sau khi có giao dịch tồn kho.</li>
+                    <li>Không xóa đơn vị đang được dùng trong vật tư hoặc quy đổi.</li>
+                    <li>Tên đơn vị nên viết đầy đủ để nhân viên mới không nhầm lẫn.</li>
+                </ol>
+            </div>
+        </div>
+    </aside>
+</div>
+
+@section Scripts {
+<script>
+    const uomForm = document.getElementById('uomCreateForm');
+    if (uomForm) {
+        const codeErr = document.getElementById('uomCodeError');
+        const nameErr = document.getElementById('uomNameError');
+        if (codeErr) codeErr.hidden = true;
+        if (nameErr) nameErr.hidden = true;
+
+        uomForm.addEventListener('submit', function (e) {
+            const code = document.getElementById('uomCodeInput');
+            const name = document.getElementById('uomNameInput');
+            const codeVal = (code?.value || '').trim();
+            const nameVal = (name?.value || '').trim();
+            let hasError = false;
+
+            if (!codeVal) {
+                hasError = true;
+                if (codeErr) codeErr.hidden = false;
+                if (code) code.classList.add('input-validation-error');
+            } else {
+                if (codeErr) codeErr.hidden = true;
+                if (code) code.classList.remove('input-validation-error');
+            }
+
+            if (!nameVal) {
+                hasError = true;
+                if (nameErr) nameErr.hidden = false;
+                if (name) name.classList.add('input-validation-error');
+            } else {
+                if (nameErr) nameErr.hidden = true;
+                if (name) name.classList.remove('input-validation-error');
+            }
+
+            if (hasError) {
+                e.preventDefault();
+                if (!codeVal && code) code.focus();
+                else if (name) name.focus();
+            }
+        });
+    }
+
+    document.querySelectorAll('.js-confirm-uom-delete').forEach(form => {
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            if (typeof Swal === 'undefined') { this.submit(); return; }
+            Swal.fire({
+                title: 'Xóa đơn vị tính?',
+                text: 'Chỉ xóa khi chắc chắn đơn vị này chưa được dùng trong vật tư hoặc quy đổi.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Xóa',
+                cancelButtonText: 'Hủy',
+                confirmButtonColor: '#ef4444'
+            }).then(r => { if (r.isConfirmed) this.submit(); });
+        });
+    });
+</script>
+}

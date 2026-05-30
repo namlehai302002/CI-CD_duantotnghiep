@@ -1,0 +1,176 @@
+@model WMS.ViewModels.CarrierConnectorPageViewModel
+@{
+    ViewData["Title"] = "Bộ kết nối vận tải";
+    string AdapterText(WMS.Models.CarrierAdapterTypeEnum adapterType) => adapterType switch
+    {
+        WMS.Models.CarrierAdapterTypeEnum.Mock => "Giả lập nội bộ",
+        WMS.Models.CarrierAdapterTypeEnum.Http => "Qua hàng đợi tích hợp",
+        _ => "Không áp dụng"
+    };
+    string AuthText(WMS.Models.CarrierAuthTypeEnum authType) => authType switch
+    {
+        WMS.Models.CarrierAuthTypeEnum.None => "Không dùng xác thực",
+        WMS.Models.CarrierAuthTypeEnum.ApiKey => "Khóa kết nối",
+        WMS.Models.CarrierAuthTypeEnum.Bearer => "Mã truy cập",
+        WMS.Models.CarrierAuthTypeEnum.Basic => "Tài khoản cơ bản",
+        _ => "Không áp dụng"
+    };
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Bộ kết nối vận tải</h1>
+        <p class="page-subtitle">Khai báo cách WMS nói chuyện với đơn vị vận chuyển theo từng kho: tạo vận đơn, in nhãn, gửi lại lỗi và đồng bộ trạng thái giao hàng.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Operations" asp-action="ShippingDispatch" class="btn btn-secondary"><i class="fas fa-truck-fast"></i> Bảng điều phối vận chuyển</a>
+    </div>
+</div>
+
+<form method="post" asp-action="SaveCarrierConnector" class="filter-bar">
+    @Html.AntiForgeryToken()
+    <div class="form-group">
+        <label class="form-label">Kho *</label>
+        <select name="warehouseId" class="form-control" required>
+            @foreach (var wh in Model.Warehouses)
+            {
+                <option value="@wh.WarehouseId" selected="@(Model.WarehouseId == wh.WarehouseId)">@wh.WarehouseCode - @wh.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Mã hãng *</label>
+        <input name="carrierCode" class="form-control font-mono" maxlength="40" placeholder="MOCK" required />
+    </div>
+    <div class="form-group">
+        <label class="form-label">Tên đơn vị *</label>
+        <input name="carrierName" class="form-control" maxlength="120" placeholder="Đơn vị vận chuyển giả lập" required />
+    </div>
+    <div class="form-group">
+        <label class="form-label">Cách kết nối</label>
+        <select name="adapterType" class="form-control">
+            <option value="@WMS.Models.CarrierAdapterTypeEnum.Mock">@AdapterText(WMS.Models.CarrierAdapterTypeEnum.Mock)</option>
+            <option value="@WMS.Models.CarrierAdapterTypeEnum.Http">@AdapterText(WMS.Models.CarrierAdapterTypeEnum.Http)</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Xác thực</label>
+        <select name="authType" class="form-control">
+            @foreach (WMS.Models.CarrierAuthTypeEnum auth in Enum.GetValues<WMS.Models.CarrierAuthTypeEnum>())
+            {
+                <option value="@auth">@AuthText(auth)</option>
+            }
+        </select>
+    </div>
+    <div class="form-group form-span-2">
+        <label class="form-label">Địa chỉ kết nối</label>
+        <input name="endpointUrl" class="form-control" maxlength="300" placeholder="https://carrier.example/api/shipments" />
+    </div>
+    <div class="form-group">
+        <label class="form-label">Tham chiếu khóa</label>
+        <input name="apiKeyReference" class="form-control" maxlength="200" placeholder="KeyVault:Carrier:ApiKey" />
+    </div>
+    <div class="form-group">
+        <label class="form-label">Quy tắc</label>
+        <label class="form-check"><input type="checkbox" name="isSandbox" value="true" checked /> Chế độ thử nghiệm</label>
+        <label class="form-check"><input type="checkbox" name="isActive" value="true" checked /> Đang hoạt động</label>
+        <label class="form-check"><input type="checkbox" name="requireShipmentCreatedBeforeShipping" value="true" /> Bắt buộc có vận đơn trước khi giao</label>
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-save"></i> Thêm cấu hình</button>
+    </div>
+</form>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Lọc kho</label>
+        <select name="warehouseId" class="form-control">
+            <option value="">Tất cả</option>
+            @foreach (var wh in Model.Warehouses)
+            {
+                <option value="@wh.WarehouseId" selected="@(Model.WarehouseId == wh.WarehouseId)">@wh.WarehouseCode - @wh.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-secondary" type="submit"><i class="fas fa-filter"></i> Lọc</button>
+    </div>
+</form>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Kho</th>
+                <th>Mã hãng</th>
+                <th>Tên đơn vị</th>
+                <th>Cách kết nối</th>
+                <th>Kết nối</th>
+                <th>Trạng thái</th>
+                <th>Quy tắc giao hàng</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @if (!Model.Connectors.Any())
+        {
+            <tr><td colspan="8" class="cell-zero-padding"><div class="empty-state"><div class="empty-icon"><i class="fas fa-truck-fast"></i></div><div class="empty-text">Chưa có cấu hình đơn vị vận chuyển</div></div></td></tr>
+        }
+        else
+        {
+            foreach (var c in Model.Connectors)
+            {
+                <tr>
+                    <td>@c.Warehouse.WarehouseName</td>
+                    <td><span class="badge badge-accent font-mono">@c.CarrierCode</span></td>
+                    <td>@c.CarrierName</td>
+                    <td>
+                        <div>@AdapterText(c.AdapterType)</div>
+                        <div class="table-subtext-sm">@AuthText(c.AuthType)</div>
+                    </td>
+                    <td class="font-mono fs-sm">@(string.IsNullOrWhiteSpace(c.EndpointUrl) ? "Chưa cập nhật" : c.EndpointUrl)</td>
+                    <td>
+                        <span class="badge @(c.IsActive ? "badge-success" : "badge-secondary")">@(c.IsActive ? "Đang hoạt động" : "Tạm tắt")</span>
+                        @if (c.IsSandbox)
+                        {
+                            <div class="table-subtext-sm">Thử nghiệm</div>
+                        }
+                    </td>
+                    <td>@(c.RequireShipmentCreatedBeforeShipping ? "Bắt buộc có vận đơn" : "Không chặn giao hàng")</td>
+                    <td>
+                        <details>
+                            <summary class="btn btn-sm btn-secondary carrier-edit-summary">Sửa</summary>
+                            <form method="post" asp-action="SaveCarrierConnector" class="carrier-edit-form">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="carrierConnectorId" value="@c.CarrierConnectorId" />
+                                <input type="hidden" name="warehouseId" value="@c.WarehouseId" />
+                                <input name="carrierCode" class="form-control font-mono" maxlength="40" value="@c.CarrierCode" required />
+                                <input name="carrierName" class="form-control" maxlength="120" value="@c.CarrierName" required />
+                                <select name="adapterType" class="form-control">
+                                    <option value="@WMS.Models.CarrierAdapterTypeEnum.Mock" selected="@(c.AdapterType == WMS.Models.CarrierAdapterTypeEnum.Mock)">@AdapterText(WMS.Models.CarrierAdapterTypeEnum.Mock)</option>
+                                    <option value="@WMS.Models.CarrierAdapterTypeEnum.Http" selected="@(c.AdapterType == WMS.Models.CarrierAdapterTypeEnum.Http)">@AdapterText(WMS.Models.CarrierAdapterTypeEnum.Http)</option>
+                                </select>
+                                <select name="authType" class="form-control">
+                                    @foreach (WMS.Models.CarrierAuthTypeEnum auth in Enum.GetValues<WMS.Models.CarrierAuthTypeEnum>())
+                                    {
+                                        <option value="@auth" selected="@(c.AuthType == auth)">@AuthText(auth)</option>
+                                    }
+                                </select>
+                                <input name="endpointUrl" class="form-control" maxlength="300" value="@c.EndpointUrl" placeholder="Địa chỉ kết nối" />
+                                <input name="apiKeyReference" class="form-control" maxlength="200" value="@c.ApiKeyReference" placeholder="Tham chiếu khóa" />
+                                <label class="form-check"><input type="checkbox" name="isSandbox" value="true" checked="@c.IsSandbox" /> Chế độ thử nghiệm</label>
+                                <label class="form-check"><input type="checkbox" name="isActive" value="true" checked="@c.IsActive" /> Đang hoạt động</label>
+                                <label class="form-check"><input type="checkbox" name="requireShipmentCreatedBeforeShipping" value="true" checked="@c.RequireShipmentCreatedBeforeShipping" /> Bắt buộc có vận đơn trước khi giao</label>
+                                <textarea name="notes" class="form-control" maxlength="500" rows="2" placeholder="Ghi chú">@c.Notes</textarea>
+                                <button class="btn btn-primary btn-sm" type="submit"><i class="fas fa-save"></i> Lưu</button>
+                            </form>
+                        </details>
+                    </td>
+                </tr>
+            }
+        }
+        </tbody>
+    </table>
+</div>

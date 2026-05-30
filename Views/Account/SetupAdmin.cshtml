@@ -1,0 +1,73 @@
+@{
+    ViewData["Title"] = "Thiết lập quản trị viên lần đầu";
+    Layout = "_Layout";
+    var returnUrl = ViewBag.ReturnUrl as string;
+    var bootstrapToken = ViewBag.BootstrapToken as string;
+}
+
+<div class="login-page enterprise-auth-page">
+    <div class="enterprise-auth-stage">
+        <section class="enterprise-auth-visual" aria-label="Thiết lập ban đầu WMS Pro">
+            <div class="enterprise-auth-brand-signal">
+                <img src="~/images/logo-full.svg" asp-append-version="true" alt="WMS - Quản lý kho nội bộ" class="enterprise-auth-lockup" />
+                <p>Tạo tài khoản đầu tiên để khóa quyền truy cập và bắt đầu cấu hình kho.</p>
+            </div>
+
+            <div class="enterprise-auth-grid compact" aria-hidden="true">
+                <span></span><span></span><span></span><span></span>
+                <span></span><span></span><span></span><span></span>
+            </div>
+
+            <div class="enterprise-auth-status">
+                <div class="enterprise-auth-status-row"><span class="enterprise-auth-status-dot warning"></span><span>Chỉ dùng khi chưa có quản trị viên</span></div>
+                <div class="enterprise-auth-status-row"><span class="enterprise-auth-status-dot success"></span><span>Mật khẩu mạnh là bắt buộc</span></div>
+                <div class="enterprise-auth-status-row"><span class="enterprise-auth-status-dot"></span><span>Hoàn tất xong sẽ quay lại luồng đăng nhập</span></div>
+            </div>
+        </section>
+
+        <section class="enterprise-auth-panel auth-card" aria-labelledby="setupAdminTitle">
+            <div class="login-logo">
+                <div class="logo-icon"><img src="~/images/logo.svg" asp-append-version="true" alt="Biểu trưng WMS Pro" class="brand-mark-img" /></div>
+                <h1 id="setupAdminTitle">Thiết lập quản trị viên</h1>
+                <p>Tạo tài khoản quản trị lần đầu cho hệ thống</p>
+            </div>
+
+            @if (TempData["Error"] != null)
+            {
+                <div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> @TempData["Error"]</div>
+            }
+            @if (TempData["Success"] != null)
+            {
+                <div class="alert alert-success"><i class="fas fa-check-circle"></i> @TempData["Success"]</div>
+            }
+
+            <form method="post" asp-action="SetupAdmin" class="enterprise-auth-form">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="returnUrl" value="@returnUrl" />
+                <input type="hidden" name="bootstrapToken" value="@bootstrapToken" />
+                <div class="form-group">
+                    <label class="form-label">Tài khoản (tên đăng nhập / thư điện tử)</label>
+                    <input type="text" name="userName" class="form-control" placeholder="quantri@congty.vn" autocomplete="username" required autofocus />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Họ tên</label>
+                    <input type="text" name="fullName" class="form-control" placeholder="Quản trị viên" autocomplete="name" required />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Thư điện tử (tùy chọn)</label>
+                    <input type="email" name="email" class="form-control" placeholder="quantri@congty.vn" autocomplete="email" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Mật khẩu</label>
+                    <input type="password" name="password" class="form-control" placeholder="Tối thiểu 8 ký tự, có HOA/thường/số/ký tự đặc biệt" autocomplete="new-password" required />
+                    <small class="field-hint">
+                        Yêu cầu: 8+ ký tự, có chữ hoa, chữ thường, số và ký tự đặc biệt.
+                    </small>
+                </div>
+                <button type="submit" class="btn btn-primary btn-lg full-width-action mt-8 enterprise-auth-submit">
+                    <i class="fas fa-user-shield"></i> Tạo quản trị viên
+                </button>
+            </form>
+        </section>
+    </div>
+</div>

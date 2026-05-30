@@ -1,0 +1,143 @@
+﻿@model WMS.ViewModels.ThreePlBillingRunDetailsViewModel
+@using WMS.Models
+@{
+    ViewData["Title"] = Model.Run.RunCode;
+
+    string ChargeTypeLabel(ThreePlChargeTypeEnum type) => type switch
+    {
+        ThreePlChargeTypeEnum.Storage => "Phí lưu kho",
+        ThreePlChargeTypeEnum.InboundHandling => "Phí xử lý nhập kho",
+        ThreePlChargeTypeEnum.OutboundHandling => "Phí xử lý xuất kho",
+        ThreePlChargeTypeEnum.Vas => "Phí dịch vụ gia tăng",
+        ThreePlChargeTypeEnum.Yard => "Phí bến bãi",
+        ThreePlChargeTypeEnum.PackageHandling => "Phí xử lý kiện",
+        ThreePlChargeTypeEnum.ManualAdjustment => "Điều chỉnh thủ công",
+        _ => "Không xác định"
+    };
+
+    string RunStatusLabel(ThreePlBillingRunStatusEnum status) => status switch
+    {
+        ThreePlBillingRunStatusEnum.Draft => "Nháp",
+        ThreePlBillingRunStatusEnum.Confirmed => "Đã xác nhận",
+        ThreePlBillingRunStatusEnum.Voided => "Đã hủy",
+        _ => "Không xác định"
+    };
+
+    string ChargeStatusLabel(ThreePlBillingChargeStatusEnum status) => status switch
+    {
+        ThreePlBillingChargeStatusEnum.Draft => "Nháp",
+        ThreePlBillingChargeStatusEnum.Confirmed => "Đã xác nhận",
+        ThreePlBillingChargeStatusEnum.Voided => "Đã hủy",
+        _ => "Không xác định"
+    };
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">@Model.Run.RunCode</h1>
+        <p class="page-subtitle">@Model.Run.Warehouse.WarehouseCode - @Model.Run.OwnerPartner.PartnerCode - @Model.Run.PeriodFrom.ToString("dd/MM/yyyy") đến @Model.Run.PeriodTo.ToString("dd/MM/yyyy")</p>
+    </div>
+    <div class="page-actions">
+        <a asp-action="ExportThreePlBillingRunExcel" asp-route-id="@Model.Run.ThreePlBillingRunId" class="btn btn-outline-success"><i class="fas fa-file-excel"></i> Xuất Excel</a>
+        @if (Model.Invoice != null)
+        {
+            <a asp-action="ThreePlInvoiceDetails" asp-route-id="@Model.Invoice.ThreePlInvoiceId" class="btn btn-outline-success"><i class="fas fa-file-invoice"></i> Hóa đơn</a>
+        }
+        else
+        {
+            <form asp-action="GenerateThreePlInvoice" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="runId" value="@Model.Run.ThreePlBillingRunId" />
+                <button class="btn btn-outline-primary" type="submit"><i class="fas fa-file-invoice-dollar"></i> Tạo hóa đơn</button>
+            </form>
+        }
+        @if (Model.Run.Status == ThreePlBillingRunStatusEnum.Draft)
+        {
+            <form asp-action="ConfirmThreePlBillingRun" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.Run.ThreePlBillingRunId" />
+                <button class="btn btn-primary" type="submit"><i class="fas fa-check"></i> Xác nhận</button>
+            </form>
+        }
+    </div>
+</div>
+
+<div class="metric-grid">
+    <div class="metric-card @(Model.Run.Status == ThreePlBillingRunStatusEnum.Confirmed ? "success" : Model.Run.Status == ThreePlBillingRunStatusEnum.Voided ? "danger" : "warning")">
+        <div class="metric-value">@RunStatusLabel(Model.Run.Status)</div>
+        <div class="metric-label">Trạng thái kỳ tính phí</div>
+    </div>
+    <div class="metric-card info">
+        <div class="metric-value">@Model.Run.TotalAmount.ToString("N2")</div>
+        <div class="metric-label">Tổng tiền @Model.Run.Currency</div>
+    </div>
+</div>
+
+<section class="enterprise-section">
+    <div class="enterprise-section-header">
+        <div>
+            <div class="enterprise-section-title">Chi tiết dòng phí</div>
+            <div class="enterprise-section-subtitle">Các dòng phát sinh từ lưu kho, nhập/xuất, VAS, bãi và điều chỉnh thủ công.</div>
+        </div>
+        <span class="yardops-context-pill">@Model.Charges.Count.ToString("N0") dòng</span>
+    </div>
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Loại phí</th>
+                    <th>Nguồn phát sinh</th>
+                    <th>Số lượng tính phí</th>
+                    <th>Đơn giá</th>
+                    <th class="text-end">Thành tiền</th>
+                    <th>Trạng thái</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var charge in Model.Charges)
+            {
+                <tr>
+                    <td>@ChargeTypeLabel(charge.ChargeType)</td>
+                    <td>@charge.SourceType / @charge.SourceCode</td>
+                    <td>@charge.Quantity.ToString("N4") @charge.ChargeUnit</td>
+                    <td>@charge.UnitRate.ToString("N4")</td>
+                    <td class="text-end">@charge.Amount.ToString("N2") @charge.Currency</td>
+                    <td><span class="status-badge">@ChargeStatusLabel(charge.Status)</span></td>
+                </tr>
+            }
+            @if (!Model.Charges.Any())
+            {
+                <tr>
+                    <td colspan="6" class="table-empty-cell">
+                        <div class="table-empty-content">Kỳ tính phí này chưa có dòng phí.</div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@if (Model.Run.Status != ThreePlBillingRunStatusEnum.Voided)
+{
+    <section class="enterprise-section">
+        <div class="enterprise-section-header">
+            <div>
+                <div class="enterprise-section-title">Hủy kỳ tính phí</div>
+                <div class="enterprise-section-subtitle">Chỉ dùng khi kỳ tính phí tạo sai phạm vi hoặc cần tính lại từ đầu.</div>
+            </div>
+        </div>
+            <form asp-action="VoidThreePlBillingRun" method="post" class="yardops-form-grid" data-enterprise-confirm="Hủy kỳ tính phí này?">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.Run.ThreePlBillingRunId" />
+                <div class="form-group yardops-wide">
+                    <label class="form-label">Lý do hủy</label>
+                    <input name="reason" class="form-control" />
+                </div>
+                <div class="form-group yardops-filter-actions">
+                    <label class="form-label">&nbsp;</label>
+                    <button class="btn btn-outline-danger" type="submit"><i class="fas fa-ban"></i> Hủy kỳ tính phí</button>
+                </div>
+            </form>
+    </section>
+}

@@ -1,0 +1,213 @@
+@model WMS.Models.Warehouse
+@{
+    ViewData["Title"] = $"Sơ Đồ: {Model.WarehouseName}";
+    var mapAddressQuery = Model.Address ?? Model.WarehouseName;
+}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-warehouse text-accent"></i> @Model.WarehouseName</h1>
+        <p class="page-subtitle">Sơ đồ và cấu trúc hiển thị khu vực lưu trữ & vị trí</p>
+        <div class="warehouse-meta-line">
+            <i class="fas fa-map-marker-alt"></i> @Model.Address | 
+            <i class="fas fa-user"></i> @(Model.ManagerUser != null ? Model.ManagerUser.FullName : (string.IsNullOrEmpty(Model.ManagerName) ? "---" : Model.ManagerName)) - @Model.Phone
+        </div>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Warehouses" asp-action="Index" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Danh sách kho</a>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header"><span class="card-title"><i class="fas fa-map-marked-alt text-primary"></i> Bản Đồ Vị Trí Kho (Leaflet)</span></div>
+    <div class="card-body table-card-body">
+        <div id="warehouseMap" class="warehouse-map"></div>
+    </div>
+</div>
+
+
+
+
+
+<!-- Modal Thêm Location -->
+<div class="modal-overlay" id="modalLoc">
+    <div class="modal">
+        <form method="post" asp-controller="Warehouses" asp-action="CreateLocation">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="zoneId" id="locZoneId" value="" />
+            <div class="modal-header">
+                <div class="modal-title">Thêm Vị Trí (Location) vào <span class="text-accent" id="locZoneName"></span></div>
+                <button type="button" class="modal-close" data-wms-close-modal="modalLoc">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Mã Vị Trí (Location Code) *</label>
+                    <input type="text" name="locationCode" class="form-control" required placeholder="VD: A1-01-01" />
+                    <small class="text-muted fs-xs">Mã định danh duy nhất (VD: dùng để in Mã vạch/QR)</small>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Cột/Dãy (Rack)</label>
+                        <input type="text" name="rackCode" class="form-control" placeholder="A1" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tầng (Shelf)</label>
+                        <input type="text" name="shelfCode" class="form-control" placeholder="01" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Ô/Hộc (Bin)</label>
+                        <input type="text" name="binCode" class="form-control" placeholder="01" />
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-wms-close-modal="modalLoc">Hủy</button>
+                <button type="submit" class="btn btn-primary">Thêm Vị Trí</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal Xem Tồn Kho Vị Trí -->
+<div class="modal-overlay" id="modalStock">
+    <div class="modal modal-wide">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fas fa-boxes text-info"></i> Tồn Kho Tại: <span class="text-accent" id="stockLocName"></span></div>
+            <button type="button" class="modal-close" data-wms-close-modal="modalStock">&times;</button>
+        </div>
+        <div class="modal-body table-card-body">
+            <div class="table-container flat scroll-y">
+                <table class="warehouse-stock-table">
+                    <thead>
+                        <tr>
+                            <th class="w-18p">Mã VT</th>
+                            <th class="w-43p">Tên Vật Tư</th>
+                            <th class="w-18p cell-right">Số Lượng</th>
+                            <th class="w-18p">ĐVT</th>
+                        </tr>
+                    </thead>
+                    <tbody id="stockTbody">
+                        <tr><td colspan="5" class="text-center font-italic text-muted"><i class="fas fa-spinner fa-spin"></i> Đang tải dữ liệu...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="modal-footer modal-footer-spread">
+            <div class="enterprise-inline-controls">
+                <a asp-controller="Vouchers" asp-action="Create" asp-route-type="6" class="btn btn-sm btn-info" title="Chuyển vật tư sang vị trí/kho khác"><i class="fas fa-exchange-alt"></i> Luân chuyển</a>
+                <a asp-controller="Vouchers" asp-action="Create" asp-route-type="5" class="btn btn-sm btn-warning" title="Điều chỉnh/kiểm kê số lượng thực tế"><i class="fas fa-sliders-h"></i> Điều chỉnh</a>
+            </div>
+            <button type="button" class="btn btn-secondary" data-wms-close-modal="modalStock">Đóng</button>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        var map = L.map('warehouseMap').setView([10.762622, 106.660172], 12); // Default to HCMC
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        const warehouseName = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.WarehouseName ?? "---"));
+        const warehouseAddress = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Address ?? "---"));
+        const escapeHtml = (text) => String(text ?? "")
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+        var addressQuery = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(mapAddressQuery ?? "---"));
+        addressQuery = addressQuery.replace(/ \/ /g, ' ').replace(/-/g, ' ');
+        if (addressQuery && addressQuery !== '---') {
+            fetch('https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(addressQuery))
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data.length > 0) {
+                        var lat = parseFloat(data[0].lat);
+                        var lon = parseFloat(data[0].lon);
+                        map.setView([lat, lon], 15);
+                        L.marker([lat, lon]).addTo(map)
+                            .bindPopup(`<b class="warehouse-map-popup-title">${escapeHtml(warehouseName)}</b><br><span class="warehouse-map-popup-text">${escapeHtml(warehouseAddress)}</span>`)
+                            .openPopup();
+                    } else {
+                        L.marker([10.762622, 106.660172]).addTo(map)
+                            .bindPopup(`<b class="warehouse-map-popup-title">${escapeHtml(warehouseName)}</b><br><span class="warehouse-map-popup-text">(Vị trí mặc định - Không tìm thấy địa chỉ chính xác)</span>`)
+                            .openPopup();
+                    }
+                }).catch(() => {
+                    L.marker([10.762622, 106.660172]).addTo(map)
+                        .bindPopup(`<b class="warehouse-map-popup-title">${escapeHtml(warehouseName)}</b><br><span class="warehouse-map-popup-text">(Vị trí mặc định - Không tìm thấy địa chỉ chính xác)</span>`)
+                        .openPopup();
+                });
+        }
+    });
+
+
+    async function fetchJsonOrThrow(url, defaultMessage) {
+        const response = await fetch(url);
+        const raw = await response.text();
+        let data = null;
+
+        if (raw) {
+            try {
+                data = JSON.parse(raw);
+            } catch {
+                if (response.ok) {
+                    throw new Error(defaultMessage || 'Server trả về dữ liệu không hợp lệ.');
+                }
+            }
+        }
+
+        if (!response.ok) {
+            const message = (data && (data.message || data.error)) || raw || defaultMessage || 'Không thể tải dữ liệu.';
+            throw new Error(message);
+        }
+
+        if (data === null) {
+            throw new Error(defaultMessage || 'Server không trả về JSON hợp lệ.');
+        }
+
+        return data;
+    }
+
+    function openLocationModal(zoneId, zoneCode) {
+        document.getElementById('locZoneId').value = zoneId;
+        document.getElementById('locZoneName').innerText = zoneCode;
+        document.getElementById('modalLoc').classList.add('active');
+    }
+
+    async function openStockModal(locId, locCode) {
+        document.getElementById('stockLocName').innerText = locCode;
+        document.getElementById('stockTbody').innerHTML = '<tr><td colspan="5" class="text-center font-italic text-muted"><i class="fas fa-spinner fa-spin"></i> Đang tải dữ liệu...</td></tr>';
+        document.getElementById('modalStock').classList.add('active');
+
+        try {
+            const locationStockUrl = '@Url.Action("GetLocationStock", "Warehouses")';
+            const data = await fetchJsonOrThrow(`${locationStockUrl}?locationId=${encodeURIComponent(locId)}`, 'Không tải được tồn kho vị trí.');
+            if (data && data.length > 0) {
+                let html = '';
+                data.forEach(item => {
+                    html += `<tr>
+                        <td class="td-code text-accent">${escapeHtml(item.itemCode || '---')}</td>
+                        <td class="td-name">${escapeHtml(item.itemName || '---')}</td>
+                        <td class="td-number fw-600 text-success">${Number(item.quantity).toLocaleString('vi-VN')}</td>
+                        <td>${escapeHtml(item.uom || '---')}</td>
+                    </tr>`;
+                });
+                document.getElementById('stockTbody').innerHTML = html;
+            } else {
+                document.getElementById('stockTbody').innerHTML = '<tr><td colspan="5" class="cell-empty cell-empty-sm"><i class="fas fa-box-open empty-muted-icon"></i> Vị trí này hiện đang trống (không có hàng).</td></tr>';
+            }
+        } catch (e) {
+            document.getElementById('stockTbody').innerHTML = `<tr><td colspan="5" class="text-center text-danger">${escapeHtml(e?.message || 'Lỗi mạng hoặc tải dữ liệu thất bại!')}</td></tr>`;
+            console.error(e);
+        }
+    }
+</script>
+}

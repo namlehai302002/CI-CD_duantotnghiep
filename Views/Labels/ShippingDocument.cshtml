@@ -1,0 +1,190 @@
+@model WMS.ViewModels.ShippingDocumentPrintViewModel
+@{
+    Layout = null;
+    var isLabelSheet = Model.DocumentType == "PackageShippingLabel" || Model.DocumentType == "ShipmentLoadPackageLabels";
+    var title = string.IsNullOrWhiteSpace(Model.DocumentTitle) ? "Chứng từ vận chuyển" : Model.DocumentTitle;
+}
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <title>@title - @Model.DocumentNumber</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <link rel="stylesheet" href="~/css/wms-shipping-document.css" asp-append-version="true" />
+</head>
+<body>
+    <div class="toolbar">
+        <div>
+            <div class="toolbar-title">@title</div>
+            <div class="toolbar-meta">Lệnh in @Model.Job.JobCode • Số chứng từ @Model.DocumentNumber • Người in @Model.PrintedBy • @Model.PrintedAt.ToString("dd/MM/yyyy HH:mm")</div>
+        </div>
+        <button class="btn" data-wms-window-action="print">In chứng từ</button>
+    </div>
+
+    @if (isLabelSheet)
+    {
+        <div class="sheet">
+            @foreach (var row in Model.PackageLabels)
+            {
+                var qrId = $"qr_{row.OutboundPackageId}_{Guid.NewGuid():N}";
+                <div class="package-label">
+                    <div>
+                        <div class="label-title">Nhãn vận chuyển</div>
+                        <div class="label-code">@row.PackageCode</div>
+                        <div class="meta-row"><span class="meta-label">Phiếu</span><span>@row.VoucherCode</span></div>
+                        <div class="meta-row"><span class="meta-label">Vận đơn</span><span>@(row.TrackingNumber ?? "chưa có mã vận đơn")</span></div>
+                        <div class="meta-row"><span class="meta-label">Bản kê</span><span>@(row.ManifestCode ?? "chưa có bản kê")</span></div>
+                        <div class="meta-row"><span class="meta-label">Chuyến xe</span><span>@(row.LoadCode ?? "chưa xếp chuyến")</span></div>
+                        <div class="meta-row"><span class="meta-label">Người nhận</span><span>@(row.PartnerName ?? "chưa cập nhật")</span></div>
+                        <div class="meta-row"><span class="meta-label">Địa chỉ</span><span>@(row.ShipToAddress ?? "chưa cập nhật địa chỉ")</span></div>
+                        <div class="meta-row"><span class="meta-label">Đơn vị vận chuyển</span><span>@(row.CarrierName ?? "chưa cập nhật")</span></div>
+                        <div class="meta-row"><span class="meta-label">Tuyến giao</span><span>@(row.RouteName ?? "chưa cập nhật")</span></div>
+                        <div class="meta-row"><span class="meta-label">Số lượng / cân</span><span>@(row.TotalQuantity?.ToString("N2") ?? "---") / @(row.ActualCatchWeight?.ToString("N4") ?? "---")</span></div>
+                    </div>
+                    <div class="qr-box" id="@qrId" data-value="@(row.ScanCode ?? row.PackageCode)"></div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="document">
+            <div class="doc-header">
+                <div>
+                    <div class="doc-title">@title</div>
+                    <div class="doc-meta">Số chứng từ: <strong>@Model.DocumentNumber</strong></div>
+                    <div class="doc-meta">Kho: @(Model.WarehouseName ?? "---")</div>
+                    <div class="doc-meta">Chuyến xe: @(Model.LoadCode ?? "---")</div>
+                </div>
+                <div class="doc-meta">
+                    <div>Đơn vị vận chuyển: @(Model.CarrierName ?? "---")</div>
+                    <div>Tuyến giao: @(Model.RouteName ?? "---")</div>
+                    <div>Biển số: @(Model.VehicleNumber ?? "---")</div>
+                    <div>Bản kê: @(Model.ManifestCode ?? "---")</div>
+                    <div>Mã vận đơn: @(Model.TrackingNumber ?? "---")</div>
+                    <div>Ngày in: @Model.PrintedAt.ToString("dd/MM/yyyy HH:mm")</div>
+                </div>
+            </div>
+
+            @if (Model.Vouchers.Any())
+            {
+                <div class="doc-section-title">Danh sách phiếu</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Phiếu</th>
+                            <th>Đối tác</th>
+                            <th>Kiện</th>
+                            <th>Mã vận đơn</th>
+                            <th>Bản kê</th>
+                            <th>Đã giao</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in Model.Vouchers)
+                    {
+                        <tr>
+                            <td>@row.VoucherCode</td>
+                            <td>@(row.PartnerName ?? "---")</td>
+                            <td>@row.PackageCount</td>
+                            <td>@(row.TrackingNumber ?? "---")</td>
+                            <td>@(row.ManifestCode ?? "---")</td>
+                            <td>@(row.ShippedAt?.ToString("dd/MM/yyyy HH:mm") ?? "---")</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+
+            @if (Model.Packages.Any())
+            {
+                <div class="doc-section-title">Danh sách kiện</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Kiện</th>
+                            <th>Phiếu</th>
+                            <th>Mã vận đơn</th>
+                            <th>Đơn vị vận chuyển</th>
+                            <th>Đã xếp</th>
+                            <th>Số lượng</th>
+                            <th>Cân thực tế</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in Model.Packages)
+                    {
+                        <tr>
+                            <td>@row.PackageCode</td>
+                            <td>@row.VoucherCode</td>
+                            <td>@(row.TrackingNumber ?? "---")</td>
+                            <td>@(row.CarrierName ?? "---")</td>
+                            <td>@(row.IsLoaded ? "Có" : "Chưa")</td>
+                            <td>@(row.TotalQuantity?.ToString("N2") ?? "---")</td>
+                            <td>@(row.ActualCatchWeight?.ToString("N4") ?? "---")</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+
+            @if (Model.Handovers.Any())
+            {
+                <div class="doc-section-title">Nhật ký bàn giao</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Phiếu</th>
+                            <th>Mã vận đơn</th>
+                            <th>Bản kê</th>
+                            <th>Đơn vị vận chuyển</th>
+                            <th>Xe</th>
+                            <th>Tài xế</th>
+                            <th>Người bàn giao</th>
+                            <th>Thời điểm</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in Model.Handovers)
+                    {
+                        <tr>
+                            <td>@row.VoucherCode</td>
+                            <td>@(row.TrackingNumber ?? "---")</td>
+                            <td>@(row.ManifestCode ?? "---")</td>
+                            <td>@(row.CarrierName ?? "---")</td>
+                            <td>@(row.VehicleNumber ?? "---")</td>
+                            <td>@(row.DriverName ?? "---") @(string.IsNullOrWhiteSpace(row.DriverPhone) ? "" : $"({row.DriverPhone})")</td>
+                            <td>@row.HandedOverBy</td>
+                            <td>@row.HandedOverAt.ToString("dd/MM/yyyy HH:mm")</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(Model.Notes))
+            {
+                <div class="doc-section-title">Ghi chú</div>
+                <div class="doc-meta">@Model.Notes</div>
+            }
+
+            <div class="signatures">
+                <div class="signature-box">Đại diện kho</div>
+                <div class="signature-box">Đại diện vận chuyển</div>
+                <div class="signature-box">Bộ phận bảo vệ / bàn giao</div>
+            </div>
+        </div>
+    }
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('.qr-box').forEach(function (el) {
+                QRCode.toCanvas(el.dataset.value || '', { width: 92, margin: 0 }, function (err, canvas) {
+                    if (!err) el.appendChild(canvas);
+                });
+            });
+        });
+    </script>
+</body>
+</html>
+

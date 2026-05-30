@@ -1,0 +1,158 @@
+@model List<WMS.Models.LabelPrintJob>
+@using WMS.Models
+@{
+    ViewData["Title"] = "Nhật ký in nhãn";
+    var partners = (List<Partner>)ViewBag.Partners;
+    int? partnerId = ViewBag.PartnerId as int?;
+    string? search = ViewBag.Search as string;
+    bool isAdminOrManager = User.IsInRole("Admin") || User.IsInRole("Manager");
+    bool IsShippingDocument(LabelPrintJob job) => job.LabelPurpose is LabelPurposeEnum.ShippingPackageLabel or LabelPurposeEnum.ShipmentLoadManifest or LabelPurposeEnum.ShippingHandoverDocument;
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-clock-rotate-left text-accent"></i> Nhật ký in nhãn</h1>
+        <p class="page-subtitle">Theo dõi lệnh in nhãn khách hàng, nhãn vận chuyển, bản kê chuyến xe và biên bản bàn giao.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-secondary" asp-controller="Operations" asp-action="ShippingDispatch"><i class="fas fa-truck-fast"></i> Điều phối vận chuyển</a>
+        @if (isAdminOrManager)
+        {
+            <a class="btn btn-secondary" asp-controller="Labels" asp-action="Templates"><i class="fas fa-tags"></i> Mẫu nhãn</a>
+            <a class="btn btn-secondary" asp-controller="Labels" asp-action="ItemRules"><i class="fas fa-link"></i> Mã hàng theo khách hàng</a>
+        }
+    </div>
+</div>
+
+<section class="enterprise-command-strip labelops-summary">
+    <div class="enterprise-command-card">
+        <span class="enterprise-field-label">Lệnh in</span>
+        <strong class="stat-value">@Model.Count</strong>
+        <span class="table-subtext text-muted">Tối đa 300 lệnh gần nhất theo bộ lọc.</span>
+    </div>
+    <div class="enterprise-command-card">
+        <span class="enterprise-field-label">Đã in</span>
+        <strong class="stat-value text-success">@Model.Count(j => j.Status == LabelPrintJobStatusEnum.Printed)</strong>
+        <span class="table-subtext text-muted">Các lệnh có thể mở lại để in bổ sung.</span>
+    </div>
+    <div class="enterprise-command-card">
+        <span class="enterprise-field-label">Chứng từ vận chuyển</span>
+        <strong class="stat-value text-accent">@Model.Count(IsShippingDocument)</strong>
+        <span class="table-subtext text-muted">Nhãn kiện, bản kê chuyến và bàn giao.</span>
+    </div>
+</section>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Khách hàng</label>
+        <select class="form-control" name="partnerId">
+            <option value="">Tất cả</option>
+            @foreach (var p in partners)
+            {
+                <option value="@p.PartnerId" selected="@(partnerId == p.PartnerId)">@p.PartnerCode - @p.PartnerName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Tìm nhanh</label>
+        <input class="form-control" name="search" value="@search" placeholder="Lệnh in, phiếu, kiện, chứng từ, khách hàng..." />
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc</button>
+    </div>
+</form>
+
+<section class="enterprise-section">
+    <div class="enterprise-section-header">
+        <div>
+            <div class="enterprise-section-title">Lịch sử lệnh in</div>
+            <div class="enterprise-section-subtitle">Truy vết người tạo, nguồn chứng từ, số tem và trạng thái in lại.</div>
+        </div>
+        <button type="button" class="btn-export" data-wms-export-table="#labelPrintJobsTable" data-wms-export-filename="nhat_ky_in_nhan">
+            <i class="fas fa-file-excel"></i> Xuất Excel
+        </button>
+    </div>
+    <div class="table-container">
+        <table id="labelPrintJobsTable" class="data-table">
+            <thead>
+                <tr>
+                    <th>Lệnh in</th>
+                    <th>Loại chứng từ</th>
+                    <th>Khách hàng</th>
+                    <th>Nguồn</th>
+                    <th>Số tem</th>
+                    <th>Người tạo</th>
+                    <th>Thời điểm tạo</th>
+                    <th>Trạng thái</th>
+                    <th class="table-actions-col"></th>
+                </tr>
+            </thead>
+            <tbody>
+            @if (!Model.Any())
+            {
+                <tr>
+                    <td colspan="9" class="cell-compact">
+                        <div class="empty-state">
+                            <div class="empty-icon"><i class="fas fa-print"></i></div>
+                            <div class="empty-text">Chưa có lệnh in nào</div>
+                            <div class="empty-sub">Lệnh in sẽ xuất hiện sau khi in nhãn từ phiếu, kiện hoặc chuyến xe.</div>
+                        </div>
+                    </td>
+                </tr>
+            }
+            @foreach (var job in Model)
+            {
+                <tr>
+                    <td>
+                        <div class="td-code">@job.JobCode</div>
+                        <div class="table-subtext text-muted">@(job.DocumentNumber ?? "---")</div>
+                    </td>
+                    <td>
+                        <span class="badge @(IsShippingDocument(job) ? "badge-info" : "badge-secondary")">@job.PurposeName</span>
+                        @if (!string.IsNullOrWhiteSpace(job.DocumentType))
+                        {
+                            <div class="table-subtext text-muted">@job.DocumentType</div>
+                        }
+                    </td>
+                    <td>@job.Partner?.PartnerCode - @job.Partner?.PartnerName</td>
+                    <td>
+                        <div class="labelops-source-stack">
+                            @if (job.OutboundPackage != null)
+                            {
+                                <div>Kiện: <span class="td-code">@job.OutboundPackage.PackageCode</span></div>
+                            }
+                            @if (job.Voucher != null)
+                            {
+                                <div>Phiếu: <a asp-controller="Vouchers" asp-action="Details" asp-route-id="@job.VoucherId" class="td-code">@job.Voucher.VoucherCode</a></div>
+                            }
+                            @if (job.ShipmentLoad != null)
+                            {
+                                <div>Chuyến: <a asp-controller="Operations" asp-action="ShipmentLoadDetails" asp-route-id="@job.ShipmentLoadId" class="td-code">@job.ShipmentLoad.LoadCode</a></div>
+                            }
+                            @if (job.CarrierShipment != null)
+                            {
+                                <div>Vận đơn hãng: <span class="td-code">@job.CarrierShipment.TrackingNumber</span></div>
+                            }
+                        </div>
+                    </td>
+                    <td class="td-number">@job.TotalLabels.ToString("N0")</td>
+                    <td>@job.RequestedBy</td>
+                    <td>@job.RequestedAt.ToString("dd/MM/yyyy HH:mm")</td>
+                    <td><span class="badge @(job.Status == LabelPrintJobStatusEnum.Printed ? "badge-success" : "badge-info")">@job.StatusName</span></td>
+                    <td class="td-actions">
+                        @if (IsShippingDocument(job))
+                        {
+                            <a class="btn btn-sm btn-primary" asp-controller="Labels" asp-action="ShippingDocument" asp-route-id="@job.LabelPrintJobId" target="_blank" rel="noopener"><i class="fas fa-print"></i> In lại</a>
+                        }
+                        else
+                        {
+                            <a class="btn btn-sm btn-primary" asp-controller="Labels" asp-action="Print" asp-route-id="@job.LabelPrintJobId" target="_blank" rel="noopener"><i class="fas fa-print"></i> In lại</a>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</section>

@@ -1,0 +1,69 @@
+@model WMS.ViewModels.CustomerLabelPrintViewModel
+@{
+    Layout = null;
+    var isLarge = Model.LabelSize == "100x50";
+    var isA4 = Model.LabelSize == "a4grid";
+    var labelClass = isA4 ? "label a4" : isLarge ? "label large" : "label small";
+    var labels = Model.Lines.SelectMany(line => Enumerable.Range(1, line.PrintQuantity).Select(_ => line)).ToList();
+}
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <title>In nhãn khách hàng - @Model.Job.JobCode</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <link rel="stylesheet" href="~/css/wms-customer-label-print.css" asp-append-version="true" />
+</head>
+<body>
+    <div class="toolbar">
+        <div>
+            <div class="toolbar-title">Lệnh in @Model.Job.JobCode</div>
+            <div class="toolbar-meta">@Model.Job.PurposeName • @Model.TotalLabels tem • @(Model.Job.Partner?.PartnerName ?? "")</div>
+        </div>
+        <button class="btn" data-wms-window-action="print">In nhãn</button>
+    </div>
+
+    <div class="sheet">
+        @foreach (var line in labels)
+        {
+            var codeId = $"code_{line.LabelPrintJobLineId}_{Guid.NewGuid():N}";
+            <div class="@labelClass">
+                <div class="label-header">@line.HeaderText</div>
+                <div class="label-code">
+                    @if (Model.CodeType == "qr")
+                    {
+                        <div class="qr-box" data-value="@line.BarcodeValue" id="@codeId"></div>
+                    }
+                    else
+                    {
+                        <svg class="barcode" id="@codeId" data-value="@line.BarcodeValue"></svg>
+                    }
+                </div>
+                <div class="label-body">@line.BodyText</div>
+                <div class="label-footer">@line.FooterText</div>
+            </div>
+        }
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('svg.barcode').forEach(function (el) {
+                JsBarcode(el, el.dataset.value || '', {
+                    format: 'CODE128',
+                    displayValue: true,
+                    fontSize: 10,
+                    height: @Html.Raw(isLarge ? "42" : "28"),
+                    margin: 0
+                });
+            });
+            document.querySelectorAll('.qr-box').forEach(function (el) {
+                QRCode.toCanvas(el.dataset.value || '', { width: @Html.Raw(isLarge ? "92" : "58"), margin: 0 }, function (err, canvas) {
+                    if (!err) el.appendChild(canvas);
+                });
+            });
+        });
+    </script>
+</body>
+</html>
+

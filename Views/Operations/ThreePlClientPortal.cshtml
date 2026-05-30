@@ -1,0 +1,226 @@
+@model WMS.ViewModels.ThreePlClientPortalViewModel
+@using WMS.Models
+@{
+    ViewData["Title"] = "Khu vực chủ hàng";
+
+    string VoucherTypeLabel(VoucherTypeEnum type) => type switch
+    {
+        VoucherTypeEnum.NhapKho => "Nhập kho",
+        VoucherTypeEnum.XuatKho => "Xuất kho",
+        VoucherTypeEnum.TraNCC => "Trả nhà cung cấp",
+        VoucherTypeEnum.KhachTra => "Khách trả hàng",
+        VoucherTypeEnum.DieuChinh => "Điều chỉnh",
+        VoucherTypeEnum.ChuyenKho => "Chuyển kho",
+        VoucherTypeEnum.NhapThanhPham => "Nhập thành phẩm",
+        VoucherTypeEnum.XuatSanXuat => "Xuất sản xuất",
+        _ => "Phiếu khác"
+    };
+
+    string InboundStatusLabel(InboundStatusEnum status) => status switch
+    {
+        InboundStatusEnum.Draft => "Nháp",
+        InboundStatusEnum.PendingApproval => "Chờ duyệt",
+        InboundStatusEnum.Approved => "Đã duyệt",
+        InboundStatusEnum.Receiving => "Đang nhận hàng",
+        InboundStatusEnum.Completed => "Hoàn tất",
+        InboundStatusEnum.Rejected => "Từ chối",
+        _ => "Không xác định"
+    };
+
+    string InvoiceStatusLabel(ThreePlInvoiceStatusEnum status) => status switch
+    {
+        ThreePlInvoiceStatusEnum.Draft => "Nháp",
+        ThreePlInvoiceStatusEnum.Confirmed => "Đã xác nhận",
+        ThreePlInvoiceStatusEnum.Locked => "Đã khóa",
+        ThreePlInvoiceStatusEnum.Voided => "Đã hủy",
+        _ => "Không xác định"
+    };
+
+    string SlaTypeLabel(string slaType) => slaType switch
+    {
+        "DockToStock" => "Từ cửa bến đến tồn kho",
+        "PickSla" => "Lấy hàng đúng hạn",
+        "ShipSla" => "Giao hàng đúng hạn",
+        "OrderToShip" => "Từ đơn đến giao hàng",
+        _ => string.IsNullOrWhiteSpace(slaType) ? "Cam kết" : slaType
+    };
+
+    string SlaStatusLabel(SlaStatusEnum status) => status switch
+    {
+        SlaStatusEnum.OnTrack => "Đúng tiến độ",
+        SlaStatusEnum.AtRisk => "Có nguy cơ trễ",
+        SlaStatusEnum.Breached => "Đã trễ",
+        SlaStatusEnum.OnTime => "Đúng hạn",
+        _ => "Không xác định"
+    };
+}
+
+<div class="yardops-shell">
+    <div class="yardops-pagehead">
+        <div>
+            <h1 class="yardops-title">Khu vực chủ hàng</h1>
+            <p class="yardops-subtitle">Chủ hàng chỉ xem tồn kho, đơn hàng, phí và cam kết dịch vụ trong phạm vi được phân quyền.</p>
+        </div>
+        <div class="yardops-head-actions">
+            <a asp-action="ThreePlContracts" class="btn btn-secondary"><i class="fas fa-file-contract"></i> Hợp đồng kho nhiều chủ hàng</a>
+            <a asp-action="ThreePlBillingRuns" class="btn btn-secondary"><i class="fas fa-file-invoice-dollar"></i> Kỳ tính phí</a>
+        </div>
+    </div>
+
+    <form method="get" class="yardops-filter">
+        <div class="form-group yardops-span-3">
+            <label class="form-label">Chủ hàng</label>
+            <select name="ownerPartnerId" class="form-control">
+                @foreach (var owner in Model.Owners)
+                {
+                    <option value="@owner.PartnerId" selected="@(Model.OwnerPartnerId == owner.PartnerId)">@owner.PartnerCode - @owner.PartnerName</option>
+                }
+            </select>
+        </div>
+        <div class="form-group yardops-filter-actions">
+            <label class="form-label">&nbsp;</label>
+            <button type="submit" class="btn btn-secondary"><i class="fas fa-filter"></i> Lọc</button>
+        </div>
+    </form>
+
+    <div class="yardops-kpis">
+        <div class="yardops-kpi">
+            <div class="yardops-kpi-value">@Model.Inventory.Count <span class="yardops-kpi-unit">mã/vị trí</span></div>
+            <div class="yardops-kpi-label">Dòng tồn hiển thị</div>
+        </div>
+        <div class="yardops-kpi success">
+            <div class="yardops-kpi-value">@Model.TotalInventoryQty.ToString("N0")</div>
+            <div class="yardops-kpi-label">Tổng tồn</div>
+        </div>
+        <div class="yardops-kpi info">
+            <div class="yardops-kpi-value">@Model.Orders.Count <span class="yardops-kpi-unit">đơn</span></div>
+            <div class="yardops-kpi-label">Đơn gần nhất</div>
+        </div>
+        <div class="yardops-kpi warning">
+            <div class="yardops-kpi-value">@Model.OpenFeeAmount.ToString("N0")</div>
+            <div class="yardops-kpi-label">Phí kho nhiều chủ hàng</div>
+        </div>
+    </div>
+
+    <div class="yardops-panels">
+        <section class="yardops-panel">
+            <div class="yardops-panel-head">
+                <div>
+                    <h2 class="yardops-panel-title">Tồn kho theo chủ hàng</h2>
+                    <p class="yardops-panel-subtitle">Không hiển thị dữ liệu của chủ hàng khác.</p>
+                </div>
+            </div>
+            <div class="yardops-table-wrap">
+                <table class="yardops-table">
+                    <thead>
+                        <tr>
+                            <th>Vật tư</th>
+                            <th>Vị trí</th>
+                            <th>Lô / hạn dùng</th>
+                            <th class="text-end">Tồn</th>
+                            <th class="text-end">Khả dụng</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in Model.Inventory)
+                    {
+                        <tr>
+                            <td>
+                                <div class="yardops-rule-title">@row.Item?.ItemCode</div>
+                                <div class="yardops-subline">@row.Item?.ItemName</div>
+                            </td>
+                            <td>@row.Location?.LocationCode</td>
+                            <td>@(row.LotNumber ?? "-") / @(row.ExpiryDate?.ToString("dd/MM/yyyy") ?? "-")</td>
+                            <td class="text-end">@row.Quantity.ToString("N4")</td>
+                            <td class="text-end">@row.AvailableQty.ToString("N4")</td>
+                        </tr>
+                    }
+                    @if (!Model.Inventory.Any())
+                    {
+                        <tr><td colspan="5"><div class="yardops-empty">Chưa có tồn kho thuộc chủ hàng đang chọn.</div></td></tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="yardops-panel">
+            <div class="yardops-panel-head">
+                <div>
+                    <h2 class="yardops-panel-title">Đơn hàng và cam kết dịch vụ</h2>
+                    <p class="yardops-panel-subtitle">Tra cứu trạng thái đơn và chỉ số cam kết dịch vụ liên quan.</p>
+                </div>
+            </div>
+            <div class="yardops-table-wrap">
+                <table class="yardops-table">
+                    <thead>
+                        <tr>
+                            <th>Phiếu</th>
+                            <th>Ngày</th>
+                            <th>Loại</th>
+                            <th>Trạng thái</th>
+                            <th>Cam kết dịch vụ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var order in Model.Orders)
+                    {
+                        var slas = Model.SlaMetrics.Where(x => x.VoucherId == order.VoucherId).ToList();
+                        <tr>
+                            <td><a asp-controller="Vouchers" asp-action="Details" asp-route-id="@order.VoucherId">@order.VoucherCode</a></td>
+                            <td>@order.VoucherDate.ToString("dd/MM/yyyy")</td>
+                            <td>@VoucherTypeLabel(order.VoucherType)</td>
+                            <td>@(order.IsCancelled ? "Đã hủy" : order.IsPosted ? "Đã ghi sổ" : InboundStatusLabel(order.InboundStatus))</td>
+                            <td>@(slas.Count == 0 ? "Chưa có cam kết" : string.Join(", ", slas.Select(x => $"{SlaTypeLabel(x.SlaType)}: {SlaStatusLabel(x.Status)}")))</td>
+                        </tr>
+                    }
+                    @if (!Model.Orders.Any())
+                    {
+                        <tr><td colspan="5"><div class="yardops-empty">Chưa có đơn thuộc chủ hàng đang chọn.</div></td></tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <section class="yardops-panel">
+        <div class="yardops-panel-head">
+            <div>
+                <h2 class="yardops-panel-title">Phí và hóa đơn</h2>
+                <p class="yardops-panel-subtitle">Chủ hàng xem phí đã phát sinh và gửi khiếu nại cho từng hóa đơn.</p>
+            </div>
+        </div>
+        <div class="yardops-table-wrap">
+            <table class="yardops-table">
+                <thead>
+                    <tr>
+                        <th>Hóa đơn</th>
+                        <th>Giai đoạn</th>
+                        <th>Trạng thái</th>
+                        <th class="text-end">Số dòng</th>
+                        <th class="text-end">Tổng tiền</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var invoice in Model.Invoices)
+                {
+                    <tr>
+                        <td>@invoice.InvoiceCode</td>
+                        <td>@invoice.PeriodFrom.ToString("dd/MM/yyyy") - @invoice.PeriodTo.ToString("dd/MM/yyyy")</td>
+                        <td><span class="yardops-status @(invoice.Status == ThreePlInvoiceStatusEnum.Voided ? "danger" : "success")">@InvoiceStatusLabel(invoice.Status)</span></td>
+                        <td class="text-end">@invoice.Lines.Count</td>
+                        <td class="text-end"><strong>@invoice.TotalAmount.ToString("N2")</strong> @invoice.Currency</td>
+                        <td class="text-end"><a asp-action="ThreePlInvoiceDetails" asp-route-id="@invoice.ThreePlInvoiceId" class="btn btn-sm btn-secondary"><i class="fas fa-eye"></i></a></td>
+                    </tr>
+                }
+                @if (!Model.Invoices.Any())
+                {
+                    <tr><td colspan="6"><div class="yardops-empty">Chưa có hóa đơn kho nhiều chủ hàng thuộc chủ hàng đang chọn.</div></td></tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>

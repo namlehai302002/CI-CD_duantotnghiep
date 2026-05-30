@@ -1,0 +1,117 @@
+@model WMS.ViewModels.WorkflowProfilesViewModel
+@{
+    ViewData["Title"] = "Cấu hình quy trình";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Cấu hình quy trình</h1>
+        <p class="page-subtitle">Bật/tắt bước quét, QC, phê duyệt và đóng gói theo kho/chủ hàng.</p>
+    </div>
+</div>
+
+<form method="get" class="filter-panel">
+    <div>
+        <label>Kho</label>
+        <select class="form-control" name="warehouseId">
+            <option value="">Tất cả kho</option>
+            @foreach (var wh in Model.Warehouses)
+            {
+                <option value="@wh.WarehouseId" selected="@(Model.WarehouseId == wh.WarehouseId)">@wh.WarehouseCode - @wh.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc</button>
+</form>
+
+<section class="enterprise-section">
+    <div class="enterprise-section-header">
+        <div>
+            <div class="enterprise-section-title">Thêm hoặc cập nhật cấu hình</div>
+            <div class="enterprise-section-subtitle">Phân hệ gợi ý: nhập kho, lấy hàng, di chuyển, đóng gói, kiểm phẩm.</div>
+        </div>
+    </div>
+    <form method="post" asp-action="SaveWorkflowProfile" class="enterprise-workbench">
+        @Html.AntiForgeryToken()
+        <div class="enterprise-form-card">
+            <h3>Phạm vi áp dụng</h3>
+            <div class="form-group">
+                <label class="form-label">Kho</label>
+                <select class="form-control" name="warehouseId" required>
+                    @foreach (var wh in Model.Warehouses)
+                    {
+                        <option value="@wh.WarehouseId" selected="@(Model.WarehouseId == wh.WarehouseId)">@wh.WarehouseCode - @wh.WarehouseName</option>
+                    }
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Chủ hàng</label>
+                <select class="form-control" name="ownerPartnerId">
+                    <option value="">Tất cả chủ hàng</option>
+                    @foreach (var owner in Model.Owners)
+                    {
+                        <option value="@owner.PartnerId">@owner.PartnerCode - @owner.PartnerName</option>
+                    }
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Mã phân hệ kỹ thuật</label>
+                <input class="form-control" name="moduleKey" placeholder="VD: inbound" required />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Tên cấu hình</label>
+                <input class="form-control" name="profileName" placeholder="VD: Nhập kho chuẩn" required />
+            </div>
+        </div>
+        <div class="enterprise-form-card">
+            <h3>Bước nghiệp vụ bắt buộc</h3>
+            <div class="enterprise-choice-grid">
+                <label class="enterprise-choice-tile"><input type="checkbox" name="requireLocationScan" value="true" checked /> <span>Quét vị trí</span></label>
+                <label class="enterprise-choice-tile"><input type="checkbox" name="requireItemScan" value="true" checked /> <span>Quét vật tư</span></label>
+                <label class="enterprise-choice-tile"><input type="checkbox" name="requireToteScan" value="true" /> <span>Quét thùng lấy hàng</span></label>
+                <label class="enterprise-choice-tile"><input type="checkbox" name="requireSerialScan" value="true" /> <span>Quét số sê-ri</span></label>
+                <label class="enterprise-choice-tile"><input type="checkbox" name="requireQc" value="true" /> <span>Kiểm phẩm</span></label>
+                <label class="enterprise-choice-tile"><input type="checkbox" name="requireApproval" value="true" /> <span>Phê duyệt</span></label>
+                <label class="enterprise-choice-tile"><input type="checkbox" name="requirePacking" value="true" /> <span>Đóng gói</span></label>
+            </div>
+            <div class="enterprise-form-actions">
+                <button class="btn btn-primary" type="submit"><i class="fas fa-save"></i> Lưu quy trình</button>
+            </div>
+        </div>
+    </form>
+</section>
+
+<section class="enterprise-section">
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead><tr><th>Kho</th><th>Chủ hàng</th><th>Phân hệ</th><th>Tên cấu hình</th><th>Bước quét</th><th>Kiểm phẩm</th><th>Duyệt</th><th>Đóng gói</th><th>Trạng thái</th></tr></thead>
+            <tbody>
+                @if (!Model.Profiles.Any())
+                {
+                    <tr><td colspan="9" class="empty-state">Chưa có cấu hình quy trình.</td></tr>
+                }
+                @foreach (var profile in Model.Profiles)
+                {
+                    <tr>
+                        <td>@profile.Warehouse.WarehouseCode</td>
+                        <td>@(profile.OwnerPartner?.PartnerName ?? "Tất cả")</td>
+                        <td class="td-code">@profile.ModuleKey</td>
+                        <td>@profile.ProfileName</td>
+                        <td>
+                            <div class="enterprise-badge-stack">
+                                <span class="status-badge">Vị trí: @(profile.RequireLocationScan ? "Có" : "Không")</span>
+                                <span class="status-badge">Vật tư: @(profile.RequireItemScan ? "Có" : "Không")</span>
+                                <span class="status-badge">Thùng lấy hàng: @(profile.RequireToteScan ? "Có" : "Không")</span>
+                                <span class="status-badge">Sê-ri: @(profile.RequireSerialScan ? "Có" : "Không")</span>
+                            </div>
+                        </td>
+                        <td>@(profile.RequireQc ? "Có" : "Không")</td>
+                        <td>@(profile.RequireApproval ? "Có" : "Không")</td>
+                        <td>@(profile.RequirePacking ? "Có" : "Không")</td>
+                        <td><span class="status-badge">@(profile.IsActive ? "Đang dùng" : "Tạm tắt")</span></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

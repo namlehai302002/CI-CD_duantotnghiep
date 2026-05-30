@@ -1,0 +1,170 @@
+@model WMS.ViewModels.PrintLabelBatchViewModel
+@{
+    Layout = null; // Standalone - no navbar/footer/sidebar
+}
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>In Tem Nhãn WMS - @Model.Items.Count vật tư</title>
+    
+    <!-- JsBarcode for hiển thị mã vạch Code128 -->
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <!-- QRCode.js for QR code rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+    <link rel="stylesheet" href="~/css/wms-print-labels.css" asp-append-version="true" />
+
+    @{
+        // Pre-compute the @page CSS server-side to avoid Razor @page directive conflicts
+        var pageSize = Model.LabelSize switch
+        {
+            "100x50" => "100mm 50mm",
+            "a4grid" => "A4 portrait",
+            _ => "50mm 30mm"
+        };
+        var pageMargin = Model.LabelSize == "a4grid" ? "5mm 3.5mm" : "0";
+    }
+    <script>
+        window.__wmsPrintPageCss = @Html.Raw(System.Text.Json.JsonSerializer.Serialize($"@media print {{ @page {{ size: {pageSize}; margin: {pageMargin}; }} }}"));
+    </script>
+</head>
+<body>
+    @{
+        var labelClass = Model.LabelSize switch
+        {
+            "100x50" => "label-100x50",
+            "a4grid" => "label-a4grid",
+            _ => "label-50x30"
+        };
+
+        var sizeDisplay = Model.LabelSize switch
+        {
+            "100x50" => "100×50mm",
+            "a4grid" => "A4 Grid (38.1×21.2mm)",
+            _ => "50×30mm"
+        };
+
+        var totalLabels = Model.Items.Sum(i => i.PrintQuantity);
+        var isQr = Model.CodeType == "qr";
+        int labelIndex = 0;
+    }
+
+    <!-- TOOLBAR -->
+    <div class="print-toolbar">
+        <div class="info">
+            <i class="fas fa-tags"></i>
+            Tổng: <strong>@totalLabels</strong> tem nhãn
+            &nbsp;|&nbsp; Khổ: <strong>@sizeDisplay</strong>
+            &nbsp;|&nbsp; Mã: <strong>@(isQr ? "mã phản hồi nhanh" : "Mã vạch Code128")</strong>
+        </div>
+        <div class="actions">
+            <button type="button" class="toolbar-btn btn-go-back" data-wms-window-action="close">
+                ← Đóng
+            </button>
+            <button type="button" class="toolbar-btn btn-do-print" data-wms-window-action="print">
+                🖨️ In Ngay
+            </button>
+        </div>
+    </div>
+
+    <!-- PREVIEW HEADER -->
+    <div class="preview-header">
+        ▼ Xem trước tem nhãn — bấm "In Ngay" để in ra giấy ▼
+    </div>
+
+    <!-- LABELS -->
+    <div class="preview-area">
+        @foreach (var item in Model.Items)
+        {
+            for (int copy = 0; copy < item.PrintQuantity; copy++)
+            {
+                <div class="@labelClass" id="label-@labelIndex">
+                    <div class="lbl-name" title="@item.ItemName">@item.ItemName</div>
+                    @if (Model.LabelSize == "100x50")
+                    {
+                        <div class="lbl-sku">SKU: @(item.SkuCode ?? item.ItemCode)</div>
+                    }
+                    <div class="lbl-code-area">
+                        @if (isQr)
+                        {
+                            <canvas class="qr-target" data-value="@item.Barcode"></canvas>
+                        }
+                        else
+                        {
+                            <svg class="barcode-target" data-value="@item.Barcode"></svg>
+                        }
+                    </div>
+                    <div class="lbl-footer">
+                        <span>@item.Unit</span>
+                        <span>@item.LocationCode</span>
+                    </div>
+                </div>
+                labelIndex++;
+            }
+        }
+    </div>
+
+    <!-- Font Awesome for toolbar icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (window.__wmsPrintPageCss) {
+                const pageNode = document.createElement('style');
+                pageNode.id = 'dynamicPageStyle';
+                pageNode.textContent = window.__wmsPrintPageCss;
+                document.head.appendChild(pageNode);
+            }
+
+            // ===== RENDER BARCODES (Code128) =====
+            document.querySelectorAll('.barcode-target').forEach(svg => {
+                const val = svg.dataset.value;
+                if (!val) return;
+                try {
+                    const isSmall = svg.closest('.label-a4grid');
+                    JsBarcode(svg, val, {
+                        format: "CODE128",
+                        lineColor: "#000",
+                        width: isSmall ? 1 : 1.5,
+                        height: isSmall ? 28 : 40,
+                        displayValue: true,
+                        fontSize: isSmall ? 8 : 11,
+                        margin: 0,
+                        textMargin: 1,
+                        flat: true
+                    });
+                } catch (err) {
+                    console.error("Không thể render mã vạch.", err);
+                    svg.replaceChildren();
+                    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    text.setAttribute('x', '0');
+                    text.setAttribute('y', '15');
+                    text.setAttribute('fill', 'red');
+                    text.setAttribute('font-size', '10');
+                    text.textContent = `ERR: ${val}`;
+                    svg.appendChild(text);
+                }
+            });
+
+            // ===== RENDER QR CODES =====
+            document.querySelectorAll('.qr-target').forEach(canvas => {
+                const val = canvas.dataset.value;
+                if (!val) return;
+                try {
+                    const isSmall = canvas.closest('.label-a4grid');
+                    const size = isSmall ? 80 : (canvas.closest('.label-100x50') ? 160 : 100);
+                    QRCode.toCanvas(canvas, val, {
+                        width: size,
+                        margin: 0,
+                        color: { dark: '#000000', light: '#ffffff' }
+                    });
+                } catch (err) {
+                    console.error("Không thể render mã QR.", err);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,222 @@
+﻿@model WMS.ViewModels.MovementTaskPageViewModel
+@using WMS.Models
+@{
+    ViewData["Title"] = "Nhiệm vụ di chuyển";
+    var canManage = User.IsInRole("Admin") || User.IsInRole("Manager");
+    string StatusBadge(MovementTaskStatusEnum status) => status switch
+    {
+        MovementTaskStatusEnum.Completed => "badge-success",
+        MovementTaskStatusEnum.Short => "badge-warning",
+        MovementTaskStatusEnum.Cancelled => "badge-danger",
+        MovementTaskStatusEnum.InProgress => "badge-info",
+        MovementTaskStatusEnum.Assigned => "badge-accent",
+        _ => "badge-secondary"
+    };
+    string TranslateTaskType(MovementTaskTypeEnum type) => type switch {
+        MovementTaskTypeEnum.Relocate => "Dời hàng",
+        MovementTaskTypeEnum.Replenishment => "Bổ sung",
+        MovementTaskTypeEnum.Reslotting => "Sắp xếp lại",
+        _ => "Không áp dụng"
+    };
+    string TranslateTaskStatus(MovementTaskStatusEnum status) => status switch {
+        MovementTaskStatusEnum.Pending => "Chờ xử lý",
+        MovementTaskStatusEnum.Assigned => "Đã gán",
+        MovementTaskStatusEnum.InProgress => "Đang thực hiện",
+        MovementTaskStatusEnum.Completed => "Hoàn thành",
+        MovementTaskStatusEnum.Short => "Thiếu hàng",
+        MovementTaskStatusEnum.Cancelled => "Đã hủy",
+        _ => "Không áp dụng"
+    };
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Nhiệm vụ di chuyển</h1>
+        <p class="page-subtitle">Quản lý nhiệm vụ di dời, bổ sung và sắp xếp lại kho. Tồn kho chỉ thay đổi sau khi nhân viên xác nhận trên màn quét.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Operations" asp-action="RfMovement" class="btn btn-primary"><i class="fas fa-mobile-screen"></i> Quét di chuyển bằng điện thoại</a>
+        <a asp-controller="Operations" asp-action="Slotting" class="btn btn-secondary"><i class="fas fa-compass-drafting"></i> Tối ưu vị trí</a>
+        <a asp-controller="Operations" asp-action="Replenishment" class="btn btn-secondary"><i class="fas fa-arrows-left-right"></i> Bổ sung hàng</a>
+    </div>
+</div>
+
+<form method="post" asp-controller="Operations" asp-action="CreateLpnMovementTask" class="filter-bar">
+    @Html.AntiForgeryToken()
+    <div class="form-group">
+        <label class="form-label">LPN</label>
+        <input class="form-control" name="lpnCode" placeholder="Quét hoặc nhập mã kiện" required />
+    </div>
+    <div class="form-group">
+        <label class="form-label">Vị trí đích</label>
+        <input class="form-control" name="destinationScan" placeholder="Mã vị trí hoặc mã vạch" required />
+    </div>
+    <div class="form-group">
+        <label class="form-label">Loại</label>
+        <select class="form-control" name="taskType">
+            <option value="@MovementTaskTypeEnum.Relocate">Dời hàng</option>
+            <option value="@MovementTaskTypeEnum.Replenishment">Bổ sung</option>
+            <option value="@MovementTaskTypeEnum.Reslotting">Sắp xếp lại</option>
+        </select>
+    </div>
+    <input type="hidden" name="warehouseId" value="@Model.WarehouseId" />
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-boxes-stacked"></i> Tạo nhiệm vụ di chuyển mã kiện</button>
+    </div>
+</form>
+
+<div class="stats-grid">
+    <div class="stat-card"><div class="stat-value">@Model.OpenCount</div><div class="stat-label">Chờ xử lý</div></div>
+    <div class="stat-card info"><div class="stat-value">@Model.InProgressCount</div><div class="stat-label">Đang thực hiện</div></div>
+    <div class="stat-card success"><div class="stat-value">@Model.CompletedCount</div><div class="stat-label">Hoàn thành</div></div>
+    <div class="stat-card warning"><div class="stat-value">@Model.ShortCount</div><div class="stat-label">Thiếu hàng (Short)</div></div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select class="form-control" name="warehouseId">
+            <option value="">Tất cả</option>
+            @foreach (var w in Model.Warehouses)
+            {
+                <option value="@w.WarehouseId" selected="@(Model.WarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Loại nhiệm vụ</label>
+        <select class="form-control" name="taskType">
+            <option value="">Tất cả</option>
+            @foreach (MovementTaskTypeEnum t in Enum.GetValues<MovementTaskTypeEnum>())
+            {
+                <option value="@t" selected="@(Model.TaskType == t)">@TranslateTaskType(t)</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Trạng thái</label>
+        <select class="form-control" name="status">
+            <option value="">Tất cả</option>
+            @foreach (MovementTaskStatusEnum s in Enum.GetValues<MovementTaskStatusEnum>())
+            {
+                <option value="@s" selected="@(Model.Status == s)">@TranslateTaskStatus(s)</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Nhân viên</label>
+        <input class="form-control" name="assignedTo" value="@Model.AssignedTo" placeholder="tên nhân viên" />
+    </div>
+    <div class="form-group">
+        <label class="form-label">Tìm nhanh</label>
+        <input class="form-control" name="search" value="@Model.Search" placeholder="nhiệm vụ, LPN, vật tư, vị trí, lô..." />
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc</button>
+    </div>
+</form>
+
+<div class="mobile-table-card-list">
+    @foreach (var task in Model.Tasks)
+    {
+        var isOpen = task.Status is MovementTaskStatusEnum.Pending or MovementTaskStatusEnum.Assigned or MovementTaskStatusEnum.InProgress;
+        <div class="mobile-table-card">
+            <div class="mobile-table-card-title">
+                <div class="mobile-table-card-title-main">
+                    <span class="td-code">@task.TaskCode</span>
+                    <div>@(task.IsLpnMode ? $"LPN {task.LpnCode}" : $"{task.ItemCode} - {task.ItemName}")</div>
+                </div>
+                <span class="badge @StatusBadge(task.Status)">@TranslateTaskStatus(task.Status)</span>
+            </div>
+            <div class="mobile-table-card-row"><span class="mobile-table-card-label">Loại</span><span class="mobile-table-card-value">@TranslateTaskType(task.TaskType)</span></div>
+            <div class="mobile-table-card-row"><span class="mobile-table-card-label">Di chuyển</span><span class="mobile-table-card-value">@task.SourceLocationCode -> @task.DestinationLocationCode</span></div>
+            <div class="mobile-table-card-row"><span class="mobile-table-card-label">SL</span><span class="mobile-table-card-value">@task.ConfirmedQty.ToString("N2") / @task.PlannedQty.ToString("N2")</span></div>
+            <div class="mobile-table-card-row"><span class="mobile-table-card-label">Phụ trách</span><span class="mobile-table-card-value">@(task.AssignedTo ?? "Chưa phân công")</span></div>
+            @if (isOpen)
+            {
+                <div class="mobile-table-card-actions">
+                    <a asp-controller="Operations" asp-action="RfMovement" asp-route-warehouseId="@task.WarehouseId" class="btn btn-sm btn-primary"><i class="fas fa-mobile-screen"></i> Quét</a>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<div class="table-container mobile-table-card-source">
+    <table>
+        <thead>
+            <tr>
+                <th>Nhiệm vụ</th>
+                <th>Loại</th>
+                <th>Vật tư / LPN</th>
+                <th>Di chuyển</th>
+                <th class="td-number">SL</th>
+                <th>Lô/HSD</th>
+                <th>Phụ trách</th>
+                <th>Trạng thái</th>
+                <th>Lý do</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @if (!Model.Tasks.Any())
+        {
+            <tr><td colspan="10" class="text-center text-muted cell-empty cell-empty-lg">Chưa có nhiệm vụ di chuyển nào theo bộ lọc hiện tại.</td></tr>
+        }
+        @foreach (var task in Model.Tasks)
+        {
+            var isOpen = task.Status is MovementTaskStatusEnum.Pending or MovementTaskStatusEnum.Assigned or MovementTaskStatusEnum.InProgress;
+            <tr>
+                <td>
+                    <div class="td-code">@task.TaskCode</div>
+                    <div class="text-muted fs-xs">@task.CreatedAt.ToString("dd/MM HH:mm") - @task.WarehouseName</div>
+                </td>
+                <td><span class="badge badge-info">@TranslateTaskType(task.TaskType)</span></td>
+                <td>
+                    @if (task.IsLpnMode)
+                    {
+                        <div class="fw-700"><span class="badge badge-accent">LPN</span> <span class="td-code">@task.LpnCode</span></div>
+                        <div class="text-muted fs-sm">@task.LpnDistinctItemCount mã hàng / @task.LpnDetailCount dòng chi tiết</div>
+                    }
+                    else
+                    {
+                        <div class="fw-700">@task.ItemCode</div>
+                        <div class="text-muted fs-sm">@task.ItemName</div>
+                    }
+                </td>
+                <td><span class="td-code">@task.SourceLocationCode</span> -> <span class="td-code">@task.DestinationLocationCode</span></td>
+                <td class="td-number">@task.ConfirmedQty.ToString("N2") / @task.PlannedQty.ToString("N2")</td>
+                <td>@(task.LotNumber ?? "---") @(task.ExpiryDate.HasValue ? $" / {task.ExpiryDate:dd/MM/yyyy}" : "")</td>
+                <td>@(task.AssignedTo ?? "Chưa phân công")</td>
+                <td><span class="badge @StatusBadge(task.Status)">@TranslateTaskStatus(task.Status)</span></td>
+                <td class="fs-sm">@(task.SourceReason ?? task.SourceModule)</td>
+                <td class="td-actions">
+                    @if (isOpen)
+                    {
+                        <a asp-controller="Operations" asp-action="RfMovement" asp-route-warehouseId="@task.WarehouseId" class="btn btn-sm btn-primary"><i class="fas fa-mobile-screen"></i> Quét</a>
+                    }
+                    @if (canManage && isOpen)
+                    {
+                        <form method="post" asp-controller="Operations" asp-action="AssignMovementTask" class="enterprise-inline-table-form mt-2">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="movementTaskId" value="@task.MovementTaskId" />
+                            <input type="hidden" name="warehouseId" value="@Model.WarehouseId" />
+                            <input class="form-control w-120" name="assignedTo" value="@task.AssignedTo" placeholder="tên nhân viên" />
+                            <button class="btn btn-sm btn-secondary" type="submit">Gán</button>
+                        </form>
+                        <form method="post" asp-controller="Operations" asp-action="CancelMovementTask" class="enterprise-inline-table-form mt-2" data-enterprise-confirm="Hủy nhiệm vụ di chuyển này?">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="movementTaskId" value="@task.MovementTaskId" />
+                            <input type="hidden" name="warehouseId" value="@Model.WarehouseId" />
+                            <input class="form-control w-120" name="reason" placeholder="Lý do hủy" />
+                            <button class="btn btn-sm btn-danger" type="submit">Hủy</button>
+                        </form>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>

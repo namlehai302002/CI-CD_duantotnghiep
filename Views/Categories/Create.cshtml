@@ -1,0 +1,39 @@
+@model WMS.Models.ItemCategory
+@{
+    ViewData["Title"] = "Thêm danh mục";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Thêm danh mục</h1>
+        <p class="page-subtitle">Nhóm vật tư theo cách dễ tra cứu, dễ báo cáo và dễ áp dụng quy tắc vận hành.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Categories" asp-action="Index" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Quay lại</a>
+    </div>
+</div>
+
+<div class="enterprise-form-layout">
+    <div class="card enterprise-form-card">
+        <div class="card-header">
+            <span class="card-title"><i class="fas fa-tags text-accent"></i> Danh mục mới</span>
+        </div>
+        <div class="card-body">
+            @await Html.PartialAsync("_Form", Model)
+        </div>
+    </div>
+
+    <aside class="enterprise-form-aside">
+        <div class="card">
+            <div class="card-header"><span class="card-title">Quy tắc đặt danh mục</span></div>
+            <div class="card-body">
+                <ol class="audit-checklist">
+                    <li>Mã danh mục ngắn, ổn định và không trùng.</li>
+                    <li>Tên danh mục phản ánh đúng nhóm hàng thực tế.</li>
+                    <li>Không tạo danh mục quá nhỏ nếu không cần báo cáo riêng.</li>
+                    <li>Thứ tự sắp xếp giúp người vận hành tìm nhanh trong danh sách.</li>
+                </ol>
+            </div>
+        </div>
+    </aside>
+</div>

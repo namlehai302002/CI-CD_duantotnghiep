@@ -1,0 +1,177 @@
+@model List<WMS.ViewModels.ShippingBoardRow>
+@{
+    ViewData["Title"] = "Đóng gói và giao hàng";
+    var canPack = User.IsInRole("Admin") || User.IsInRole("Manager") || User.IsInRole("Staff");
+    var canShip = User.IsInRole("Admin") || User.IsInRole("Manager");
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Đóng gói và giao hàng</h1>
+        <p class="page-subtitle">Theo dõi tồn việc sau khi chốt xuất: phiếu nào cần đóng gói, phiếu nào đã sẵn sàng giao và phiếu nào còn thiếu tham chiếu vận chuyển.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Operations" asp-action="ShippingDispatch" class="btn btn-secondary"><i class="fas fa-truck-fast"></i> Điều phối vận chuyển</a>
+        <a asp-controller="Operations" asp-action="ExceptionCenter" class="btn btn-secondary"><i class="fas fa-triangle-exclamation"></i> Xem bất thường</a>
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-truck-fast"></i> Cách dùng nhanh</div>
+    <div class="step-list">
+        <span class="step-chip"><i class="fas fa-box"></i> 1) Hoàn tất đóng gói khi phiếu đã chốt xuất</span>
+        <span class="step-chip"><i class="fas fa-file-signature"></i> 2) Nhập mã vận đơn hoặc mã chuyến bàn giao nếu nghiệp vụ yêu cầu</span>
+        <span class="step-chip"><i class="fas fa-truck"></i> 3) Xác nhận giao hàng ngay trên bảng hoặc trong chi tiết phiếu</span>
+    </div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select class="form-control" name="warehouseId">
+            <option value="">Tất cả</option>
+            @foreach (var w in (List<WMS.Models.Warehouse>)ViewBag.Warehouses)
+            {
+                <option value="@w.WarehouseId" selected="@(ViewBag.WarehouseId != null && (int)ViewBag.WarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Trạng thái</label>
+        <select class="form-control" name="status">
+            <option value="">Tất cả</option>
+            <option value="packing" selected="@("packing".Equals((string?)ViewBag.Status, StringComparison.OrdinalIgnoreCase))">Chờ đóng gói</option>
+            <option value="ready" selected="@("ready".Equals((string?)ViewBag.Status, StringComparison.OrdinalIgnoreCase))">Chờ giao hàng</option>
+            <option value="shipped" selected="@("shipped".Equals((string?)ViewBag.Status, StringComparison.OrdinalIgnoreCase))">Đã giao hàng</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Tìm nhanh</label>
+        <input type="text" class="form-control" name="search" value="@ViewBag.Search" placeholder="Mã phiếu, đối tác, mã vận đơn, mã chuyến bàn giao..." />
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc dữ liệu</button>
+    </div>
+</form>
+
+<div class="table-container">
+    <div class="enterprise-table-tools">
+        <button class="btn-export" data-wms-export-table="table" data-wms-export-filename="dong_goi_giao_hang"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th class="sortable">Phiếu</th>
+                <th>Kho</th>
+                <th class="sortable">Đối tác</th>
+                <th>Loại phiếu</th>
+                <th class="sortable">Ngày cần giao</th>
+                <th>Giai đoạn</th>
+                <th>Kiện xuất</th>
+                <th>Tham chiếu vận chuyển</th>
+                <th class="sortable cell-right">Dòng hàng</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @if (!Model.Any())
+        {
+            <tr><td colspan="10" class="cell-empty"><div class="empty-state"><div class="empty-icon"><i class="fas fa-truck-fast"></i></div><div class="empty-text">Chưa có phiếu xuất nào</div><div class="empty-sub">Phiếu xuất sẽ xuất hiện tại đây sau khi đã chốt xuất</div></div></td></tr>
+        }
+        else
+        {
+            foreach (var row in Model)
+            {
+                var stageBadge = row.ShippedAt.HasValue ? "badge-success" : row.PackedAt.HasValue ? "badge-info" : "badge-warning";
+                <tr>
+                    <td>
+                        <a asp-controller="Vouchers" asp-action="Details" asp-route-id="@row.VoucherId" class="td-code link-clean">@row.VoucherCode</a>
+                        <div class="text-muted fs-xs">@row.VoucherDate.ToString("dd/MM/yyyy")</div>
+                    </td>
+                    <td>@row.WarehouseName</td>
+                    <td>@(row.PartnerName ?? "Chưa cập nhật")</td>
+                    <td>@row.VoucherTypeName</td>
+                    <td>
+                        @if (row.RequestedDeliveryDate.HasValue)
+                        {
+                            <div>@row.RequestedDeliveryDate.Value.ToString("dd/MM/yyyy")</div>
+                            @if (row.IsOverdue && !row.ShippedAt.HasValue)
+                            {
+                                <div class="text-danger fs-sm">Đang quá hạn</div>
+                            }
+                        }
+                        else
+                        {
+                            <span class="text-muted">Chưa cập nhật</span>
+                        }
+                    </td>
+                    <td>
+                        <span class="badge @stageBadge">@row.StageLabel</span>
+                        @if (row.PackedAt.HasValue)
+                        {
+                            <div class="text-muted fs-sm">Đóng gói: @row.PackedAt.Value.ToString("dd/MM HH:mm")</div>
+                        }
+                        @if (row.ShippedAt.HasValue)
+                        {
+                            <div class="text-muted fs-sm">Giao hàng: @row.ShippedAt.Value.ToString("dd/MM HH:mm")</div>
+                        }
+                    </td>
+                    <td>
+                        @if (row.PackageCount > 0)
+                        {
+                            <div><span class="badge badge-accent">@row.PackageCount kiện</span></div>
+                            <div class="text-muted fs-sm">@row.PackageSummary</div>
+                        }
+                        else if (row.PackedAt.HasValue)
+                        {
+                            <span class="text-warning fs-sm">Chưa ghi nhận kiện</span>
+                        }
+                        else
+                        {
+                            <span class="text-muted">Chưa đóng gói</span>
+                        }
+                    </td>
+                    <td>
+                        <div class="fs-sm">Mã vận đơn: <span class="font-mono">@(string.IsNullOrWhiteSpace(row.TrackingNumber) ? "Chưa cập nhật" : row.TrackingNumber)</span></div>
+                        <div class="text-muted fs-xs">Mã chuyến bàn giao: <span class="font-mono">@(string.IsNullOrWhiteSpace(row.ManifestCode) ? "Chưa cập nhật" : row.ManifestCode)</span></div>
+                        @if (!string.IsNullOrWhiteSpace(row.LoadCode))
+                        {
+                            <div class="text-info fs-sm">Chuyến xe: <span class="font-mono">@row.LoadCode</span> (@row.LoadStatus)</div>
+                            <div class="text-muted fs-xs">@(row.LoadCarrierName ?? "Chưa cập nhật") / @(row.LoadRouteName ?? "Chưa cập nhật")</div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(row.CarrierShipmentSummary))
+                        {
+                            <div class="text-success fs-sm">Vận đơn: @row.CarrierShipmentSummary</div>
+                            @if (row.CarrierShipmentFailedCount > 0)
+                            {
+                                <div class="text-danger fs-sm">@row.CarrierShipmentFailedCount kiện lỗi vận chuyển</div>
+                            }
+                        }
+                        @if (row.RequiresManifest && string.IsNullOrWhiteSpace(row.ManifestCode) && !row.ShippedAt.HasValue)
+                        {
+                            <div class="text-warning fs-sm">Thiếu mã bàn giao</div>
+                        }
+                        else if (row.RequiresTrackingOrManifest && string.IsNullOrWhiteSpace(row.TrackingNumber) && string.IsNullOrWhiteSpace(row.ManifestCode) && !row.ShippedAt.HasValue)
+                        {
+                            <div class="text-warning fs-sm">Thiếu mã vận đơn</div>
+                        }
+                    </td>
+                    <td class="td-number">@row.TotalLines</td>
+                    <td class="td-actions">
+                        @if (!row.PackedAt.HasValue && canPack)
+                        {
+                            <a asp-controller="Vouchers" asp-action="Details" asp-route-id="@row.VoucherId" class="btn btn-sm btn-primary"><i class="fas fa-box"></i> Đóng gói</a>
+                        }
+                        @if (row.PackedAt.HasValue && !row.ShippedAt.HasValue && canShip)
+                        {
+                            <a asp-controller="Vouchers" asp-action="Details" asp-route-id="@row.VoucherId" class="btn btn-sm btn-info"><i class="fas fa-truck"></i> Giao hàng</a>
+                        }
+                        <a asp-controller="Vouchers" asp-action="Details" asp-route-id="@row.VoucherId" class="btn btn-sm btn-secondary"><i class="fas fa-eye"></i> Mở phiếu</a>
+                    </td>
+                </tr>
+            }
+        }
+        </tbody>
+    </table>
+</div>

@@ -1,0 +1,132 @@
+﻿@model List<WMS.Models.PickCart>
+@{
+    ViewData["Title"] = "Quản lý xe đẩy & Khay hàng";
+    var warehouses = (List<WMS.Models.Warehouse>)ViewBag.Warehouses;
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Quản lý xe đẩy & Khay hàng</h1>
+        <p class="page-subtitle">Tạo và quản lý xe đẩy cho thao tác lấy hàng gộp. Mỗi xe có nhiều khay hàng để phân chia đơn hàng.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Operations" asp-action="Waves" class="btn btn-secondary"><i class="fas fa-wave-square"></i> Đợt gom đơn</a>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header"><span class="card-title"><i class="fas fa-plus-circle"></i> Tạo xe đẩy mới</span></div>
+    <div class="card-body">
+        <form method="post" asp-controller="Operations" asp-action="CreateCart" class="enterprise-inline-controls">
+            @Html.AntiForgeryToken()
+            <div class="form-group flex-1 min-w-160">
+                <label class="form-label">Mã xe đẩy</label>
+                <input class="form-control" name="cartCode" placeholder="VD: CART-001" required />
+            </div>
+            <div class="form-group flex-1 min-w-160">
+                <label class="form-label">Kho</label>
+                <select class="form-control" name="warehouseId" required>
+                    @foreach (var wh in warehouses)
+                    {
+                        <option value="@wh.WarehouseId">@wh.WarehouseCode - @wh.WarehouseName</option>
+                    }
+                </select>
+            </div>
+            <div class="form-group w-120">
+                <label class="form-label">Số khay</label>
+                <input class="form-control" type="number" name="toteCapacity" value="6" min="1" max="20" />
+            </div>
+            <div class="form-group flex-1 min-w-160">
+                <label class="form-label">Ghi chú</label>
+                <input class="form-control" name="notes" placeholder="Tùy chọn" />
+            </div>
+            <button class="btn btn-primary" type="submit"><i class="fas fa-cart-plus"></i> Tạo</button>
+        </form>
+    </div>
+</div>
+
+@if (!Model.Any())
+{
+    <div class="card">
+        <div class="card-body cell-empty cell-empty-md">
+            Chưa có xe đẩy nào. Tạo xe đẩy ở trên để bắt đầu gán khay hàng.
+        </div>
+    </div>
+}
+else
+{
+    <div class="rf-card-grid">
+        @foreach (var cart in Model)
+        {
+            var statusLabel = cart.Status switch
+            {
+                WMS.Models.PickCartStatusEnum.Available => "Sẵn sàng",
+                WMS.Models.PickCartStatusEnum.InUse => "Đang dùng",
+                WMS.Models.PickCartStatusEnum.Maintenance => "Bảo trì",
+                _ => "Không áp dụng"
+            };
+            var statusBadge = cart.Status switch
+            {
+                WMS.Models.PickCartStatusEnum.Available => "badge-success",
+                WMS.Models.PickCartStatusEnum.InUse => "badge-warning",
+                WMS.Models.PickCartStatusEnum.Maintenance => "badge-secondary",
+                _ => "badge-secondary"
+            };
+            var totalTotes = cart.Totes.Count;
+            var assignedTotes = cart.Totes.Count(t => t.Status != WMS.Models.PickToteStatusEnum.Empty);
+
+            <div class="card">
+                <div class="card-header enterprise-table-tools">
+                    <span class="card-title"><i class="fas fa-cart-shopping"></i> @cart.CartCode</span>
+                    <span class="badge @statusBadge">@statusLabel</span>
+                </div>
+                <div class="card-body">
+                    <div class="rf-meta"><strong>Kho:</strong> @(cart.Warehouse?.WarehouseCode ?? "---") - @(cart.Warehouse?.WarehouseName ?? "")</div>
+                    <div class="rf-meta"><strong>Khay hàng:</strong> @assignedTotes / @totalTotes đang sử dụng</div>
+                    @if (!string.IsNullOrWhiteSpace(cart.Notes))
+                    {
+                        <div class="rf-meta"><strong>Ghi chú:</strong> @cart.Notes</div>
+                    }
+                    <div class="mt-3">
+                        <table class="data-table fs-body-sm">
+                            <thead>
+                                <tr><th>Vị trí</th><th>Mã khay</th><th>Trạng thái</th><th>Đợt gom đơn</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var tote in cart.Totes.OrderBy(t => t.SlotPosition))
+                                {
+                                    var toteStatusLabel = tote.Status switch
+                                    {
+                                        WMS.Models.PickToteStatusEnum.Empty => "Trống",
+                                        WMS.Models.PickToteStatusEnum.Assigned => "Đã gán",
+                                        WMS.Models.PickToteStatusEnum.Picking => "Đang lấy",
+                                        WMS.Models.PickToteStatusEnum.Completed => "Hoàn tất",
+                                        _ => "Không áp dụng"
+                                    };
+                                    <tr>
+                                        <td>@(tote.SlotPosition ?? 0)</td>
+                                        <td><strong>@tote.ToteCode</strong></td>
+                                        <td>@toteStatusLabel</td>
+                                        <td>@(tote.WaveId.HasValue ? $"Đợt #{tote.WaveId}" : "—")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    @if (assignedTotes == 0)
+                    {
+                        <form method="post" asp-controller="Operations" asp-action="DeleteCart" class="mt-3"
+                              data-enterprise-confirm="Xóa xe đẩy này?"
+                              data-enterprise-confirm-title="Xác nhận xóa xe đẩy"
+                              data-enterprise-confirm-icon="warning"
+                              data-enterprise-confirm-ok="Xóa">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="cartId" value="@cart.PickCartId" />
+                            <button class="btn btn-danger btn-sm" type="submit"><i class="fas fa-trash"></i> Xóa</button>
+                        </form>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}

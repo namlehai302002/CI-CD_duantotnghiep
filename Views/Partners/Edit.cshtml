@@ -1,0 +1,57 @@
+@model WMS.Models.Partner
+@{
+    ViewData["Title"] = "Sửa đối tác";
+    var typeLabel = Model.PartnerType switch
+    {
+        WMS.Models.PartnerTypeEnum.Supplier => "Nhà cung cấp",
+        WMS.Models.PartnerTypeEnum.Customer => "Khách hàng",
+        WMS.Models.PartnerTypeEnum.Both => "Nhà cung cấp và khách hàng",
+        _ => "Chưa phân loại"
+    };
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Sửa đối tác @Model.PartnerCode</h1>
+        <p class="page-subtitle">Cập nhật hồ sơ đối tác mà vẫn giữ nguyên lịch sử phiếu, vận đơn và giao dịch đã phát sinh.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Partners" asp-action="Index" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Quay lại</a>
+    </div>
+</div>
+
+<div class="enterprise-form-layout">
+    <div class="card enterprise-form-card">
+        <div class="card-header">
+            <span class="card-title"><i class="fas fa-handshake text-accent"></i> Thông tin đối tác</span>
+            <span class="badge badge-info">@typeLabel</span>
+        </div>
+        <div class="card-body">
+            @await Html.PartialAsync("_Form", Model)
+        </div>
+    </div>
+
+    <aside class="enterprise-form-aside">
+        <div class="card">
+            <div class="card-header"><span class="card-title">Ảnh hưởng khi cập nhật</span></div>
+            <div class="card-body">
+                <ol class="audit-checklist">
+                    <li>Thông tin mới sẽ dùng cho phiếu và chứng từ tạo sau thời điểm lưu.</li>
+                    <li>Không đổi vai trò đối tác nếu đang có phiếu mở chưa xử lý xong.</li>
+                    <li>Thư điện tử sai định dạng sẽ bị chặn trước khi lưu.</li>
+                </ol>
+                <div class="soft-divider"></div>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <div class="detail-label">Mã bản ghi</div>
+                        <div class="detail-value">@Model.PartnerId</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Ngày tạo</div>
+                        <div class="detail-value">@Model.CreatedAt.ToString("dd/MM/yyyy")</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </aside>
+</div>

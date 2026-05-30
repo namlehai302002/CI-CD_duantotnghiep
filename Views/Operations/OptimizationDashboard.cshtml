@@ -1,0 +1,165 @@
+@model WMS.ViewModels.OptimizationEnterpriseDashboardViewModel
+@using WMS.Models
+@using WMS.ViewModels
+@{
+    ViewData["Title"] = "Tối ưu vận hành";
+    var selectedWarehouseId = Model.WarehouseId ?? Model.Warehouses.FirstOrDefault()?.WarehouseId ?? 0;
+
+    string OptimizationLineLabel(OptimizationLineTypeEnum type) => type switch
+    {
+        OptimizationLineTypeEnum.SlottingSuggestion => "Đề xuất vị trí",
+        OptimizationLineTypeEnum.WaveCandidate => "Ứng viên đợt lấy hàng",
+        OptimizationLineTypeEnum.WavelessTask => "Nhiệm vụ phát trực tiếp",
+        OptimizationLineTypeEnum.PickPathStop => "Điểm dừng lấy hàng",
+        OptimizationLineTypeEnum.ToteAssignment => "Gán thùng lấy hàng",
+        _ => "Tối ưu khác"
+    };
+
+    string QueueStatusLabel(WavelessQueueStatusEnum status) => status switch
+    {
+        WavelessQueueStatusEnum.Pending => "Chờ phát",
+        WavelessQueueStatusEnum.Released => "Đã phát",
+        WavelessQueueStatusEnum.Skipped => "Bỏ qua",
+        WavelessQueueStatusEnum.Blocked => "Bị chặn",
+        _ => "Không xác định"
+    };
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Tối ưu vận hành</h1>
+        <p class="page-subtitle">Tối ưu vị trí, lập đợt lấy hàng, phát nhiệm vụ trực tiếp, đường lấy hàng và gom thùng lấy hàng.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-secondary" asp-action="ExportOptimizationLines" asp-route-warehouseId="@Model.WarehouseId"><i class="fas fa-download"></i> Tải bảng</a>
+    </div>
+</div>
+
+<form method="get" asp-action="OptimizationDashboard" class="filter-panel">
+    <div>
+        <label>Kho</label>
+        <select name="warehouseId" class="form-control" data-wms-submit-form="true">
+            <option value="">Tất cả kho</option>
+            @foreach (var wh in Model.Warehouses)
+            {
+                <option value="@wh.WarehouseId" selected="@(Model.WarehouseId == wh.WarehouseId)">@wh.WarehouseCode - @wh.WarehouseName</option>
+            }
+        </select>
+    </div>
+</form>
+
+<div class="metric-grid">
+    <div class="metric-card"><div class="metric-value">@Model.Runs.Count</div><div class="metric-label">Lần tối ưu</div></div>
+    <div class="metric-card"><div class="metric-value">@Model.Recommendations.Count</div><div class="metric-label">Đề xuất</div></div>
+    <div class="metric-card"><div class="metric-value">@Model.WavelessQueue.Count(x => x.Status == WavelessQueueStatusEnum.Released)</div><div class="metric-label">Nhiệm vụ đã phát</div></div>
+    <div class="metric-card"><div class="metric-value">@Model.PickPathPlans.Sum(x => x.DistanceSaved).ToString("N1")</div><div class="metric-label">Quãng đường tiết kiệm</div></div>
+</div>
+
+<div class="enterprise-command-strip">
+    <form method="post" asp-action="RunSlottingOptimization" class="enterprise-command-card">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="warehouseId" value="@selectedWarehouseId" />
+        <span class="enterprise-field-label">Tối ưu bố trí</span>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-layer-group"></i> Tối ưu vị trí</button>
+    </form>
+    <form method="post" asp-action="RunWaveOptimization" class="enterprise-command-card">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="warehouseId" value="@selectedWarehouseId" />
+        <span class="enterprise-field-label">Gom nhiệm vụ</span>
+        <button class="btn btn-secondary" type="submit"><i class="fas fa-wave-square"></i> Lập đợt lấy hàng</button>
+    </form>
+    <form method="post" asp-action="RunWavelessRelease" class="enterprise-command-card execution">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="warehouseId" value="@selectedWarehouseId" />
+        <div class="enterprise-field-stack">
+            <label class="enterprise-field-label" for="maxTasksRelease">Số nhiệm vụ tối đa</label>
+            <input id="maxTasksRelease" class="form-control" name="maxTasks" type="number" value="50" min="1" max="200" />
+        </div>
+        <button class="btn btn-success" type="submit"><i class="fas fa-bolt"></i> Phát trực tiếp</button>
+    </form>
+    <form method="post" asp-action="GeneratePickPathPlan" class="enterprise-command-card">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="warehouseId" value="@selectedWarehouseId" />
+        <span class="enterprise-field-label">Tuyến lấy hàng</span>
+        <button class="btn btn-secondary" type="submit"><i class="fas fa-route"></i> Lập đường lấy hàng</button>
+    </form>
+    <form method="post" asp-action="CreateToteClusterPlan" class="enterprise-command-card">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="warehouseId" value="@selectedWarehouseId" />
+        <span class="enterprise-field-label">Cụm thùng lấy hàng</span>
+        <button class="btn btn-secondary" type="submit"><i class="fas fa-boxes-stacked"></i> Gom thùng lấy hàng</button>
+    </form>
+</div>
+
+<div class="enterprise-section">
+    <h2>Đề xuất tối ưu</h2>
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead><tr><th>Loại</th><th>Mã hàng</th><th>Nguồn</th><th>Đề xuất</th><th>Nhóm</th><th>Điểm</th><th>Trước</th><th>Sau</th><th>Tiết kiệm</th><th>Trạng thái</th></tr></thead>
+            <tbody>
+                @if (!Model.Recommendations.Any())
+                {
+                    <tr><td colspan="10" class="empty-state">Chưa có đề xuất tối ưu.</td></tr>
+                }
+                @foreach (var row in Model.Recommendations)
+                {
+                    <tr>
+                        <td><span class="status-badge">@OptimizationLineLabel(row.LineType)</span></td>
+                        <td>@row.Item?.ItemCode</td>
+                        <td>@row.SourceLocation?.LocationCode</td>
+                        <td>@row.SuggestedLocation?.LocationCode</td>
+                        <td>@row.GroupKey</td>
+                        <td>@row.Score</td>
+                        <td>@row.BeforeDistance.ToString("N1")</td>
+                        <td>@row.AfterDistance.ToString("N1")</td>
+                        <td>@row.EstimatedMinutesSaved.ToString("N1")</td>
+                        <td><span class="status-badge">@EnterpriseUiLabels.OptimizationStatus(row.StatusText)</span></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="yardops-two-column">
+    <section class="enterprise-section">
+        <h2>Hàng đợi phát trực tiếp</h2>
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead><tr><th>Nhiệm vụ</th><th>Ưu tiên</th><th>Cam kết</th><th>Tồn kho</th><th>Trạng thái</th></tr></thead>
+                <tbody>
+                    @if (!Model.WavelessQueue.Any())
+                    {
+                        <tr><td colspan="5" class="empty-state">Chưa có nhiệm vụ phát trực tiếp.</td></tr>
+                    }
+                    @foreach (var q in Model.WavelessQueue.Take(25))
+                    {
+                        <tr><td>@q.PickTask?.TaskCode</td><td>@q.PriorityScore</td><td>@q.SlaDueAt?.ToString("dd/MM HH:mm")</td><td>@(q.InventoryAvailable ? "Đủ tồn" : "Thiếu tồn")</td><td><span class="status-badge">@QueueStatusLabel(q.Status)</span></td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+    <section class="enterprise-section">
+        <h2>Đường lấy hàng và gom thùng</h2>
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead><tr><th>Mã</th><th>Loại</th><th>Số điểm</th><th>Tiết kiệm</th><th>Ngày tạo</th></tr></thead>
+                <tbody>
+                    @if (!Model.PickPathPlans.Any() && !Model.ToteClusterPlans.Any())
+                    {
+                        <tr><td colspan="5" class="empty-state">Chưa có đường lấy hàng hoặc kế hoạch gom thùng.</td></tr>
+                    }
+                    @foreach (var p in Model.PickPathPlans.Take(10))
+                    {
+                        <tr><td>@p.PlanCode</td><td>Đường lấy hàng</td><td>@p.StopCount</td><td>@p.DistanceSaved.ToString("N1")</td><td>@p.CreatedAt.ToString("dd/MM HH:mm")</td></tr>
+                    }
+                    @foreach (var p in Model.ToteClusterPlans.Take(10))
+                    {
+                        <tr><td>@p.PlanCode</td><td>Gom thùng lấy hàng</td><td>@p.AssignmentCount</td><td>@(p.RequiresToteScan ? "Bắt buộc quét thùng" : "")</td><td>@p.CreatedAt.ToString("dd/MM HH:mm")</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>

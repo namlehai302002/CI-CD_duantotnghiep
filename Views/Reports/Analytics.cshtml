@@ -1,0 +1,31 @@
+﻿@{ViewData["Title"]="Phân tích vận hành";var days=(int)ViewBag.Days;var chartDates=(List<string>)ViewBag.ChartDates;var inbound=(List<int>)ViewBag.InboundByDay;var outbound=(List<int>)ViewBag.OutboundByDay;var lines=(List<int>)ViewBag.LinesByDay;}
+<div class="page-header"><div><h1 class="page-title">Phân tích vận hành</h1><p class="page-subtitle">Tổng quan hiệu suất nhập/xuất, vòng quay tồn kho, và chỉ số chất lượng theo thời gian thực.</p></div><div class="page-actions"><a asp-controller="Reports" asp-action="SpaceUtilization" class="btn btn-secondary"><i class="fas fa-cubes"></i> Hiệu suất kho</a><a asp-controller="Reports" asp-action="DockToStock" class="btn btn-secondary"><i class="fas fa-stopwatch"></i> Thời gian nhập kho</a></div></div>
+<form method="get" class="filter-bar"><div class="form-group"><label class="form-label">Kho</label><select class="form-control" name="warehouseId"><option value="">Tất cả</option>@foreach(var w in(List<WMS.Models.Warehouse>)ViewBag.Warehouses){<option value="@w.WarehouseId" selected="@(ViewBag.WarehouseId!=null&&(int)ViewBag.WarehouseId==w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>}</select></div><div class="form-group"><label class="form-label">Khoảng thời gian</label><select class="form-control" name="days"><option value="7" selected="@(days==7)">7 ngày</option><option value="14" selected="@(days==14)">14 ngày</option><option value="30" selected="@(days==30)">30 ngày</option><option value="60" selected="@(days==60)">60 ngày</option><option value="90" selected="@(days==90)">90 ngày</option></select></div><div class="form-group"><label class="form-label">&nbsp;</label><button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc</button></div></form>
+
+<div class="stats-grid"><div class="stat-card accent"><div class="stat-value">@ViewBag.TotalInbound</div><div class="stat-label">Phiếu nhập</div></div><div class="stat-card success"><div class="stat-value">@ViewBag.TotalOutbound</div><div class="stat-label">Phiếu xuất</div></div><div class="stat-card info"><div class="stat-value">@((int)ViewBag.TotalLines)</div><div class="stat-label">Tổng dòng hàng</div></div><div class="stat-card purple"><div class="stat-value">@(((decimal)ViewBag.TotalValue).ToString("N0"))₫</div><div class="stat-label">Tổng giá trị</div></div><div class="stat-card warning"><div class="stat-value">@(((decimal)ViewBag.TotalStock).ToString("N0"))</div><div class="stat-label">Tồn kho hiện tại</div></div><div class="stat-card danger"><div class="stat-value">@ViewBag.DaysOfSupply ngày</div><div class="stat-label">Số ngày cung ứng</div></div></div>
+
+<div class="stats-grid analytics-qc-grid"><div class="stat-card info"><div class="stat-value">@ViewBag.QcTotal</div><div class="stat-label">Tổng kiểm tra</div></div><div class="stat-card success"><div class="stat-value">@ViewBag.QcPassed</div><div class="stat-label">Đạt</div></div><div class="stat-card danger"><div class="stat-value">@ViewBag.QcFailed</div><div class="stat-label">Không đạt</div></div></div>
+
+<div class="table-container analytics-chart-card">
+<div class="analytics-chart-title"><i class="fas fa-chart-area"></i>Lưu lượng nhập xuất @days ngày gần nhất</div>
+<canvas id="throughputChart" class="analytics-chart-canvas analytics-chart-canvas-lg"></canvas>
+</div>
+
+<div class="table-container analytics-chart-card">
+<div class="analytics-chart-title"><i class="fas fa-chart-bar"></i>Dòng hàng xử lý / ngày</div>
+<canvas id="linesChart" class="analytics-chart-canvas analytics-chart-canvas-md"></canvas>
+</div>
+
+@section Scripts{
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+var labels=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(chartDates));
+var inD=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(inbound));
+var outD=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(outbound));
+var lineD=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(lines));
+var isDark=document.documentElement.getAttribute('data-theme')==='dark';
+var gridColor=isDark?'rgba(255,255,255,0.08)':'rgba(0,0,0,0.06)';
+var txtColor=isDark?'#a0a8b8':'#64748b';
+new Chart(document.getElementById('throughputChart'),{type:'line',data:{labels:labels,datasets:[{label:'Nhập kho',data:inD,borderColor:'#10b981',backgroundColor:'rgba(16,185,129,0.1)',fill:true,tension:0.3,pointRadius:2},{label:'Xuất kho',data:outD,borderColor:'#f59e0b',backgroundColor:'rgba(245,158,11,0.1)',fill:true,tension:0.3,pointRadius:2}]},options:{responsive:true,plugins:{legend:{labels:{color:txtColor}}},scales:{x:{ticks:{color:txtColor},grid:{color:gridColor}},y:{beginAtZero:true,ticks:{color:txtColor},grid:{color:gridColor}}}}});
+new Chart(document.getElementById('linesChart'),{type:'bar',data:{labels:labels,datasets:[{label:'Dòng hàng',data:lineD,backgroundColor:'rgba(99,102,241,0.6)',borderColor:'#6366f1',borderWidth:1,borderRadius:4}]},options:{responsive:true,plugins:{legend:{labels:{color:txtColor}}},scales:{x:{ticks:{color:txtColor},grid:{color:gridColor}},y:{beginAtZero:true,ticks:{color:txtColor},grid:{color:gridColor}}}}});
+</script>}

@@ -1,0 +1,136 @@
+@model WMS.ViewModels.DeliveryReconciliationViewModel
+@{
+    ViewData["Title"] = "Đối soát giao hàng";
+    string BadgeClass(string severity) => severity switch
+    {
+        "critical" => "badge-danger",
+        "error" => "badge-warning",
+        "warning" => "badge-info",
+        _ => "badge-secondary"
+    };
+    var issueTypes = Model.Rows
+        .GroupBy(r => new { r.IssueType, r.IssueLabel })
+        .OrderBy(g => g.Key.IssueLabel)
+        .Select(g => g.Key)
+        .ToList();
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Đối soát giao hàng</h1>
+        <p class="page-subtitle">So sánh phiếu, kiện, chuyến xe, vận đơn và nhật ký bàn giao để phát hiện lệch vận hành trước khi đối soát cuối ngày.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Operations" asp-action="ShippingDispatch" class="btn btn-secondary"><i class="fas fa-truck-fast"></i> Điều phối vận chuyển</a>
+        <a asp-controller="Operations" asp-action="ShipmentLoads" class="btn btn-secondary"><i class="fas fa-truck-ramp-box"></i> Chuyến xe</a>
+    </div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select name="warehouseId" class="form-control">
+            <option value="">Tất cả</option>
+            @foreach (var wh in Model.Warehouses)
+            {
+                <option value="@wh.WarehouseId" selected="@(Model.WarehouseId == wh.WarehouseId)">@wh.WarehouseCode - @wh.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Mức độ</label>
+        <select name="severity" class="form-control">
+            <option value="">Tất cả</option>
+            <option value="critical" selected="@(Model.Severity == "critical")">Nghiêm trọng</option>
+            <option value="error" selected="@(Model.Severity == "error")">Lỗi</option>
+            <option value="warning" selected="@(Model.Severity == "warning")">Cảnh báo</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Loại lệch</label>
+        <select name="issueType" class="form-control">
+            <option value="">Tất cả</option>
+            @foreach (var issue in issueTypes)
+            {
+                <option value="@issue.IssueType" selected="@(Model.IssueType == issue.IssueType)">@issue.IssueLabel</option>
+            }
+        </select>
+    </div>
+    <div class="form-group filter-span-2">
+        <label class="form-label">Tìm nhanh</label>
+        <input name="search" class="form-control" value="@Model.Search" placeholder="Phiếu, kiện, chuyến xe, vận đơn hoặc nội dung lệch..." />
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc dữ liệu</button>
+    </div>
+</form>
+
+<div class="stats-grid mb-3">
+    <div class="stat-card accent"><div class="stat-value">@Model.Rows.Count</div><div class="stat-label">Tổng lệch</div></div>
+    <div class="stat-card danger"><div class="stat-value">@Model.Rows.Count(r => r.Severity == "critical")</div><div class="stat-label">Nghiêm trọng</div></div>
+    <div class="stat-card warning"><div class="stat-value">@Model.Rows.Count(r => r.Severity == "error")</div><div class="stat-label">Lỗi cần xử lý</div></div>
+    <div class="stat-card info"><div class="stat-value">@Model.Rows.Count(r => r.Severity == "warning")</div><div class="stat-label">Cảnh báo</div></div>
+</div>
+
+<div class="table-container">
+    <div class="table-action-bar">
+        <a class="btn-export" asp-controller="Operations" asp-action="ExportDeliveryReconciliationExcel" asp-route-warehouseId="@Model.WarehouseId" asp-route-severity="@Model.Severity" asp-route-issueType="@Model.IssueType" asp-route-search="@Model.Search"><i class="fas fa-file-excel"></i> Xuất Excel</a>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Mức độ</th>
+                <th>Loại lệch</th>
+                <th>Kho</th>
+                <th>Tham chiếu</th>
+                <th>Tóm tắt</th>
+                <th>Khuyến nghị</th>
+                <th class="no-export"></th>
+            </tr>
+        </thead>
+        <tbody>
+        @if (!Model.Rows.Any())
+        {
+            <tr><td colspan="7" class="cell-zero-padding"><div class="empty-state"><div class="empty-icon"><i class="fas fa-clipboard-check"></i></div><div class="empty-text">Không phát hiện lệch giao hàng theo bộ lọc hiện tại</div></div></td></tr>
+        }
+        else
+        {
+            foreach (var row in Model.Rows)
+            {
+                <tr>
+                    <td><span class="badge @BadgeClass(row.Severity)">@row.SeverityLabel</span></td>
+                    <td>@row.IssueLabel</td>
+                    <td>@row.WarehouseName</td>
+                    <td>
+                        @if (!string.IsNullOrWhiteSpace(row.VoucherCode))
+                        {
+                            <div>Phiếu: <span class="td-code">@row.VoucherCode</span></div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(row.PackageCode))
+                        {
+                            <div>Kiện: <span class="td-code">@row.PackageCode</span></div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(row.LoadCode))
+                        {
+                            <div>Chuyến: <span class="td-code">@row.LoadCode</span></div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(row.TrackingNumber))
+                        {
+                            <div>Vận đơn: <span class="td-code">@row.TrackingNumber</span></div>
+                        }
+                    </td>
+                    <td class="cell-max-lg">@row.Summary</td>
+                    <td class="cell-max-lg">@row.Recommendation</td>
+                    <td class="td-actions no-export">
+                        @if (!string.IsNullOrWhiteSpace(row.ActionUrl))
+                        {
+                            <a class="btn btn-sm btn-primary" href="@row.ActionUrl"><i class="fas fa-arrow-up-right-from-square"></i> Xử lý</a>
+                        }
+                    </td>
+                </tr>
+            }
+        }
+        </tbody>
+    </table>
+</div>

@@ -1,0 +1,223 @@
+@model WMS.ViewModels.LoginHelpRequestQueueViewModel
+@using WMS.Models
+@{
+    ViewData["Title"] = "Yêu cầu truy cập";
+    string StatusLabel(LoginHelpRequestStatusEnum status) => status switch
+    {
+        LoginHelpRequestStatusEnum.New => "Mới",
+        LoginHelpRequestStatusEnum.InReview => "Đang xử lý",
+        LoginHelpRequestStatusEnum.Resolved => "Hoàn tất",
+        LoginHelpRequestStatusEnum.Rejected => "Từ chối",
+        _ => "Không xác định"
+    };
+
+    string StatusBadge(LoginHelpRequestStatusEnum status) => status switch
+    {
+        LoginHelpRequestStatusEnum.New => "badge-danger",
+        LoginHelpRequestStatusEnum.InReview => "badge-warning",
+        LoginHelpRequestStatusEnum.Resolved => "badge-success",
+        LoginHelpRequestStatusEnum.Rejected => "badge-secondary",
+        _ => "badge-secondary"
+    };
+
+    string ReasonLabel(LoginHelpRequestReasonEnum reason) => reason switch
+    {
+        LoginHelpRequestReasonEnum.ForgotPassword => "Quên mật khẩu",
+        LoginHelpRequestReasonEnum.LockedAccount => "Tài khoản bị khóa",
+        LoginHelpRequestReasonEnum.NoAccess => "Chưa được cấp quyền",
+        LoginHelpRequestReasonEnum.DeviceChanged => "Đổi thiết bị",
+        LoginHelpRequestReasonEnum.Other => "Lý do khác",
+        _ => "Lý do khác"
+    };
+
+    int Count(LoginHelpRequestStatusEnum status)
+        => Model.StatusCounts.TryGetValue(status, out var count) ? count : 0;
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Yêu cầu truy cập</h1>
+        <p class="page-subtitle">Hàng đợi hỗ trợ nhân viên không đăng nhập được, quên mật khẩu, tài khoản bị khóa hoặc cần cấp quyền truy cập kho.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-action="Index" class="btn btn-secondary"><i class="fas fa-users-cog"></i> Người dùng</a>
+    </div>
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success"><i class="fas fa-circle-check"></i> @TempData["Success"]</div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger"><i class="fas fa-circle-exclamation"></i> @TempData["Error"]</div>
+}
+
+<section class="identity-dashboard login-help-dashboard">
+    <div class="stat-card danger">
+        <div class="stat-icon"><i class="fas fa-inbox"></i></div>
+        <div class="stat-value">@Count(LoginHelpRequestStatusEnum.New)</div>
+        <div class="stat-label">Yêu cầu mới</div>
+    </div>
+    <div class="stat-card warning">
+        <div class="stat-icon"><i class="fas fa-user-clock"></i></div>
+        <div class="stat-value">@Count(LoginHelpRequestStatusEnum.InReview)</div>
+        <div class="stat-label">Đang xử lý</div>
+    </div>
+    <div class="stat-card success">
+        <div class="stat-icon"><i class="fas fa-circle-check"></i></div>
+        <div class="stat-value">@Count(LoginHelpRequestStatusEnum.Resolved)</div>
+        <div class="stat-label">Hoàn tất</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon"><i class="fas fa-ban"></i></div>
+        <div class="stat-value">@Count(LoginHelpRequestStatusEnum.Rejected)</div>
+        <div class="stat-label">Từ chối</div>
+    </div>
+</section>
+
+<section class="enterprise-section">
+    <form method="get" asp-action="LoginHelpRequests" class="filter-panel login-help-filter">
+        <div class="form-group">
+            <label class="form-label" for="helpSearch">Tìm yêu cầu</label>
+            <input id="helpSearch" name="search" value="@Model.Search" class="form-control" type="search" placeholder="Mã yêu cầu, họ tên, tài khoản, số điện thoại..." />
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="helpStatus">Trạng thái</label>
+            <select id="helpStatus" name="status" class="form-control">
+                <option value="">Tất cả</option>
+                @foreach (var status in Enum.GetValues<LoginHelpRequestStatusEnum>())
+                {
+                    <option value="@status" selected="@(Model.Status == status ? "selected" : null)">@StatusLabel(status)</option>
+                }
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="helpReason">Lý do</label>
+            <select id="helpReason" name="reason" class="form-control">
+                <option value="">Tất cả</option>
+                @foreach (var reason in Enum.GetValues<LoginHelpRequestReasonEnum>())
+                {
+                    <option value="@reason" selected="@(Model.Reason == reason ? "selected" : null)">@ReasonLabel(reason)</option>
+                }
+            </select>
+        </div>
+        <div class="form-group identity-filter-actions">
+            <label class="form-label">&nbsp;</label>
+            <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc</button>
+        </div>
+    </form>
+</section>
+
+<section class="enterprise-section">
+    <div class="table-container data-table login-help-table-wrap">
+        <div class="table-toolbar">
+            <strong>Hàng đợi hỗ trợ truy cập</strong>
+            <span class="text-muted">@Model.Requests.Count yêu cầu đang hiển thị</span>
+        </div>
+        <table class="login-help-table">
+            <thead>
+                <tr>
+                    <th>Yêu cầu</th>
+                    <th>Người gửi</th>
+                    <th>Lý do</th>
+                    <th>Đối chiếu tài khoản</th>
+                    <th>Xử lý</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.Requests.Count == 0)
+                {
+                    <tr>
+                        <td colspan="5" class="empty-state">Chưa có yêu cầu phù hợp bộ lọc.</td>
+                    </tr>
+                }
+                @foreach (var row in Model.Requests)
+                {
+                    var request = row.Request;
+                    var matchedUser = row.MatchedUser;
+                    var createdLocal = request.CreatedAt;
+                    <tr>
+                        <td data-label="Yêu cầu">
+                            <div class="login-help-request-code">@request.RequestCode</div>
+                            <span class="badge @StatusBadge(request.Status)">@StatusLabel(request.Status)</span>
+                            <div class="text-muted">@createdLocal.ToString("dd/MM/yyyy HH:mm")</div>
+                        </td>
+                        <td data-label="Người gửi">
+                            <strong>@request.FullName</strong>
+                            <div class="text-muted">@request.LoginIdentifier</div>
+                            <div class="text-muted">@(string.IsNullOrWhiteSpace(request.ContactPhone) ? "Chưa có số liên hệ" : request.ContactPhone)</div>
+                            <div class="text-muted">@(string.IsNullOrWhiteSpace(request.WarehouseOrDepartment) ? "Chưa ghi kho/bộ phận" : request.WarehouseOrDepartment)</div>
+                        </td>
+                        <td data-label="Lý do">
+                            <span class="badge badge-soft-info">@ReasonLabel(request.Reason)</span>
+                            <div class="login-help-note">@(string.IsNullOrWhiteSpace(request.Notes) ? "Không có ghi chú thêm." : request.Notes)</div>
+                        </td>
+                        <td data-label="Đối chiếu tài khoản">
+                            @if (matchedUser != null)
+                            {
+                                <strong>@matchedUser.UserName</strong>
+                                <div class="text-muted">@matchedUser.FullName</div>
+                                <div class="text-muted">@(matchedUser.Role?.RoleName ?? "Chưa gán vai trò") - @(matchedUser.Warehouse?.WarehouseName ?? "Toàn hệ thống")</div>
+                                <span class="badge @(matchedUser.IsActive ? "badge-success" : "badge-secondary")">@(matchedUser.IsActive ? "Đang hoạt động" : "Đã khóa")</span>
+                            }
+                            else
+                            {
+                                <span class="badge badge-secondary">Chưa tìm thấy tài khoản trùng khớp</span>
+                            }
+                        </td>
+                        <td data-label="Xử lý">
+                            <div class="login-help-actions">
+                                @if (request.Status == LoginHelpRequestStatusEnum.New)
+                                {
+                                    <form method="post" asp-action="MarkLoginHelpInReview" class="inline-form">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@request.LoginHelpRequestId" />
+                                        <button type="submit" class="btn btn-sm btn-secondary"><i class="fas fa-user-clock"></i> Tiếp nhận</button>
+                                    </form>
+                                }
+
+                                <form method="post" asp-action="ResolveLoginHelpRequest" class="login-help-action-form"
+                                      data-enterprise-confirm="Đánh dấu yêu cầu hỗ trợ đăng nhập này đã hoàn tất?"
+                                      data-enterprise-confirm-title="Xác nhận hoàn tất yêu cầu"
+                                      data-enterprise-confirm-ok="Hoàn tất">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@request.LoginHelpRequestId" />
+                                    <input name="resolutionNote" class="form-control" maxlength="500" placeholder="Ghi chú hoàn tất" />
+                                    <button type="submit" class="btn btn-sm btn-success"><i class="fas fa-circle-check"></i> Hoàn tất</button>
+                                </form>
+
+                                @if (matchedUser != null)
+                                {
+                                    <form method="post" asp-action="ResolveLoginHelpRequest" class="login-help-action-form"
+                                          data-enterprise-confirm="Đổi mật khẩu tạm và hoàn tất yêu cầu hỗ trợ đăng nhập?"
+                                          data-enterprise-confirm-title="Xác nhận đổi mật khẩu tạm"
+                                          data-enterprise-confirm-icon="warning"
+                                          data-enterprise-confirm-ok="Đổi mật khẩu">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@request.LoginHelpRequestId" />
+                                        <input type="hidden" name="resetUserId" value="@matchedUser.UserId" />
+                                        <input name="newPassword" type="password" class="form-control" autocomplete="new-password" placeholder="Mật khẩu tạm mới" />
+                                        <input name="resolutionNote" class="form-control" maxlength="500" placeholder="Ghi chú bàn giao" />
+                                        <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-key"></i> Đổi mật khẩu & hoàn tất</button>
+                                    </form>
+                                }
+
+                                <form method="post" asp-action="RejectLoginHelpRequest" class="login-help-action-form"
+                                      data-enterprise-confirm="Từ chối yêu cầu hỗ trợ đăng nhập này?"
+                                      data-enterprise-confirm-title="Xác nhận từ chối yêu cầu"
+                                      data-enterprise-confirm-icon="warning"
+                                      data-enterprise-confirm-ok="Từ chối">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@request.LoginHelpRequestId" />
+                                    <input name="resolutionNote" class="form-control" maxlength="500" placeholder="Lý do từ chối" required />
+                                    <button type="submit" class="btn btn-sm btn-danger"><i class="fas fa-ban"></i> Từ chối</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

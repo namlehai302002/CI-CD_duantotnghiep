@@ -1,0 +1,91 @@
+﻿@{
+    ViewData["Title"] = "Gán Khay hàng cho Đợt gom đơn";
+    var wave = (WMS.Models.Wave)ViewBag.Wave;
+    var availableTotes = (List<WMS.Models.PickTote>)ViewBag.AvailableTotes;
+    var existingAssignments = (List<WMS.Models.PickTote>)ViewBag.ExistingAssignments;
+    var vouchers = wave.Vouchers.Where(v => !v.IsCancelled).ToList();
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Gán Khay hàng — @wave.WaveCode</h1>
+        <p class="page-subtitle">Gán mỗi phiếu xuất vào một khay trên xe đẩy. Nhân viên lấy hàng sẽ đi theo luồng và bỏ đúng khay trên máy.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Operations" asp-action="Waves" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Quay lại</a>
+        <a asp-controller="Operations" asp-action="CartManagement" class="btn btn-secondary"><i class="fas fa-cart-shopping"></i> Quản lý xe đẩy</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <span class="card-title"><i class="fas fa-link"></i> Phiếu trong đợt gom đơn — Gán khay hàng</span>
+    </div>
+    <div class="card-body">
+        @if (!vouchers.Any())
+        {
+            <div class="cell-empty cell-empty-sm">Đợt gom đơn này chưa có phiếu nào.</div>
+        }
+        else
+        {
+            <form method="post" asp-controller="Operations" asp-action="SaveToteAssignment">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="waveId" value="@wave.WaveId" />
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Phiếu</th>
+                            <th>Khách hàng</th>
+                            <th>Khay hiện tại</th>
+                            <th>Chọn khay</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var v in vouchers)
+                        {
+                            var currentTote = existingAssignments.FirstOrDefault(t => t.VoucherId == v.VoucherId);
+                            <tr>
+                                <td><strong>@v.VoucherCode</strong></td>
+                                <td>@(v.Partner?.PartnerName ?? "—")</td>
+                                <td>
+                                    @if (currentTote != null)
+                                    {
+                                        <span class="badge badge-info">@currentTote.ToteCode (@(currentTote.PickCart?.CartCode ?? "rời"))</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Chưa gán</span>
+                                    }
+                                </td>
+                                <td>
+                                    <select class="form-control min-w-200" name="voucherToteMap[@v.VoucherId]" aria-label="Chọn khay cho phiếu @v.VoucherCode">
+                                        <option value="0">— Không gán —</option>
+                                        @if (currentTote != null)
+                                        {
+                                            <option value="@currentTote.PickToteId" selected>@currentTote.ToteCode (@(currentTote.PickCart?.CartCode ?? "rời")) ★ hiện tại</option>
+                                        }
+                                        @foreach (var tote in availableTotes)
+                                        {
+                                            <option value="@tote.PickToteId">@tote.ToteCode (@(tote.PickCart?.CartCode ?? "rời") ngăn @(tote.SlotPosition ?? 0))</option>
+                                        }
+                                    </select>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <div class="enterprise-action-row">
+                    <button class="btn btn-primary" type="submit"><i class="fas fa-save"></i> Lưu gán khay</button>
+                </div>
+            </form>
+        }
+    </div>
+</div>
+
+@if (availableTotes.Count == 0 && existingAssignments.Count == 0)
+{
+    <div class="user-guide mt-8">
+        <div class="user-guide-title"><i class="fas fa-info-circle"></i> Chưa có khay hàng</div>
+        <p>Bạn cần <a asp-controller="Operations" asp-action="CartManagement">tạo xe đẩy và khay</a> trước khi gán khay cho đợt gom đơn.</p>
+    </div>
+}

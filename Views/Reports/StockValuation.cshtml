@@ -1,0 +1,267 @@
+﻿@model WMS.ViewModels.StockValuationPageViewModel
+@using WMS.Models
+@{
+    ViewData["Title"] = "Định giá tồn kho";
+    var expiryDate = Model.ExpiryDate?.ToString("yyyy-MM-dd");
+    var snapshotDate = Model.SnapshotDate?.ToString("yyyy-MM-dd");
+    var exportUrl = Url.Action("ExportStockValuation", "Reports", new
+    {
+        warehouseId = Model.WarehouseId,
+        categoryId = Model.CategoryId,
+        itemSearch = Model.ItemSearch,
+        lotNumber = Model.LotNumber,
+        expiryDate,
+        mode = Model.Mode,
+        snapshotDate
+    });
+
+    string HoldStatusName(InventoryHoldStatusEnum? status) => status switch
+    {
+        null => "Theo dữ liệu chốt",
+        InventoryHoldStatusEnum.Available => "Khả dụng",
+        InventoryHoldStatusEnum.QcHold => "Giữ kiểm tra chất lượng",
+        InventoryHoldStatusEnum.Quarantine => "Cách ly",
+        InventoryHoldStatusEnum.Damaged => "Hư hỏng",
+        InventoryHoldStatusEnum.Expired => "Hết hạn",
+        _ => "Không xác định"
+    };
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Định giá tồn kho</h1>
+        <p class="page-subtitle">Báo cáo tài chính tính giá trị hàng tồn từ tồn thực tế theo vị trí hoặc từ dữ liệu đã chốt.</p>
+    </div>
+    <div class="page-actions">
+        <a href="@exportUrl" class="btn btn-success">
+            <i class="fas fa-file-arrow-down"></i> Xuất tệp bảng tính
+        </a>
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-circle-info"></i> Nguồn số liệu</div>
+    <div class="user-guide-text">
+        Chế độ tồn hiện tại lấy số lượng từ từng vị trí tồn kho. Chế độ ngày đã chốt đọc dữ liệu chốt tồn theo mã hàng, không dựng lại lịch sử phát sinh.
+    </div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Chế độ xem</label>
+        <select name="mode" class="form-control">
+            <option value="current" selected="@(Model.Mode == "current")">Tồn hiện tại</option>
+            <option value="snapshot" selected="@(Model.Mode == "snapshot")">Ngày đã chốt</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select name="warehouseId" class="form-control">
+            <option value="">Tất cả kho</option>
+            @foreach (var warehouse in Model.Warehouses)
+            {
+                <option value="@warehouse.WarehouseId" selected="@(Model.WarehouseId == warehouse.WarehouseId)">
+                    @warehouse.WarehouseCode - @warehouse.WarehouseName
+                </option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Danh mục</label>
+        <select name="categoryId" class="form-control">
+            <option value="">Tất cả danh mục</option>
+            @foreach (var category in Model.Categories)
+            {
+                <option value="@category.CategoryId" selected="@(Model.CategoryId == category.CategoryId)">
+                    @category.CategoryName
+                </option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Mã hàng hoặc tên hàng</label>
+        <input type="text" name="itemSearch" value="@Model.ItemSearch" class="form-control" placeholder="Nhập mã hàng hoặc tên hàng" />
+    </div>
+    <div class="form-group">
+        <label class="form-label">Lô</label>
+        <input type="text" name="lotNumber" value="@Model.LotNumber" class="form-control" placeholder="Nhập số lô" />
+    </div>
+    <div class="form-group">
+        <label class="form-label">Hạn dùng</label>
+        <input type="date" name="expiryDate" value="@expiryDate" class="form-control" />
+    </div>
+    <div class="form-group">
+        <label class="form-label">Ngày đã chốt</label>
+        <input type="date" name="snapshotDate" value="@snapshotDate" class="form-control" />
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-magnifying-glass"></i> Xem báo cáo</button>
+    </div>
+</form>
+
+@if (!string.IsNullOrWhiteSpace(Model.Notice))
+{
+    <div class="alert @(Model.MissingSnapshot ? "alert-warning" : "alert-info")">
+        <i class="fas fa-circle-info"></i> @Model.Notice
+    </div>
+}
+
+<div class="grid-4 mb-3">
+    <div class="stat-card accent">
+        <div class="stat-value">@Model.TotalItemCount.ToString("N0")</div>
+        <div class="stat-label">Tổng số mã hàng</div>
+    </div>
+    <div class="stat-card info">
+        <div class="stat-value">@Model.TotalQuantity.ToString("#,##0.####")</div>
+        <div class="stat-label">Tổng số lượng tồn</div>
+    </div>
+    <div class="stat-card warning">
+        <div class="stat-value">@Model.TotalAvailableQty.ToString("#,##0.####")</div>
+        <div class="stat-label">Tổng khả dụng</div>
+    </div>
+    <div class="stat-card success">
+        <div class="stat-value">@Model.TotalValue.ToString("N0")</div>
+        <div class="stat-label">Tổng giá trị tồn</div>
+    </div>
+</div>
+
+@if (Model.Rows.Any())
+{
+    <div class="grid-2 mb-3">
+        <div class="enterprise-card">
+            <div class="card-header">
+                <h3 class="card-title">Giá trị theo kho</h3>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Kho</th>
+                            <th class="cell-right">Giá trị tồn</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var summary in Model.ValueByWarehouse)
+                        {
+                            <tr>
+                                <td>@summary.Key</td>
+                                <td class="td-number fw-700">@summary.Value.ToString("N0")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="enterprise-card">
+            <div class="card-header">
+                <h3 class="card-title">Giá trị theo danh mục</h3>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Danh mục</th>
+                            <th class="cell-right">Giá trị tồn</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var summary in Model.ValueByCategory)
+                        {
+                            <tr>
+                                <td>@summary.Key</td>
+                                <td class="td-number fw-700">@summary.Value.ToString("N0")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+<div class="mobile-table-card-list">
+    @foreach (var row in Model.Rows)
+    {
+        <div class="mobile-table-card">
+            <div class="mobile-table-card-title">
+                <div class="mobile-table-card-title-main">
+                    <a asp-controller="Items" asp-action="Details" asp-route-id="@row.ItemId" class="td-code link-clean">@row.ItemCode</a>
+                    <div>@row.ItemName</div>
+                </div>
+                <span class="badge badge-secondary">@HoldStatusName(row.HoldStatus)</span>
+            </div>
+            <div class="mobile-table-card-row"><span class="mobile-table-card-label">Kho</span><span class="mobile-table-card-value">@row.WarehouseCode - @row.WarehouseName</span></div>
+            <div class="mobile-table-card-row"><span class="mobile-table-card-label">Danh mục</span><span class="mobile-table-card-value">@(string.IsNullOrWhiteSpace(row.CategoryName) ? "Chưa phân loại" : row.CategoryName)</span></div>
+            <div class="mobile-table-card-row"><span class="mobile-table-card-label">Lô/HSD</span><span class="mobile-table-card-value">@(row.LotNumber ?? "-") / @(row.ExpiryDate?.ToString("dd/MM/yyyy") ?? "-")</span></div>
+            <div class="mobile-table-card-row"><span class="mobile-table-card-label">Tồn / giữ / khả dụng</span><span class="mobile-table-card-value">@row.Quantity.ToString("#,##0.####") / @row.ReservedQty.ToString("#,##0.####") / @row.AvailableQty.ToString("#,##0.####")</span></div>
+            <div class="mobile-table-card-row"><span class="mobile-table-card-label">Giá trị tồn</span><span class="mobile-table-card-value text-success">@row.StockValue.ToString("N0")</span></div>
+        </div>
+    }
+</div>
+
+<div class="table-container mobile-table-card-source">
+    <table id="stockValuationTable">
+        <thead>
+            <tr>
+                <th>Kho</th>
+                <th>Danh mục</th>
+                <th>Mã hàng</th>
+                <th>Tên hàng</th>
+                <th>Đơn vị tính</th>
+                <th>Lô</th>
+                <th>Hạn dùng</th>
+                <th>Trạng thái tồn</th>
+                <th class="cell-right">Số lượng tồn</th>
+                <th class="cell-right">Đã giữ chỗ</th>
+                <th class="cell-right">Khả dụng</th>
+                <th class="cell-right">Đơn giá vốn</th>
+                <th class="cell-right">Giá trị tồn</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!Model.Rows.Any())
+            {
+                <tr>
+                    <td colspan="13" class="text-center text-muted cell-empty cell-empty-lg">
+                        @(Model.MissingSnapshot ? "Chưa có dữ liệu chốt tồn cho kho và ngày đã chọn." : "Không có dữ liệu phù hợp với bộ lọc.")
+                    </td>
+                </tr>
+            }
+            else
+            {
+                @foreach (var row in Model.Rows)
+                {
+                    <tr>
+                        <td>@row.WarehouseCode - @row.WarehouseName</td>
+                        <td>@(string.IsNullOrWhiteSpace(row.CategoryName) ? "Chưa phân loại" : row.CategoryName)</td>
+                    <td><a asp-controller="Items" asp-action="Details" asp-route-id="@row.ItemId" class="td-code link-clean">@row.ItemCode</a></td>
+                        <td class="td-name fw-600">@row.ItemName</td>
+                        <td>@row.UomCode</td>
+                        <td>@(row.LotNumber ?? "-")</td>
+                        <td>@(row.ExpiryDate?.ToString("dd/MM/yyyy") ?? "-")</td>
+                        <td><span class="badge badge-secondary">@HoldStatusName(row.HoldStatus)</span></td>
+                        <td class="td-number">@row.Quantity.ToString("#,##0.####")</td>
+                        <td class="td-number">@row.ReservedQty.ToString("#,##0.####")</td>
+                        <td class="td-number">@row.AvailableQty.ToString("#,##0.####")</td>
+                        <td class="td-number">@row.UnitCost.ToString("N0")</td>
+                        <td class="td-number text-success fw-700">@row.StockValue.ToString("N0")</td>
+                    </tr>
+                }
+            }
+        </tbody>
+        @if (Model.Rows.Any())
+        {
+            <tfoot>
+                <tr>
+                    <td colspan="8" class="text-right fw-700">Tổng cộng</td>
+                    <td class="td-number fw-700">@Model.TotalQuantity.ToString("#,##0.####")</td>
+                    <td class="td-number fw-700">@Model.TotalReservedQty.ToString("#,##0.####")</td>
+                    <td class="td-number fw-700">@Model.TotalAvailableQty.ToString("#,##0.####")</td>
+                    <td></td>
+                    <td class="td-number text-success fw-700">@Model.TotalValue.ToString("N0")</td>
+                </tr>
+            </tfoot>
+        }
+    </table>
+</div>

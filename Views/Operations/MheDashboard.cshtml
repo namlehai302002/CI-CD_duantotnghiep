@@ -1,0 +1,235 @@
+@model WMS.ViewModels.MheDashboardViewModel
+@using WMS.Models
+@{
+    ViewData["Title"] = "Bảng điều phối thiết bị tự động";
+
+    string SystemTypeLabel(MheSystemTypeEnum type) => type switch
+    {
+        MheSystemTypeEnum.Wcs => "Hệ điều khiển kho",
+        MheSystemTypeEnum.Conveyor => "Băng chuyền",
+        MheSystemTypeEnum.Sorter => "Máy chia chọn",
+        MheSystemTypeEnum.Robot => "Người máy kho",
+        MheSystemTypeEnum.Amr => "Xe tự hành",
+        _ => "Khác"
+    };
+
+    string CommandTypeLabel(MheCommandTypeEnum type) => type switch
+    {
+        MheCommandTypeEnum.MoveTote => "Di chuyển khay hàng",
+        MheCommandTypeEnum.ReleaseWave => "Phát hành đợt lấy hàng",
+        MheCommandTypeEnum.DivertPackage => "Chia hướng kiện hàng",
+        MheCommandTypeEnum.RobotMission => "Nhiệm vụ người máy",
+        MheCommandTypeEnum.MoveLpn => "Di chuyển mã kiện",
+        MheCommandTypeEnum.MoveInventory => "Di chuyển tồn kho",
+        _ => "Không xác định"
+    };
+
+    string CommandStatusLabel(MheCommandStatusEnum status) => status switch
+    {
+        MheCommandStatusEnum.Pending => "Chờ xử lý",
+        MheCommandStatusEnum.Queued => "Đã đưa vào hàng đợi",
+        MheCommandStatusEnum.Sent => "Đã gửi",
+        MheCommandStatusEnum.Acknowledged => "Đã xác nhận nhận lệnh",
+        MheCommandStatusEnum.InProgress => "Đang thực hiện",
+        MheCommandStatusEnum.Completed => "Hoàn tất",
+        MheCommandStatusEnum.Failed => "Lỗi",
+        MheCommandStatusEnum.Cancelled => "Đã hủy",
+        MheCommandStatusEnum.DeadLetter => "Chờ xử lý lỗi",
+        _ => "Không xác định"
+    };
+
+    string CommandStatusClass(MheCommandStatusEnum status) => status switch
+    {
+        MheCommandStatusEnum.Completed or MheCommandStatusEnum.Acknowledged or MheCommandStatusEnum.Sent => "success",
+        MheCommandStatusEnum.Failed or MheCommandStatusEnum.DeadLetter or MheCommandStatusEnum.Cancelled => "danger",
+        MheCommandStatusEnum.Pending or MheCommandStatusEnum.Queued or MheCommandStatusEnum.InProgress => "warning",
+        _ => "neutral"
+    };
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Bảng điều phối thiết bị tự động</h1>
+        <p class="page-subtitle">Theo dõi WCS, băng chuyền, máy chia chọn, robot và các lệnh tích hợp theo một bảng điều hành vận hành chuẩn.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-secondary" asp-action="AutomationDashboard">
+            <i class="fas fa-diagram-project"></i> Trung tâm tự động hóa
+        </a>
+    </div>
+</div>
+
+<div class="metric-grid">
+    <div class="metric-card warning">
+        <div class="metric-value">@Model.PendingCount.ToString("N0")</div>
+        <div class="metric-label">Lệnh chờ xử lý</div>
+    </div>
+    <div class="metric-card danger">
+        <div class="metric-value">@Model.FailedCount.ToString("N0")</div>
+        <div class="metric-label">Lệnh lỗi cần theo dõi</div>
+    </div>
+    <div class="metric-card info">
+        <div class="metric-value">@Model.Systems.Count.ToString("N0")</div>
+        <div class="metric-label">Hệ thống thiết bị</div>
+    </div>
+    <div class="metric-card success">
+        <div class="metric-value">@Model.Commands.Count.ToString("N0")</div>
+        <div class="metric-label">Tổng lệnh hiển thị</div>
+    </div>
+</div>
+
+<div class="yardops-two-column">
+    <section class="enterprise-section">
+        <div class="enterprise-section-header">
+            <div>
+                <div class="enterprise-section-title">Khai báo hệ thống thiết bị</div>
+                <div class="enterprise-section-subtitle">Tạo đầu nối WCS/MHE để các nghiệp vụ đợt lấy hàng, kiện, LPN hoặc nhiệm vụ robot có điểm gửi lệnh rõ ràng.</div>
+            </div>
+        </div>
+        <form asp-action="SaveMheSystem" method="post" class="yardops-form-grid">
+            @Html.AntiForgeryToken()
+            <div class="form-group">
+                <label class="form-label">Kho</label>
+                <select name="warehouseId" class="form-control" required>
+                    @foreach (var wh in Model.Warehouses)
+                    {
+                        <option value="@wh.WarehouseId" selected="@(Model.WarehouseId == wh.WarehouseId)">@wh.WarehouseCode - @wh.WarehouseName</option>
+                    }
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Mã hệ thống</label>
+                <input name="systemCode" class="form-control" required placeholder="VD: WCS-01" />
+            </div>
+            <div class="form-group yardops-wide">
+                <label class="form-label">Tên hệ thống</label>
+                <input name="systemName" class="form-control" required placeholder="VD: Băng chuyền xuất hàng" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Loại thiết bị</label>
+                <select name="systemType" class="form-control">
+                    @foreach (MheSystemTypeEnum value in Enum.GetValues<MheSystemTypeEnum>())
+                    {
+                        <option value="@value">@SystemTypeLabel(value)</option>
+                    }
+                </select>
+            </div>
+            <div class="form-group yardops-wide">
+                <label class="form-label">Địa chỉ kết nối</label>
+                <input name="endpointUrl" class="form-control" placeholder="https://wcs.internal/api/commands" />
+            </div>
+            <input type="hidden" name="isActive" value="true" />
+            <div class="form-group yardops-filter-actions">
+                <label class="form-label">&nbsp;</label>
+                <button class="btn btn-primary" type="submit">
+                    <i class="fas fa-save"></i> Lưu hệ thống
+                </button>
+            </div>
+        </form>
+    </section>
+
+    <section class="enterprise-section">
+        <div class="enterprise-section-header">
+            <div>
+                <div class="enterprise-section-title">Tình trạng hệ thống</div>
+                <div class="enterprise-section-subtitle">Danh sách đầu nối đang được dùng để nhận/gửi lệnh thiết bị tự động.</div>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Hệ thống</th>
+                        <th>Kho</th>
+                        <th>Trạng thái</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var system in Model.Systems)
+                    {
+                        <tr>
+                            <td>
+                                <strong>@system.SystemCode</strong>
+                                <div class="text-muted">@system.SystemName</div>
+                            </td>
+                            <td>@system.Warehouse.WarehouseCode</td>
+                            <td>
+                                <span class="status-badge @(system.IsActive ? "badge-success" : "badge-warning")">
+                                    @(system.IsActive ? "Đang hoạt động" : "Tạm ngừng")
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                    @if (!Model.Systems.Any())
+                    {
+                        <tr>
+                            <td colspan="3" class="table-empty-cell">
+                                <div class="table-empty-content">Chưa có hệ thống thiết bị nào. Hãy tạo đầu nối đầu tiên để bắt đầu điều phối.</div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+<section class="enterprise-section">
+    <div class="enterprise-section-header">
+        <div>
+            <div class="enterprise-section-title">Lệnh thiết bị gần nhất</div>
+            <div class="enterprise-section-subtitle">Theo dõi trạng thái phát lệnh, nguồn phát sinh, mã đối chiếu và thao tác gửi lại/hủy.</div>
+        </div>
+        <span class="yardops-context-pill">@Model.Commands.Count.ToString("N0") lệnh</span>
+    </div>
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Lệnh</th>
+                    <th>Kho</th>
+                    <th>Chủ hàng</th>
+                    <th>Loại lệnh</th>
+                    <th>Trạng thái</th>
+                    <th>Nguồn phát sinh</th>
+                    <th>Mã đối chiếu</th>
+                    <th class="text-end">Thao tác</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var command in Model.Commands)
+                {
+                    <tr>
+                        <td class="td-code">@command.CommandCode</td>
+                        <td>@command.WarehouseName</td>
+                        <td>@command.OwnerName</td>
+                        <td>@CommandTypeLabel(command.CommandType)</td>
+                        <td><span class="status-badge @CommandStatusClass(command.Status)">@CommandStatusLabel(command.Status)</span></td>
+                        <td>@command.SourceType / @command.SourceCode</td>
+                        <td><code>@command.CorrelationId</code></td>
+                        <td class="text-end text-nowrap">
+                            <form asp-action="RetryMheCommand" method="post" class="d-inline">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="commandId" value="@command.MheCommandId" />
+                                <button class="btn btn-sm btn-outline-primary" type="submit" title="Gửi lại" aria-label="Gửi lại lệnh thiết bị @command.CommandCode"><i class="fas fa-rotate-right"></i></button>
+                            </form>
+                            <form asp-action="CancelMheCommand" method="post" class="d-inline" data-enterprise-confirm="Hủy lệnh thiết bị này?">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="commandId" value="@command.MheCommandId" />
+                                <button class="btn btn-sm btn-outline-danger" type="submit" title="Hủy lệnh" aria-label="Hủy lệnh thiết bị @command.CommandCode"><i class="fas fa-ban"></i></button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+                @if (!Model.Commands.Any())
+                {
+                    <tr>
+                        <td colspan="8" class="table-empty-cell">
+                            <div class="table-empty-content">Chưa có lệnh thiết bị nào trong phạm vi hiện tại.</div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

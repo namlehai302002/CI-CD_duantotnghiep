@@ -1,0 +1,28 @@
+@{
+    ViewData["Title"] = "Lỗi hệ thống";
+}
+
+<div class="empty-state">
+    <div class="empty-icon"><i class="fas fa-triangle-exclamation"></i></div>
+    <div class="empty-text">Đã xảy ra lỗi</div>
+    <div class="empty-sub">Hệ thống chưa thể xử lý yêu cầu này. Vui lòng quay lại màn trước hoặc thử lại sau ít phút.</div>
+    <div class="page-actions mt-8">
+            <a asp-controller="Home" asp-action="Index" class="btn btn-primary"><i class="fas fa-house"></i> Về trang chính</a>
+        <button type="button" class="btn btn-secondary" data-wms-window-action="back"><i class="fas fa-arrow-left"></i> Quay lại</button>
+    </div>
+</div>
+
+<section class="enterprise-section">
+    <div class="card">
+        <div class="card-header"><span class="card-title">Thông tin cần cung cấp khi báo lỗi</span></div>
+        <div class="card-body">
+            <ol class="audit-checklist">
+                <li>Màn hình đang thao tác và bước nghiệp vụ vừa thực hiện.</li>
+                <li>Mã phiếu, mã vật tư, mã kiện hoặc chuyến xe liên quan nếu có.</li>
+                <li>Thời điểm xảy ra lỗi và tài khoản đang đăng nhập.</li>
+                <li>Ảnh chụp màn hình hoặc nội dung cảnh báo nếu người dùng nhìn thấy.</li>
+            </ol>
+            <p class="field-hint mt-8">Các thông tin này giúp quản trị viên tra nhật ký nhanh hơn mà không cần yêu cầu người vận hành thao tác lại nhiều lần.</p>
+        </div>
+    </div>
+</section>

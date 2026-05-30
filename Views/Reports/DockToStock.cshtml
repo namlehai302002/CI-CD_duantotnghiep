@@ -1,0 +1,147 @@
+@{
+    ViewData["Title"] = "Thời gian nhập kho";
+    var days = (int)ViewBag.Days;
+    var rows = (dynamic)ViewBag.Rows;
+    var rowList = (System.Collections.IList)rows;
+    var warehouses = (List<WMS.Models.Warehouse>)ViewBag.Warehouses;
+}
+
+@functions {
+    private static (string Label, string Badge) SlaMeta(string sla) => sla switch
+    {
+        "good" => ("Tốt", "badge-success"),
+        "warning" => ("Cảnh báo", "badge-warning"),
+        _ => ("Nghiêm trọng", "badge-danger")
+    };
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Thời gian nhập kho</h1>
+        <p class="page-subtitle">Phân tích thời gian từ khi hàng đến cửa nhận đến khi nhập kho hoàn tất - chỉ số quan trọng nhất đo lường hiệu suất tiếp nhận.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Reports" asp-action="Analytics" class="btn btn-secondary"><i class="fas fa-chart-line"></i> Phân tích vận hành</a>
+        <a asp-controller="Reports" asp-action="SpaceUtilization" class="btn btn-secondary"><i class="fas fa-cubes"></i> Hiệu suất kho</a>
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-stopwatch"></i> Tiêu chuẩn thời gian nhập kho</div>
+    <div class="step-list">
+        <span class="step-chip step-chip-success"><i class="fas fa-check-circle"></i> <= 4 giờ: Tốt</span>
+        <span class="step-chip step-chip-warning"><i class="fas fa-exclamation-triangle"></i> 4-8 giờ: Cảnh báo</span>
+        <span class="step-chip step-chip-danger"><i class="fas fa-times-circle"></i> &gt; 8 giờ: Vi phạm</span>
+    </div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select class="form-control" name="warehouseId">
+            <option value="">Tất cả</option>
+            @foreach (var w in warehouses)
+            {
+                <option value="@w.WarehouseId" selected="@(ViewBag.WarehouseId != null && (int)ViewBag.WarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Khoảng thời gian</label>
+        <select class="form-control" name="days">
+            <option value="7" selected="@(days == 7)">7 ngày</option>
+            <option value="14" selected="@(days == 14)">14 ngày</option>
+            <option value="30" selected="@(days == 30)">30 ngày</option>
+            <option value="60" selected="@(days == 60)">60 ngày</option>
+            <option value="90" selected="@(days == 90)">90 ngày</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc</button>
+    </div>
+</form>
+
+<div class="stats-grid">
+    <div class="stat-card info"><div class="stat-value">@ViewBag.AvgDockToReceive h</div><div class="stat-label">TB Đến cửa -> Nhận</div></div>
+    <div class="stat-card accent"><div class="stat-value">@ViewBag.AvgReceiveToStock h</div><div class="stat-label">TB Nhận -> Nhập kho</div></div>
+    <div class="stat-card purple"><div class="stat-value">@ViewBag.AvgTotal h</div><div class="stat-label">TB Tổng thời gian</div></div>
+    <div class="stat-card success"><div class="stat-value">@ViewBag.GoodCount</div><div class="stat-label"><= 4h (Tốt)</div></div>
+    <div class="stat-card warning"><div class="stat-value">@ViewBag.WarningCount</div><div class="stat-label">4-8h (Cảnh báo)</div></div>
+    <div class="stat-card danger"><div class="stat-value">@ViewBag.CriticalCount</div><div class="stat-label">&gt; 8h (Nghiêm trọng)</div></div>
+</div>
+
+@if (rowList.Count == 0)
+{
+    <div class="table-container mt-3">
+        <div class="empty-state">
+            <div class="empty-icon"><i class="fas fa-stopwatch"></i></div>
+            <div class="empty-text">Không có dữ liệu thời gian nhập kho</div>
+            <div class="empty-sub">Chưa có phiếu nhập nào hoàn tất trong khoảng thời gian đã chọn.</div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="mobile-table-card-list">
+        @foreach (dynamic r in rows)
+        {
+            var meta = SlaMeta((string)r.Sla);
+            <article class="mobile-table-card">
+                <div class="mobile-table-card-title">
+                        <a asp-controller="Vouchers" asp-action="Details" asp-route-id="@r.VoucherId" class="td-code link-clean">@r.VoucherCode</a>
+                    <span class="badge @meta.Badge">@meta.Label</span>
+                </div>
+                <div class="mobile-table-card-row"><span class="mobile-table-card-label">Kho</span><span class="mobile-table-card-value">@r.WarehouseName</span></div>
+                <div class="mobile-table-card-row"><span class="mobile-table-card-label">Đối tác</span><span class="mobile-table-card-value">@r.PartnerName</span></div>
+                <div class="mobile-table-card-row"><span class="mobile-table-card-label">Đến cửa</span><span class="mobile-table-card-value">@(((DateTime)r.DockArrival).ToString("dd/MM HH:mm"))</span></div>
+                <div class="mobile-table-card-row"><span class="mobile-table-card-label">Bắt đầu nhận</span><span class="mobile-table-card-value">@(((DateTime)r.ReceiveStart).ToString("dd/MM HH:mm"))</span></div>
+                <div class="mobile-table-card-row"><span class="mobile-table-card-label">Hoàn tất</span><span class="mobile-table-card-value">@(((DateTime)r.Completed).ToString("dd/MM HH:mm"))</span></div>
+                <div class="mobile-table-card-row"><span class="mobile-table-card-label">Cửa -> Nhận</span><span class="mobile-table-card-value">@(((double)r.DockToReceiveHours).ToString("N1")) h</span></div>
+                <div class="mobile-table-card-row"><span class="mobile-table-card-label">Nhận -> Kho</span><span class="mobile-table-card-value">@(((double)r.ReceiveToStockHours).ToString("N1")) h</span></div>
+                <div class="mobile-table-card-row"><span class="mobile-table-card-label">Tổng</span><span class="mobile-table-card-value">@(((double)r.TotalHours).ToString("N1")) h</span></div>
+            </article>
+        }
+    </div>
+
+    <div class="table-container mt-3 mobile-table-card-source">
+        <div class="mobile-table-toolbar">
+            <span class="mobile-table-toolbar-title"><i class="fas fa-clock-rotate-left"></i> Chi tiết thời gian nhận hàng</span>
+            <button class="btn-export" data-wms-export-table="dockToStockTable" data-wms-export-filename="dock_to_stock"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+        </div>
+        <table id="dockToStockTable">
+            <thead>
+                <tr>
+                    <th class="sortable">Mã phiếu</th>
+                    <th>Kho</th>
+                    <th class="sortable">Đối tác</th>
+                    <th class="sortable">Đến cửa</th>
+                    <th class="sortable">Bắt đầu nhận</th>
+                    <th class="sortable">Hoàn tất</th>
+                    <th class="cell-right sortable">Cửa -> Nhận</th>
+                    <th class="cell-right sortable">Nhận -> Kho</th>
+                    <th class="cell-right sortable">Tổng (h)</th>
+                    <th class="cell-center">Mức độ</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (dynamic r in rows)
+                {
+                    var meta = SlaMeta((string)r.Sla);
+                    <tr>
+                    <td><a asp-controller="Vouchers" asp-action="Details" asp-route-id="@r.VoucherId" class="td-code link-clean fs-body-sm">@r.VoucherCode</a></td>
+                        <td>@r.WarehouseName</td>
+                        <td>@r.PartnerName</td>
+                        <td class="fs-xs">@(((DateTime)r.DockArrival).ToString("dd/MM HH:mm"))</td>
+                        <td class="fs-xs">@(((DateTime)r.ReceiveStart).ToString("dd/MM HH:mm"))</td>
+                        <td class="fs-xs">@(((DateTime)r.Completed).ToString("dd/MM HH:mm"))</td>
+                        <td class="td-number">@(((double)r.DockToReceiveHours).ToString("N1"))</td>
+                        <td class="td-number">@(((double)r.ReceiveToStockHours).ToString("N1"))</td>
+                        <td class="td-number fw-700">@(((double)r.TotalHours).ToString("N1"))</td>
+                        <td class="cell-center"><span class="badge @meta.Badge">@meta.Label</span></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

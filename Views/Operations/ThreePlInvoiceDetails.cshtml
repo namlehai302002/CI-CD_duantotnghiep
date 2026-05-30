@@ -1,0 +1,186 @@
+@model WMS.ViewModels.ThreePlInvoiceDetailsViewModel
+@using WMS.Models
+@{
+    ViewData["Title"] = Model.Invoice.InvoiceCode;
+
+    string StatusClass(ThreePlInvoiceStatusEnum status) => status switch
+    {
+        ThreePlInvoiceStatusEnum.Locked => "success",
+        ThreePlInvoiceStatusEnum.Confirmed => "success",
+        ThreePlInvoiceStatusEnum.Voided => "danger",
+        _ => "warning"
+    };
+
+    string InvoiceStatusLabel(ThreePlInvoiceStatusEnum status) => status switch
+    {
+        ThreePlInvoiceStatusEnum.Draft => "Nháp",
+        ThreePlInvoiceStatusEnum.Confirmed => "Đã xác nhận",
+        ThreePlInvoiceStatusEnum.Locked => "Đã khóa",
+        ThreePlInvoiceStatusEnum.Voided => "Đã hủy",
+        _ => "Không xác định"
+    };
+
+    string ChargeTypeLabel(ThreePlChargeTypeEnum type) => type switch
+    {
+        ThreePlChargeTypeEnum.Storage => "Lưu kho",
+        ThreePlChargeTypeEnum.InboundHandling => "Xử lý nhập kho",
+        ThreePlChargeTypeEnum.OutboundHandling => "Xử lý xuất kho",
+        ThreePlChargeTypeEnum.Vas => "Dịch vụ phụ trợ",
+        ThreePlChargeTypeEnum.Yard => "Bãi",
+        ThreePlChargeTypeEnum.PackageHandling => "Xử lý kiện",
+        ThreePlChargeTypeEnum.ManualAdjustment => "Điều chỉnh thủ công",
+        _ => "Phí khác"
+    };
+
+    string ChargeUnitLabel(string? unit) => unit switch
+    {
+        "unit" => "đơn vị",
+        "pallet-day" => "pallet-ngày",
+        "order" => "đơn hàng",
+        "line" => "dòng hàng",
+        "carton" => "thùng",
+        _ => string.IsNullOrWhiteSpace(unit) ? "đơn vị" : unit
+    };
+
+    string DisputeStatusLabel(ThreePlDisputeStatusEnum status) => status switch
+    {
+        ThreePlDisputeStatusEnum.Open => "Mới gửi",
+        ThreePlDisputeStatusEnum.InReview => "Đang xử lý",
+        ThreePlDisputeStatusEnum.Approved => "Đã duyệt",
+        ThreePlDisputeStatusEnum.Rejected => "Từ chối",
+        ThreePlDisputeStatusEnum.Cancelled => "Đã hủy",
+        _ => "Không xác định"
+    };
+}
+
+<div class="yardops-shell">
+    <div class="yardops-pagehead">
+        <div>
+            <h1 class="yardops-title">@Model.Invoice.InvoiceCode</h1>
+            <p class="yardops-subtitle">@Model.Invoice.Warehouse.WarehouseCode - @Model.Invoice.OwnerPartner?.PartnerCode · @Model.Invoice.PeriodFrom.ToString("dd/MM/yyyy") - @Model.Invoice.PeriodTo.ToString("dd/MM/yyyy")</p>
+        </div>
+        <div class="yardops-head-actions">
+            <a asp-action="ExportThreePlInvoiceExcel" asp-route-id="@Model.Invoice.ThreePlInvoiceId" class="btn btn-secondary"><i class="fas fa-file-excel"></i> Tải Excel</a>
+            <a asp-action="ExportThreePlInvoicePdf" asp-route-id="@Model.Invoice.ThreePlInvoiceId" class="btn btn-secondary"><i class="fas fa-file-pdf"></i> Tải PDF</a>
+            <a asp-action="ThreePlInvoiceApi" asp-route-id="@Model.Invoice.ThreePlInvoiceId" class="btn btn-secondary"><i class="fas fa-code"></i> Dữ liệu tích hợp</a>
+            @if (Model.Invoice.Status == ThreePlInvoiceStatusEnum.Draft)
+            {
+                <form method="post" asp-action="ConfirmThreePlInvoice"
+                      data-enterprise-confirm="Xác nhận và khóa hóa đơn 3PL này? Sau khi khóa, số liệu sẽ được dùng để đối soát chi phí."
+                      data-enterprise-confirm-title="Khóa hóa đơn 3PL"
+                      data-enterprise-confirm-ok="Khóa hóa đơn">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="id" value="@Model.Invoice.ThreePlInvoiceId" />
+                    <button class="btn btn-primary" type="submit"><i class="fas fa-lock"></i> Xác nhận và khóa</button>
+                </form>
+            }
+        </div>
+    </div>
+
+    <div class="yardops-kpis">
+        <div class="yardops-kpi">
+            <div class="yardops-kpi-value">@Model.Invoice.Lines.Count <span class="yardops-kpi-unit">dòng</span></div>
+            <div class="yardops-kpi-label">Dòng phí</div>
+        </div>
+        <div class="yardops-kpi info">
+            <div class="yardops-kpi-value">@Model.Invoice.SubtotalAmount.ToString("N0")</div>
+            <div class="yardops-kpi-label">Tạm tính</div>
+        </div>
+        <div class="yardops-kpi warning">
+            <div class="yardops-kpi-value">@Model.Invoice.TaxAmount.ToString("N0")</div>
+            <div class="yardops-kpi-label">Thuế</div>
+        </div>
+        <div class="yardops-kpi success">
+            <div class="yardops-kpi-value">@Model.Invoice.TotalAmount.ToString("N0")</div>
+            <div class="yardops-kpi-label">Tổng @Model.Invoice.Currency</div>
+        </div>
+    </div>
+
+    <section class="yardops-panel">
+        <div class="yardops-panel-head">
+            <div>
+                <h2 class="yardops-panel-title">Dòng hóa đơn</h2>
+                <p class="yardops-panel-subtitle">Bộ tính phí đã áp dụng bậc giá, phí tối thiểu, phụ phí, thuế, chiết khấu và điều chỉnh theo cam kết dịch vụ.</p>
+            </div>
+            <span class="yardops-status @StatusClass(Model.Invoice.Status)">@InvoiceStatusLabel(Model.Invoice.Status)</span>
+        </div>
+        <div class="yardops-table-wrap">
+            <table class="yardops-table">
+                <thead>
+                    <tr>
+                        <th>Dịch vụ</th>
+                        <th>Mô tả</th>
+                        <th class="text-end">SL</th>
+                        <th class="text-end">Đơn giá</th>
+                        <th class="text-end">Tạm tính</th>
+                        <th class="text-end">Thuế</th>
+                        <th class="text-end">Chiết khấu</th>
+                        <th class="text-end">Điều chỉnh</th>
+                        <th class="text-end">Tổng</th>
+                        <th>Khiếu nại</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var line in Model.Invoice.Lines.OrderBy(x => x.ChargeType).ThenBy(x => x.ThreePlInvoiceLineId))
+                {
+                    <tr>
+                        <td><span class="yardops-chip">@ChargeTypeLabel(line.ChargeType)</span></td>
+                        <td>@line.Description</td>
+                        <td class="text-end">@line.Quantity.ToString("N4") @ChargeUnitLabel(line.ChargeUnit)</td>
+                        <td class="text-end">@line.UnitRate.ToString("N4")</td>
+                        <td class="text-end">@line.SubtotalAmount.ToString("N2")</td>
+                        <td class="text-end">@line.TaxAmount.ToString("N2")</td>
+                        <td class="text-end">@line.DiscountAmount.ToString("N2")</td>
+                        <td class="text-end">@line.AdjustmentAmount.ToString("N2")</td>
+                        <td class="text-end"><strong>@line.TotalAmount.ToString("N2")</strong></td>
+                        <td>
+                            <form method="post" asp-action="CreateThreePlDispute" class="enterprise-inline-table-form">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="invoiceLineId" value="@line.ThreePlInvoiceLineId" />
+                                <input type="hidden" name="invoiceId" value="@Model.Invoice.ThreePlInvoiceId" />
+                                <input name="requestedAmount" type="number" step="0.0001" min="0" class="form-control" placeholder="Số tiền" aria-label="Số tiền khiếu nại" />
+                                <input name="reason" class="form-control" placeholder="Lý do" aria-label="Lý do khiếu nại" />
+                                <button class="btn btn-sm btn-secondary" type="submit" aria-label="Gửi khiếu nại phí"><i class="fas fa-comment-dots"></i></button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="yardops-panel">
+        <div class="yardops-panel-head">
+            <div>
+                <h2 class="yardops-panel-title">Khiếu nại phí</h2>
+                <p class="yardops-panel-subtitle">Chủ hàng gửi khiếu nại, nhân viên xử lý và quản lý duyệt hoặc từ chối.</p>
+            </div>
+        </div>
+        <div class="yardops-panel-body">
+            @foreach (var dispute in Model.Disputes)
+            {
+                <form method="post" asp-action="ResolveThreePlDispute" class="yardops-inline-card review-row"
+                      data-enterprise-confirm="Ghi nhận kết quả xử lý khiếu nại phí này?"
+                      data-enterprise-confirm-title="Xử lý khiếu nại 3PL"
+                      data-enterprise-confirm-ok="Ghi nhận">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="disputeId" value="@dispute.ThreePlDisputeId" />
+                    <input type="hidden" name="invoiceId" value="@Model.Invoice.ThreePlInvoiceId" />
+                    <div>
+                        <strong>@DisputeStatusLabel(dispute.Status)</strong>
+                        <div class="yardops-subline">@dispute.Reason · yêu cầu @dispute.RequestedAmount.ToString("N2")</div>
+                    </div>
+                    <input name="approvedAmount" type="number" step="0.0001" min="0" value="@dispute.RequestedAmount" class="form-control" aria-label="Số tiền được duyệt" />
+                    <input name="response" class="form-control" placeholder="Phản hồi xử lý" aria-label="Phản hồi xử lý khiếu nại" required />
+                    <button class="btn btn-sm btn-success" name="approve" value="true">Duyệt</button>
+                    <button class="btn btn-sm btn-danger" name="approve" value="false">Từ chối</button>
+                </form>
+            }
+            @if (!Model.Disputes.Any())
+            {
+                <div class="yardops-empty">Chưa có khiếu nại phí.</div>
+            }
+        </div>
+    </section>
+</div>

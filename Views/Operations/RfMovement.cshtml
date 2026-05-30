@@ -1,0 +1,134 @@
+@model WMS.ViewModels.MovementTaskPageViewModel
+@using WMS.Models
+@{
+    ViewData["Title"] = "Quét di chuyển bằng điện thoại";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Quét di chuyển bằng điện thoại</h1>
+        <p class="page-subtitle">Quét nguồn, quét đích và xác nhận số lượng. Tồn kho/vị trí mặc định chỉ cập nhật tại bước này.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Operations" asp-action="MovementTasks" class="btn btn-secondary"><i class="fas fa-table-list"></i> Nhiệm vụ di chuyển</a>
+        <a asp-controller="Operations" asp-action="RfPicking" class="btn btn-secondary"><i class="fas fa-list-check"></i> Quét lấy hàng bằng điện thoại</a>
+    </div>
+</div>
+
+@if (!Model.Tasks.Any())
+{
+    <div class="card">
+        <div class="card-body text-center text-muted mobile-empty-panel">
+            Không có nhiệm vụ di chuyển nào đang mở theo quyền/kho hiện tại.
+        </div>
+    </div>
+}
+else
+{
+    <div class="rf-card-grid">
+        @foreach (var task in Model.Tasks)
+        {
+            <div class="card rf-task-card">
+                <div class="card-header rf-task-card-header">
+                    <span class="card-title">@task.TaskCode</span>
+                    <span class="badge badge-info">@(task.TaskType switch { MovementTaskTypeEnum.Relocate => "Dời hàng", MovementTaskTypeEnum.Replenishment => "Bổ sung", MovementTaskTypeEnum.Reslotting => "Sắp xếp lại", _ => "Không áp dụng" })</span>
+                </div>
+                <div class="card-body">
+                    @if (task.IsLpnMode)
+                    {
+                        <div class="rf-meta"><strong>Mã kiện:</strong> <span class="td-code">@task.LpnCode</span></div>
+                        <div class="rf-meta"><strong>Chi tiết:</strong> @task.LpnDistinctItemCount loại vật tư / @task.LpnDetailCount dòng chi tiết</div>
+                    }
+                    else
+                    {
+                        <div class="rf-meta"><strong>Vật tư:</strong> @task.ItemCode - @task.ItemName</div>
+                    }
+                    <div class="rf-meta"><strong>Nguồn:</strong> <span class="td-code">@task.SourceLocationCode</span></div>
+                    <div class="rf-meta"><strong>Đích:</strong> <span class="td-code">@task.DestinationLocationCode</span></div>
+                    <div class="rf-meta"><strong>Số lượng:</strong> @task.PlannedQty.ToString("N2")</div>
+                    <div class="rf-meta"><strong>Lô/HSD:</strong> @(task.LotNumber ?? "---") @(task.ExpiryDate.HasValue ? $" / {task.ExpiryDate:dd/MM/yyyy}" : "")</div>
+                    <div class="rf-meta"><strong>Phụ trách:</strong> @(task.AssignedTo ?? "Chưa phân công")</div>
+                    @if (!string.IsNullOrWhiteSpace(task.SourceReason))
+                    {
+                        <div class="rf-meta"><strong>Lý do:</strong> @task.SourceReason</div>
+                    }
+
+                    @if (task.Status == MovementTaskStatusEnum.Pending || task.Status == MovementTaskStatusEnum.Assigned)
+                    {
+                        <form method="post" asp-controller="Operations" asp-action="StartMovementTask" class="mb-2">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="movementTaskId" value="@task.MovementTaskId" />
+                            <input type="hidden" name="warehouseId" value="@Model.WarehouseId" />
+                            <button class="btn btn-secondary" type="submit"><i class="fas fa-play"></i> Bắt đầu</button>
+                        </form>
+                    }
+
+                    <form method="post" asp-controller="Operations" asp-action="ConfirmMovementTask" class="rf-form"
+                          data-offline-queue="true"
+                          data-offline-operation-type="Xác nhận di chuyển"
+                          data-offline-description="Xác nhận di chuyển @task.TaskCode - @task.ItemCode">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="movementTaskId" value="@task.MovementTaskId" />
+                        <input type="hidden" name="warehouseId" value="@Model.WarehouseId" />
+                        <input type="hidden" name="queuedBaselineConfirmedQty" value="@task.ConfirmedQty.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)" />
+                        @if (task.IsLpnMode)
+                        {
+                            <div class="form-group">
+                                <label class="form-label">Quét mã kiện</label>
+                                <div class="scan-input-row">
+                                    <input class="form-control rf-scan-input" id="lpn-scan-@task.MovementTaskId" name="lpnScan" value="@task.LpnCode" required />
+                                    <button type="button" class="btn btn-secondary scan-camera-btn" data-wms-call="scanMovementField" data-wms-arg="lpn-scan-@task.MovementTaskId" title="Mở camera quét mã kiện">
+                                        <i class="fas fa-camera"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                        <div class="form-group">
+                            <label class="form-label">Quét vị trí nguồn</label>
+                            <div class="scan-input-row">
+                                <input class="form-control @(task.IsLpnMode ? "" : "rf-scan-input")" id="source-scan-@task.MovementTaskId" name="sourceScan" value="@task.SourceLocationCode" required />
+                                <button type="button" class="btn btn-secondary scan-camera-btn" data-wms-call="scanMovementField" data-wms-arg="source-scan-@task.MovementTaskId" title="Mở camera quét vị trí nguồn">
+                                    <i class="fas fa-camera"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Quét vị trí đích</label>
+                            <div class="scan-input-row">
+                                <input class="form-control" id="destination-scan-@task.MovementTaskId" name="destinationScan" value="@task.DestinationLocationCode" required />
+                                <button type="button" class="btn btn-secondary scan-camera-btn" data-wms-call="scanMovementField" data-wms-arg="destination-scan-@task.MovementTaskId" title="Mở camera quét vị trí đích">
+                                    <i class="fas fa-camera"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Số lượng xác nhận</label>
+                            <input class="form-control" type="number" step="0.0001" min="0.0001" max="@task.PlannedQty.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)" name="confirmedQty" value="@task.PlannedQty.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)" required @(task.IsLpnMode ? "readonly" : "") />
+                            <div class="form-help rf-form-help">@(task.IsLpnMode ? "Di chuyển mã kiện bắt buộc xác nhận nguyên kiện." : "Nhập thấp hơn số lượng kế hoạch nếu thực tế chỉ di chuyển được một phần; nhiệm vụ sẽ chuyển thành Thiếu hàng.")</div>
+                        </div>
+                        <div class="rf-action-row">
+                            <button class="btn btn-primary" type="submit"><i class="fas fa-check"></i> Xác nhận di chuyển</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        }
+    </div>
+}
+@section Scripts {
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const firstScan = document.querySelector('.rf-scan-input');
+    if (firstScan) {
+        firstScan.focus();
+        firstScan.select();
+    }
+});
+
+function scanMovementField(fieldId) {
+    window.wmsScanner.scanToField(fieldId, {
+        closeOnSuccess: true
+    });
+}
+</script>
+}

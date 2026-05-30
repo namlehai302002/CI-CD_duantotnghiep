@@ -1,0 +1,73 @@
+@model WMS.ViewModels.AiAssistantViewModel
+@{
+    ViewData["Title"] = "Trợ lý dữ liệu nội bộ";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Trợ lý dữ liệu nội bộ</h1>
+        <p class="page-subtitle">Chỉ đọc dữ liệu đúng quyền, luôn lưu nguồn trích dẫn và chặn yêu cầu sửa dữ liệu.</p>
+    </div>
+    <div class="page-actions">
+        <span class="status-badge badge-roomy"><i class="fas fa-user-shield"></i> @Model.RoleName</span>
+        <span class="status-badge badge-roomy"><i class="fas fa-warehouse"></i> @Model.ScopeSummary</span>
+    </div>
+</div>
+
+<section class="enterprise-section ai-assistant-command-center">
+    <div class="enterprise-section-header">
+        <div>
+            <div class="enterprise-section-title"><i class="fas fa-shield-halved"></i> Truy vấn dữ liệu có kiểm soát</div>
+            <div class="enterprise-section-subtitle">Dùng để đối chiếu nhanh tồn kho, SLA, cảnh báo và chi phí theo đúng phạm vi quyền hiện tại.</div>
+        </div>
+        <span class="badge badge-accent">Read-only</span>
+    </div>
+    <div class="ai-assistant-suggestion-grid" aria-label="Gợi ý câu hỏi">
+        <span><i class="fas fa-boxes-stacked"></i> Tồn kho rủi ro</span>
+        <span><i class="fas fa-triangle-exclamation"></i> Cảnh báo ưu tiên</span>
+        <span><i class="fas fa-route"></i> SLA vận hành</span>
+        <span><i class="fas fa-file-circle-check"></i> Nguồn đối chiếu</span>
+    </div>
+    <form method="post" asp-action="AskAiAssistant" class="ai-assistant-query-form">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="sessionId" value="@Model.SessionId" />
+        <textarea class="form-control" name="prompt" rows="3" placeholder="Hỏi về tồn kho, cam kết dịch vụ, chi phí, cảnh báo hoặc nguồn dữ liệu..." aria-label="Câu hỏi cho trợ lý dữ liệu nội bộ"></textarea>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-paper-plane"></i> Hỏi trợ lý</button>
+    </form>
+</section>
+
+<section class="enterprise-section">
+    <div class="enterprise-section-header">
+        <div>
+            <div class="enterprise-section-title">Lịch sử trả lời có nguồn trích dẫn</div>
+            <div class="enterprise-section-subtitle">Mỗi câu trả lời gắn nguồn để người vận hành đối chiếu.</div>
+        </div>
+    </div>
+    @if (!Model.Messages.Any())
+    {
+        <div class="empty-state ai-assistant-empty-state">
+            <div class="empty-icon"><i class="fas fa-database"></i></div>
+            <div class="empty-text">Chưa có câu hỏi nào trong phiên này.</div>
+            <div class="empty-sub">Nhập câu hỏi nghiệp vụ ở khung trên để hệ thống trả lời kèm nguồn trích dẫn.</div>
+        </div>
+    }
+    @foreach (var message in Model.Messages)
+    {
+        <article class="assistant-message @(message.IsMutationBlocked ? "blocked" : "")">
+            <header>
+                <strong>@message.Prompt</strong>
+                @if (message.IsMutationBlocked)
+                {
+                    <span class="status-badge danger">Đã chặn yêu cầu sửa dữ liệu</span>
+                }
+            </header>
+            <p>@message.Response</p>
+            <div class="assistant-citations">
+                @foreach (var cite in message.Citations)
+                {
+                    <a href="@cite.SourceUrl" class="status-badge">@cite.SourceLabel</a>
+                }
+            </div>
+        </article>
+    }
+</section>

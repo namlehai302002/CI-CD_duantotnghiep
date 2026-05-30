@@ -1,0 +1,360 @@
+@model WMS.ViewModels.ThreePlBillingRatePageViewModel
+@using WMS.Models
+@using System.Globalization
+@{
+    ViewData["Title"] = "Bảng giá tính phí kho nhiều chủ hàng";
+
+    var rates = Model.Rates;
+    var activeCount = rates.Count(r => r.IsActive);
+    var inactiveCount = rates.Count(r => !r.IsActive);
+    var chargeTypeCount = rates.Select(r => r.ChargeType).Distinct().Count();
+    var defaultWarehouseId = Model.WarehouseId ?? Model.Warehouses.FirstOrDefault()?.WarehouseId;
+    var defaultOwnerId = Model.OwnerPartnerId ?? Model.Owners.FirstOrDefault()?.PartnerId;
+
+    string ChargeTypeLabel(ThreePlChargeTypeEnum type) => type switch
+    {
+        ThreePlChargeTypeEnum.Storage => "Phí lưu kho",
+        ThreePlChargeTypeEnum.InboundHandling => "Phí xử lý nhập kho",
+        ThreePlChargeTypeEnum.OutboundHandling => "Phí xử lý xuất kho",
+        ThreePlChargeTypeEnum.Vas => "Phí dịch vụ gia tăng",
+        ThreePlChargeTypeEnum.Yard => "Phí bến bãi",
+        ThreePlChargeTypeEnum.PackageHandling => "Phí xử lý kiện",
+        ThreePlChargeTypeEnum.ManualAdjustment => "Điều chỉnh thủ công",
+        _ => "Không xác định"
+    };
+
+    string RateStatusClass(bool isActive) => isActive ? "success" : "neutral";
+    string RateStatusText(bool isActive) => isActive ? "Đang áp dụng" : "Tạm ngưng";
+    string ChargeUnitLabel(string? unit) => unit switch
+    {
+        "unit" => "đơn vị",
+        "pallet-day" => "pallet-ngày",
+        "order" => "đơn hàng",
+        "line" => "dòng hàng",
+        "carton" => "thùng",
+        _ => string.IsNullOrWhiteSpace(unit) ? "đơn vị" : unit
+    };
+}
+
+<div class="yardops-shell">
+    <div class="yardops-pagehead">
+        <div>
+            <h1 class="yardops-title">Bảng giá tính phí kho nhiều chủ hàng</h1>
+            <p class="yardops-subtitle">Quản trị đơn giá kho nhiều chủ hàng theo kho, chủ hàng, loại phí và hiệu lực để kỳ tính phí tự động dùng đúng bảng giá.</p>
+        </div>
+        <div class="yardops-head-actions">
+            <a asp-action="ThreePlContracts" class="btn btn-secondary">
+                <i class="fas fa-file-contract"></i> Hợp đồng kho nhiều chủ hàng
+            </a>
+            <a asp-action="ThreePlBillingRuns" class="btn btn-secondary">
+                <i class="fas fa-file-invoice-dollar"></i> Kỳ tính phí
+            </a>
+            <button type="button" class="btn btn-secondary" data-wms-export-table="#threePlRatesTable" data-wms-export-filename="bang_gia_kho_nhieu_chu_hang">
+                <i class="fas fa-download"></i> Tải bảng
+            </button>
+            <button type="button" class="btn btn-primary" data-wms-calls='[["resetThreePlRateForm"],["openYardopsModal","threePlRateModal"]]'>
+                <i class="fas fa-plus"></i> Thêm bảng giá
+            </button>
+        </div>
+    </div>
+
+    <div class="yardops-kpis">
+        <div class="yardops-kpi">
+            <div class="yardops-kpi-value">@rates.Count <span class="yardops-kpi-unit">dòng</span></div>
+            <div class="yardops-kpi-label">Tổng bảng giá</div>
+        </div>
+        <div class="yardops-kpi success">
+            <div class="yardops-kpi-value">@activeCount <span class="yardops-kpi-unit">dòng</span></div>
+            <div class="yardops-kpi-label">Đang áp dụng</div>
+        </div>
+        <div class="yardops-kpi warning">
+            <div class="yardops-kpi-value">@inactiveCount <span class="yardops-kpi-unit">dòng</span></div>
+            <div class="yardops-kpi-label">Tạm ngưng</div>
+        </div>
+        <div class="yardops-kpi info">
+            <div class="yardops-kpi-value">@chargeTypeCount <span class="yardops-kpi-unit">loại</span></div>
+            <div class="yardops-kpi-label">Loại phí đang dùng</div>
+        </div>
+    </div>
+
+    <form method="get" class="yardops-filter">
+        <div class="form-group yardops-span-3">
+            <label class="form-label">Kho</label>
+            <select name="warehouseId" class="form-control">
+                <option value="">Tất cả kho</option>
+                @foreach (var wh in Model.Warehouses)
+                {
+                    <option value="@wh.WarehouseId" selected="@(Model.WarehouseId == wh.WarehouseId)">@wh.WarehouseCode - @wh.WarehouseName</option>
+                }
+            </select>
+        </div>
+        <div class="form-group yardops-span-3">
+            <label class="form-label">Chủ hàng</label>
+            <select name="ownerPartnerId" class="form-control">
+                <option value="">Tất cả chủ hàng</option>
+                @foreach (var owner in Model.Owners)
+                {
+                    <option value="@owner.PartnerId" selected="@(Model.OwnerPartnerId == owner.PartnerId)">@owner.PartnerCode - @owner.PartnerName</option>
+                }
+            </select>
+        </div>
+        <div class="form-group yardops-filter-actions">
+            <label class="form-label">&nbsp;</label>
+            <button type="submit" class="btn btn-secondary"><i class="fas fa-rotate"></i> Tải dữ liệu</button>
+        </div>
+    </form>
+
+    <section class="yardops-panel">
+        <div class="yardops-panel-head">
+            <div>
+                <h2 class="yardops-panel-title">Quy tắc bảng giá kho nhiều chủ hàng</h2>
+                <p class="yardops-panel-subtitle">Một chủ hàng có thể có nhiều dòng phí theo lưu kho, xử lý nhập/xuất, dịch vụ gia tăng, bến bãi hoặc điều chỉnh.</p>
+            </div>
+            <span class="yardops-context-pill">@rates.Count.ToString("N0") dòng</span>
+        </div>
+        <div class="yardops-table-wrap">
+            <table class="yardops-table" id="threePlRatesTable">
+                <thead>
+                    <tr>
+                        <th>Mã bảng giá</th>
+                        <th>Kho</th>
+                        <th>Chủ hàng</th>
+                        <th>Loại phí</th>
+                        <th class="text-end">Đơn giá</th>
+                        <th>Đơn vị tính phí</th>
+                        <th>Hiệu lực</th>
+                        <th>Trạng thái</th>
+                        <th>Ghi chú</th>
+                        <th class="text-end">Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var rate in rates)
+                    {
+                        <tr>
+                            <td>
+                                <div class="yardops-rule-title">@rate.RateCode</div>
+                                <div class="yardops-subline">ID @rate.ThreePlBillingRateId</div>
+                            </td>
+                            <td>
+                                <div class="yardops-rule-title">@rate.Warehouse.WarehouseCode</div>
+                                <div class="yardops-subline">@rate.Warehouse.WarehouseName</div>
+                            </td>
+                            <td>
+                                <div class="yardops-rule-title">@rate.OwnerPartner.PartnerCode</div>
+                                <div class="yardops-subline">@rate.OwnerPartner.PartnerName</div>
+                            </td>
+                            <td><span class="yardops-chip"><i class="fas fa-receipt"></i><span>@ChargeTypeLabel(rate.ChargeType)</span></span></td>
+                            <td class="text-end"><strong>@rate.UnitRate.ToString("N4")</strong> @rate.Currency</td>
+                            <td>@ChargeUnitLabel(rate.ChargeUnit)</td>
+                            <td>@rate.EffectiveFrom.ToString("dd/MM/yyyy") - @(rate.EffectiveTo?.ToString("dd/MM/yyyy") ?? "chưa kết thúc")</td>
+                            <td><span class="yardops-status @RateStatusClass(rate.IsActive)">@RateStatusText(rate.IsActive)</span></td>
+                            <td><span class="yardops-muted">@(!string.IsNullOrWhiteSpace(rate.Notes) ? rate.Notes : "--")</span></td>
+                            <td class="text-end text-nowrap">
+                                <button type="button"
+                                        class="btn btn-sm btn-secondary"
+                                        title="Sửa bảng giá"
+                                        data-rate-id="@rate.ThreePlBillingRateId"
+                                        data-warehouse-id="@rate.WarehouseId"
+                                        data-owner-id="@rate.OwnerPartnerId"
+                                        data-charge-type="@rate.ChargeType"
+                                        data-rate-code="@rate.RateCode"
+                                        data-unit-rate="@rate.UnitRate.ToString(CultureInfo.InvariantCulture)"
+                                        data-charge-unit="@rate.ChargeUnit"
+                                        data-currency="@rate.Currency"
+                                        data-effective-from="@rate.EffectiveFrom.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)"
+                                        data-effective-to="@(rate.EffectiveTo?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "")"
+                                        data-is-active="@rate.IsActive.ToString().ToLowerInvariant()"
+                                        data-notes="@rate.Notes"
+                                        data-wms-call-self="editThreePlRate">
+                                    <i class="fas fa-pen"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                    @if (!rates.Any())
+                    {
+                        <tr>
+                            <td colspan="10">
+                                <div class="yardops-empty">
+                                    <i class="fas fa-tags"></i>
+                                    Chưa có bảng giá phù hợp bộ lọc. Nhấn "Thêm bảng giá" để cấu hình đơn giá kho nhiều chủ hàng đầu tiên.
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+<div class="yardops-modal-overlay" id="threePlRateModal" aria-hidden="true">
+    <form method="post" asp-action="SaveThreePlBillingRate" class="yardops-modal" role="dialog" aria-modal="true" aria-labelledby="threePlRateModalTitle">
+        @Html.AntiForgeryToken()
+        <div class="yardops-modal-head">
+            <div>
+                <h2 class="yardops-modal-title" id="threePlRateModalTitle">Thêm bảng giá kho nhiều chủ hàng</h2>
+                <p class="yardops-modal-subtitle">Cấu hình đơn giá theo đúng chủ hàng, loại phí và thời gian hiệu lực trước khi tạo kỳ tính phí.</p>
+            </div>
+            <button type="button" class="yardops-modal-close" data-wms-call="closeYardopsModal" data-wms-arg="threePlRateModal" aria-label="Đóng">
+                <i class="fas fa-xmark"></i>
+            </button>
+        </div>
+        <div class="yardops-modal-body">
+            <input type="hidden" name="id" id="fThreePlRateId" />
+            <div class="yardops-section-grid">
+                <section class="yardops-section">
+                    <h3 class="yardops-section-title">Phạm vi áp dụng</h3>
+                    <div class="form-group">
+                        <label class="form-label">Kho <span class="text-danger">*</span></label>
+                        <select name="warehouseId" id="fThreePlWarehouseId" class="form-control" required>
+                            @foreach (var wh in Model.Warehouses)
+                            {
+                                <option value="@wh.WarehouseId">@wh.WarehouseCode - @wh.WarehouseName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Chủ hàng <span class="text-danger">*</span></label>
+                        <select name="ownerPartnerId" id="fThreePlOwnerId" class="form-control" required>
+                            @foreach (var owner in Model.Owners)
+                            {
+                                <option value="@owner.PartnerId">@owner.PartnerCode - @owner.PartnerName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Loại phí <span class="text-danger">*</span></label>
+                        <select name="chargeType" id="fThreePlChargeType" class="form-control" required>
+                            @foreach (ThreePlChargeTypeEnum value in Enum.GetValues<ThreePlChargeTypeEnum>())
+                            {
+                                <option value="@value">@ChargeTypeLabel(value)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Mã bảng giá</label>
+                        <input name="rateCode" id="fThreePlRateCode" class="form-control" placeholder="Để trống để hệ thống tự sinh" maxlength="80" />
+                    </div>
+                </section>
+
+                <section class="yardops-section">
+                    <h3 class="yardops-section-title">Đơn giá và hiệu lực</h3>
+                    <div class="form-group">
+                        <label class="form-label">Đơn giá <span class="text-danger">*</span></label>
+                        <input name="unitRate" id="fThreePlUnitRate" type="number" step="0.0001" min="0" class="form-control" required />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Đơn vị tính phí</label>
+                        <input name="chargeUnit" id="fThreePlChargeUnit" class="form-control" value="đơn vị" maxlength="20" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tiền tệ</label>
+                        <input name="currency" id="fThreePlCurrency" class="form-control" value="VND" maxlength="10" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Hiệu lực từ <span class="text-danger">*</span></label>
+                        <input name="effectiveFrom" id="fThreePlEffectiveFrom" type="date" class="form-control" required />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Hiệu lực đến</label>
+                        <input name="effectiveTo" id="fThreePlEffectiveTo" type="date" class="form-control" />
+                    </div>
+                    <div class="form-group">
+                        <input type="hidden" name="isActive" value="false" />
+                        <label class="checkbox-row">
+                            <input type="checkbox" name="isActive" id="fThreePlIsActive" value="true" checked />
+                            <span>Đang áp dụng bảng giá này</span>
+                        </label>
+                    </div>
+                </section>
+
+                <section class="yardops-section">
+                    <h3 class="yardops-section-title">Ghi chú kiểm soát</h3>
+                    <div class="form-group">
+                        <label class="form-label">Ghi chú nội bộ</label>
+                        <textarea name="notes" id="fThreePlNotes" class="form-control" rows="8" placeholder="Điều kiện áp dụng, thỏa thuận chủ hàng, lý do điều chỉnh..."></textarea>
+                    </div>
+                </section>
+            </div>
+        </div>
+        <div class="yardops-modal-foot">
+            <button type="button" class="btn btn-secondary" data-wms-call="closeYardopsModal" data-wms-arg="threePlRateModal">Hủy</button>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Lưu bảng giá</button>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+<script>
+function openYardopsModal(id) {
+    const modal = document.getElementById(id);
+    if (!modal) return;
+    modal.classList.add('active');
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeYardopsModal(id) {
+    const modal = document.getElementById(id);
+    if (!modal) return;
+    modal.classList.remove('active');
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+function setThreePlValue(id, value) {
+    const element = document.getElementById(id);
+    if (element) element.value = value || '';
+}
+
+function resetThreePlRateForm() {
+    document.getElementById('threePlRateModalTitle').textContent = 'Thêm bảng giá kho nhiều chủ hàng';
+    setThreePlValue('fThreePlRateId', '');
+    setThreePlValue('fThreePlWarehouseId', '@(defaultWarehouseId?.ToString(CultureInfo.InvariantCulture) ?? "")');
+    setThreePlValue('fThreePlOwnerId', '@(defaultOwnerId?.ToString(CultureInfo.InvariantCulture) ?? "")');
+    setThreePlValue('fThreePlChargeType', '@ThreePlChargeTypeEnum.Storage');
+    setThreePlValue('fThreePlRateCode', '');
+    setThreePlValue('fThreePlUnitRate', '');
+    setThreePlValue('fThreePlChargeUnit', 'đơn vị');
+    setThreePlValue('fThreePlCurrency', 'VND');
+    setThreePlValue('fThreePlEffectiveFrom', '@WMS.Common.VietnamTime.Today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)');
+    setThreePlValue('fThreePlEffectiveTo', '');
+    setThreePlValue('fThreePlNotes', '');
+    const active = document.getElementById('fThreePlIsActive');
+    if (active) active.checked = true;
+}
+
+function editThreePlRate(button) {
+    const data = button.dataset;
+    document.getElementById('threePlRateModalTitle').textContent = 'Sửa bảng giá kho nhiều chủ hàng';
+    setThreePlValue('fThreePlRateId', data.rateId);
+    setThreePlValue('fThreePlWarehouseId', data.warehouseId);
+    setThreePlValue('fThreePlOwnerId', data.ownerId);
+    setThreePlValue('fThreePlChargeType', data.chargeType);
+    setThreePlValue('fThreePlRateCode', data.rateCode);
+    setThreePlValue('fThreePlUnitRate', data.unitRate);
+    setThreePlValue('fThreePlChargeUnit', data.chargeUnit || 'đơn vị');
+    setThreePlValue('fThreePlCurrency', data.currency || 'VND');
+    setThreePlValue('fThreePlEffectiveFrom', data.effectiveFrom);
+    setThreePlValue('fThreePlEffectiveTo', data.effectiveTo);
+    setThreePlValue('fThreePlNotes', data.notes);
+    const active = document.getElementById('fThreePlIsActive');
+    if (active) active.checked = data.isActive !== 'false';
+    openYardopsModal('threePlRateModal');
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.yardops-modal-overlay.active').forEach(function(modal) {
+            closeYardopsModal(modal.id);
+        });
+    }
+});
+
+document.addEventListener('click', function(e) {
+    if (e.target.classList && e.target.classList.contains('yardops-modal-overlay')) {
+        closeYardopsModal(e.target.id);
+    }
+});
+</script>
+}

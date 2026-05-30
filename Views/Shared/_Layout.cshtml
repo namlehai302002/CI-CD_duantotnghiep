@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - WMS Pro</title>
+    <meta name="description" content="Hệ thống quản lý kho nguyên vật liệu và thành phẩm" />
+    <meta name="theme-color" content="#C74634" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="WMS Pro" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="manifest" href="~/manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="~/images/logo.svg" asp-append-version="true" />
+    <link rel="alternate icon" type="image/x-icon" href="~/favicon.ico" asp-append-version="true" />
+    <link rel="apple-touch-icon" href="~/images/pwa-icon-192.png" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script>
+        (function () {
+            function asOptions(messageOrOptions, fallbackIcon) {
+                if (messageOrOptions && typeof messageOrOptions === 'object') return messageOrOptions;
+                return { text: String(messageOrOptions || ''), icon: fallbackIcon || 'info' };
+            }
+
+            function fallbackDialog(options, mode) {
+                return new Promise(function (resolve) {
+                    var overlay = document.createElement('div');
+                    overlay.className = 'enterprise-dialog-overlay';
+                    var box = document.createElement('div');
+                    box.className = 'enterprise-dialog-box';
+                    var inputHtml = mode === 'prompt'
+                        ? '<input id="enterpriseDialogInput" class="enterprise-dialog-input" type="text" placeholder="' + escapeHtml(options.inputPlaceholder || '') + '" />'
+                        : '';
+                    box.innerHTML =
+                        '<div class="enterprise-dialog-title">' + escapeHtml(options.title || 'Thông báo hệ thống') + '</div>' +
+                        '<div class="enterprise-dialog-text">' + escapeHtml(options.text || '') + '</div>' +
+                        inputHtml +
+                        '<div class="enterprise-dialog-actions">' +
+                        (mode !== 'notify' ? '<button type="button" id="enterpriseDialogCancel" class="enterprise-dialog-cancel">' + escapeHtml(options.cancelButtonText || 'Hủy') + '</button>' : '') +
+                        '<button type="button" id="enterpriseDialogOk" class="enterprise-dialog-confirm">' + escapeHtml(options.confirmButtonText || 'Đồng ý') + '</button>' +
+                        '</div>';
+                    overlay.appendChild(box);
+                    document.body.appendChild(overlay);
+
+                    function close(value) {
+                        overlay.remove();
+                        resolve(value);
+                    }
+
+                    overlay.querySelector('#enterpriseDialogOk').addEventListener('click', function () {
+                        if (mode === 'prompt') {
+                            close(overlay.querySelector('#enterpriseDialogInput').value || null);
+                            return;
+                        }
+                        close(true);
+                    });
+                    overlay.querySelector('#enterpriseDialogCancel')?.addEventListener('click', function () {
+                        close(mode === 'prompt' ? null : false);
+                    });
+                    overlay.addEventListener('click', function (event) {
+                        if (event.target === overlay) close(mode === 'prompt' ? null : false);
+                    });
+                    overlay.querySelector('#enterpriseDialogInput')?.focus();
+                });
+            }
+
+            function escapeHtml(value) {
+                var div = document.createElement('div');
+                div.textContent = value == null ? '' : String(value);
+                return div.innerHTML;
+            }
+
+            window.enterpriseNotify = function (messageOrOptions, icon) {
+                var options = asOptions(messageOrOptions, icon || 'info');
+                if (window.Swal) {
+                    return Swal.fire({
+                        toast: options.toast !== false,
+                        position: options.position || 'top-end',
+                        icon: options.icon || 'info',
+                        title: options.title || options.text || 'Thông báo hệ thống',
+                        text: options.title ? options.text : undefined,
+                        customClass: {
+                            popup: 'enterprise-toast-popup',
+                            title: 'enterprise-toast-title'
+                        },
+                        showConfirmButton: options.showConfirmButton === true,
+                        timer: options.timer || 3600,
+                        timerProgressBar: true
+                    });
+                }
+                return fallbackDialog(options, 'notify');
+            };
+
+            window.enterpriseConfirm = function (messageOrOptions) {
+                var options = asOptions(messageOrOptions, 'question');
+                if (window.Swal) {
+                    return Swal.fire({
+                        title: options.title || 'Xác nhận thao tác',
+                        html: options.html,
+                        text: options.html ? undefined : (options.text || ''),
+                        icon: options.icon || 'question',
+                        showCancelButton: true,
+                        confirmButtonText: options.confirmButtonText || 'Xác nhận',
+                        cancelButtonText: options.cancelButtonText || 'Hủy',
+                        confirmButtonColor: options.confirmButtonColor || '#2563eb',
+                        focusCancel: options.focusCancel !== false
+                    }).then(function (result) { return !!result.isConfirmed; });
+                }
+                return fallbackDialog(options, 'confirm');
+            };
+
+            window.enterprisePrompt = function (messageOrOptions) {
+                var options = asOptions(messageOrOptions, 'question');
+                if (window.Swal) {
+                    return Swal.fire({
+                        title: options.title || 'Nhập thông tin',
+                        text: options.text || '',
+                        input: options.input || 'text',
+                        inputPlaceholder: options.inputPlaceholder || '',
+                        inputValue: options.inputValue || '',
+                        icon: options.icon || 'question',
+                        showCancelButton: true,
+                        confirmButtonText: options.confirmButtonText || 'Tiếp tục',
+                        cancelButtonText: options.cancelButtonText || 'Hủy',
+                        inputValidator: options.inputValidator
+                    }).then(function (result) { return result.isConfirmed ? (result.value || '') : null; });
+                }
+                return fallbackDialog(options, 'prompt');
+            };
+
+            window.alert = function (message) {
+                window.enterpriseNotify({ title: 'Thông báo hệ thống', text: String(message || ''), icon: 'info' });
+            };
+            window.confirm = function (message) {
+                window.enterpriseNotify({ title: 'Cần xác nhận chuẩn enterprise', text: String(message || ''), icon: 'warning' });
+                return false;
+            };
+            window.prompt = function (message) {
+                window.enterpriseNotify({ title: 'Cần biểu mẫu nhập liệu chuẩn enterprise', text: String(message || ''), icon: 'warning' });
+                return null;
+            };
+
+            document.addEventListener('submit', function (event) {
+                var form = event.target.closest('form[data-enterprise-confirm]');
+                if (!form || form.dataset.enterpriseConfirmed === 'true') return;
+                event.preventDefault();
+                window.enterpriseConfirm({
+                    title: form.dataset.enterpriseConfirmTitle || 'Xác nhận thao tác',
+                    text: form.dataset.enterpriseConfirm,
+                    icon: form.dataset.enterpriseConfirmIcon || 'question',
+                    confirmButtonText: form.dataset.enterpriseConfirmOk || 'Xác nhận',
+                    cancelButtonText: form.dataset.enterpriseConfirmCancel || 'Hủy'
+                }).then(function (ok) {
+                    if (!ok) return;
+                    form.dataset.enterpriseConfirmed = 'true';
+                    form.requestSubmit();
+                    setTimeout(function () { delete form.dataset.enterpriseConfirmed; }, 0);
+                });
+            }, true);
+        })();
+    </script>
+</head>
+@{
+    var layoutControllerName = ViewContext.RouteData.Values["controller"]?.ToString();
+    var layoutIsAccountPage = layoutControllerName == "Account";
+    var layoutCanOperate = !layoutIsAccountPage && (User.IsInRole("Admin") || User.IsInRole("Manager") || User.IsInRole("Staff"));
+}
+<body class="app-shell @(layoutIsAccountPage ? "account-shell" : "")" data-wms-operational="@(layoutCanOperate ? "true" : "false")">
+    @if (!layoutIsAccountPage)
+    {
+        var isAdmin = User.IsInRole("Admin");
+        var isManager = User.IsInRole("Manager");
+        var isStaff = User.IsInRole("Staff");
+        var isViewer = !isAdmin && !isManager && !isStaff;
+        var isAdminOrManager = isAdmin || isManager;
+        var canOperate = isAdmin || isManager || isStaff;
+        var canSeeFinancialReports = isAdmin || User.Claims.Any(c => c.Type == "perm" && c.Value == "report.view.financial");
+        var ctrl = ViewContext.RouteData.Values["controller"]?.ToString();
+        var act = ViewContext.RouteData.Values["action"]?.ToString();
+        var mobileQuickDockActions = new[] { "NextTask", "RfReceiving", "RfPicking", "RfMovement", "LpnLookup", "SerialLookup", "PackageLookup" };
+        var showMobileQuickDock = canOperate && ctrl == "Operations" && mobileQuickDockActions.Contains(act);
+        var voucherTypeQuery = Context.Request.Query["type"].FirstOrDefault();
+        var isCreateInbound = ctrl == "Vouchers" && act == "Create" && voucherTypeQuery == "1";
+        var isCreateOutbound = ctrl == "Vouchers" && act == "Create" && voucherTypeQuery == "2";
+        var layoutTitle = !string.IsNullOrWhiteSpace(ViewData["Title"]?.ToString()) ? ViewData["Title"]?.ToString() : "WMS Pro";
+        var userInitial = User.Identity?.Name?.Length >= 1 ? User.Identity.Name.Substring(0, 1).ToUpper() : "?";
+        var userFullName = User.FindFirst("FullName")?.Value ?? User.Identity?.Name ?? "Người dùng";
+        var roleClaimTopbar = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "User";
+        var roleDisplayTopbar = roleClaimTopbar switch {
+            "Admin" => "Quản trị viên",
+            "Manager" => "Quản lý kho",
+            "Staff" => "Nhân viên kho",
+            "Viewer" => "Chỉ xem",
+            _ => roleClaimTopbar
+        };
+        var layoutScopedWarehouseId = (int?)null;
+        if (!isAdmin && int.TryParse(User.FindFirst("WarehouseId")?.Value, out var layoutWarehouseClaim))
+        {
+            layoutScopedWarehouseId = layoutWarehouseClaim;
+        }
+        var layoutPendingInboundApprovals = 0;
+        if (isAdminOrManager)
+        {
+            var layoutDb = (WMS.Data.AppDbContext)Context.RequestServices.GetService(typeof(WMS.Data.AppDbContext))!;
+            var pendingInboundQuery = layoutDb.Vouchers.Where(v => !v.IsCancelled
+                && (v.VoucherType == WMS.Models.VoucherTypeEnum.NhapKho || v.VoucherType == WMS.Models.VoucherTypeEnum.KhachTra || v.VoucherType == WMS.Models.VoucherTypeEnum.NhapThanhPham)
+                && v.InboundStatus == WMS.Models.InboundStatusEnum.PendingApproval);
+            if (layoutScopedWarehouseId.HasValue)
+            {
+                pendingInboundQuery = pendingInboundQuery.Where(v => v.WarehouseId == layoutScopedWarehouseId.Value);
+            }
+            layoutPendingInboundApprovals = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(pendingInboundQuery);
+        }
+
+        <header class="app-topbar" id="appTopbar">
+            <div class="topbar-left">
+                <button id="sidebarToggle" class="topbar-icon-btn" type="button" aria-label="Mở hoặc thu gọn menu">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <a class="topbar-brand" asp-controller="Home" asp-action="Index" aria-label="WMS Pro">
+                    <img src="~/images/logo.svg" asp-append-version="true" alt="WMS Pro" class="topbar-brand-mark" />
+                </a>
+                <div class="topbar-screen-title">@layoutTitle</div>
+            </div>
+            <div class="topbar-search">
+                <button class="topbar-search-trigger" type="button" data-wms-call="openQuickSearch" title="Tìm kiếm nhanh (Ctrl+K)">
+                    <i class="fas fa-search"></i>
+                    <span>Tìm mã phiếu, vật tư, mã vạch...</span>
+                    <kbd>Ctrl+K</kbd>
+                </button>
+            </div>
+            <div class="topbar-right">
+                <button class="topbar-icon-btn" type="button" title="Màn hình yêu thích" data-wms-notify-title="Màn hình yêu thích" data-wms-notify-text="Các lối vào thường dùng đã được gom tại trang chính." data-wms-notify-icon="info">
+                    <i class="fas fa-star"></i>
+                </button>
+                <a class="topbar-icon-btn" asp-controller="Reports" asp-action="Alerts" title="Cảnh báo vận hành">
+                    <i class="fas fa-bell"></i>
+                </a>
+                <a class="topbar-icon-btn" asp-controller="Help" asp-action="Index" title="Trợ giúp">
+                    <i class="fas fa-circle-question"></i>
+                </a>
+                <div class="warehouse-context" title="Kho đang thao tác">
+                    <i class="fas fa-warehouse"></i>
+                    <span>Kho vận hành</span>
+                </div>
+                <details class="topbar-user">
+                    <summary>
+                        <span class="topbar-avatar">@userInitial</span>
+                        <span class="topbar-user-text">
+                            <strong>@userFullName</strong>
+                            <small>@roleDisplayTopbar</small>
+                        </span>
+                        <i class="fas fa-chevron-down"></i>
+                    </summary>
+                    <div class="topbar-user-menu">
+                        <a asp-controller="Account" asp-action="TrustedDevices"><i class="fas fa-shield-halved"></i> Thiết bị tin cậy</a>
+                        <a asp-controller="Help" asp-action="Index"><i class="fas fa-book-open"></i> Hướng dẫn sử dụng</a>
+                        <form method="post" asp-controller="Account" asp-action="Logout">
+                            @Html.AntiForgeryToken()
+                            <button type="submit"><i class="fas fa-sign-out-alt"></i> Đăng xuất</button>
+                        </form>
+                    </div>
+                </details>
+            </div>
+        </header>
+
+        <aside class="sidebar app-sidebar" id="sidebar">
+            <a class="sidebar-brand" asp-controller="Home" asp-action="Index">
+                <div class="brand-icon"><img src="~/images/logo.svg" asp-append-version="true" alt="Biểu trưng" /></div>
+                <div class="brand-text">
+                    <span class="brand-name">WMS Pro</span>
+                    <span class="brand-sub">Nội bộ nhân viên kho</span>
+                </div>
+            </a>
+            <div class="sidebar-tools">
+                <button type="button" class="sidebar-pin-btn" id="sidebarPinToggle" title="Ghim hoặc thu gọn menu">
+                    <i class="fas fa-thumbtack"></i>
+                    <span>Ghim menu</span>
+                </button>
+                <label class="sidebar-search" for="sidebarSearchInput">
+                    <i class="fas fa-search"></i>
+                    <input id="sidebarSearchInput" type="search" autocomplete="off" placeholder="Tìm chức năng..." />
+                </label>
+            </div>
+            <nav class="sidebar-nav">
+                @* ═══ TRANG CHÍNH ═══ *@
+                <div class="nav-section nav-rail-link" data-nav-kind="link" data-nav-label="Trang chính">
+                    <a class="nav-link @(ctrl == "Home" ? "active" : "")" asp-controller="Home" asp-action="Index" aria-label="Trang chính">
+                        <span class="nav-icon"><i class="fas fa-chart-pie"></i></span> Trang chính
+                    </a>
+                </div>
+
+                @if (canOperate)
+                {
+                    @* ═══ NHẬP KHO ═══ *@
+                    <div class="nav-section nav-rail-group" data-section="inbound" data-nav-kind="group" data-nav-label="Nhập kho">
+                        <button class="nav-section-title nav-section-inbound" type="button" data-section="inbound" aria-expanded="true" aria-label="Nhập kho">
+                            <span class="nav-section-icon"><i class="fas fa-arrow-down"></i></span>
+                            <span class="nav-section-label">NHẬP KHO</span>
+                            @if (layoutPendingInboundApprovals > 0)
+                            {
+                                <span class="nav-section-badge">@layoutPendingInboundApprovals</span>
+                            }
+                            <i class="fas fa-chevron-down section-chevron"></i>
+                        </button>
+                        <div class="nav-section-body">
+                            <a class="nav-link @(isCreateInbound ? "active" : "")" asp-controller="Vouchers" asp-action="Create" asp-route-type="1">
+                                <span class="nav-icon"><i class="fas fa-plus"></i></span> Tạo phiếu nhập
+                            </a>
+                            @if (isAdminOrManager)
+                            {
+                                <a class="nav-link @(ctrl == "Operations" && act == "InboundApprovals" ? "active" : "")" asp-controller="Operations" asp-action="InboundApprovals">
+                                    <span class="nav-icon"><i class="fas fa-clipboard-check"></i></span> Duyệt phiếu nhập
+                                    @if (layoutPendingInboundApprovals > 0)
+                                    {
+                                        <span class="nav-badge">@layoutPendingInboundApprovals</span>
+                                    }
+                                </a>
+                            }
+                            <a class="nav-link @(ctrl == "Operations" && act == "Receiving" ? "active" : "")" asp-controller="Operations" asp-action="Receiving">
+                                <span class="nav-icon"><i class="fas fa-truck-loading"></i></span> Tiếp nhận hàng
+                            </a>
+                            <a class="nav-link @(ctrl == "Operations" && act == "DockBoard" ? "active" : "")" asp-controller="Operations" asp-action="DockBoard">
+                                <span class="nav-icon"><i class="fas fa-display"></i></span> Bảng điều phối cửa bến
+                            </a>
+                            <a class="nav-link @(ctrl == "Operations" && act == "YardManagement" ? "active" : "")" asp-controller="Operations" asp-action="YardManagement">
+                                <span class="nav-icon"><i class="fas fa-truck-ramp-box"></i></span> Quản lý bãi đỗ
+                            </a>
+                            @if (isAdminOrManager)
+                            {
+                                <a class="nav-link @(ctrl == "Operations" && act == "YardBillingCharges" ? "active" : "")" asp-controller="Operations" asp-action="YardBillingCharges">
+                                    <span class="nav-icon"><i class="fas fa-file-invoice-dollar"></i></span> Đối soát phí bãi
+                                </a>
+                                <a class="nav-link @(ctrl == "Operations" && act == "YardBillingRates" ? "active" : "")" asp-controller="Operations" asp-action="YardBillingRates">
+                                    <span class="nav-icon"><i class="fas fa-money-bill-trend-up"></i></span> Bảng giá phí bãi
+                                </a>
+                                <a class="nav-link @(ctrl == "Operations" && (act == "ThreePlBillingRuns" || act == "ThreePlBillingRunDetails") ? "active" : "")" asp-controller="Operations" asp-action="ThreePlBillingRuns">
+                                    <span class="nav-icon"><i class="fas fa-file-invoice-dollar"></i></span> Tính phí kho nhiều chủ hàng
+                                </a>
+                                <a class="nav-link @(ctrl == "Operations" && act == "ThreePlBillingRates" ? "active" : "")" asp-controller="Operations" asp-action="ThreePlBillingRates">
+                                    <span class="nav-icon"><i class="fas fa-coins"></i></span> Bảng giá kho nhiều chủ hàng
+                                </a>
+                                <a class="nav-link @(ctrl == "Operations" && (act == "ThreePlContracts" || act == "ThreePlInvoiceDetails") ? "active" : "")" asp-controller="Operations" asp-action="ThreePlContracts">
+                                    <span class="nav-icon"><i class="fas fa-file-contract"></i></span> Hợp đồng kho nhiều chủ hàng
+                                </a>
+                                <a class="nav-link @(ctrl == "Operations" && act == "ThreePlClientPortal" ? "active" : "")" asp-controller="Operations" asp-action="ThreePlClientPortal">
+                                    <span class="nav-icon"><i class="fas fa-user-shield"></i></span> Khu vực chủ hàng
+                                </a>
+                            }
+                            <a class="nav-link @(ctrl == "Operations" && act == "RfReceiving" ? "active" : "")" asp-controller="Operations" asp-action="RfReceiving">
+                                <span class="nav-icon"><i class="fas fa-mobile-screen"></i></span> Quét nhận hàng bằng điện thoại
+                            </a>
+                            <a class="nav-link @(ctrl == "Operations" && act == "QualityInspection" ? "active" : "")" asp-controller="Operations" asp-action="QualityInspection">
+                                <span class="nav-icon"><i class="fas fa-microscope"></i></span> Kiểm tra chất lượng
+                            </a>
+                        </div>
+                    </div>
+
+                    @* ═══ XUẤT KHO ═══ *@
+                    <div class="nav-section nav-rail-group" data-section="outbound" data-nav-kind="group" data-nav-label="Xuất kho">
+                        <button class="nav-section-title nav-section-outbound" type="button" data-section="outbound" aria-expanded="true" aria-label="Xuất kho">
+                            <span class="nav-section-icon"><i class="fas fa-arrow-up"></i></span>
+                            <span class="nav-section-label">XUẤT KHO</span>
+                            <i class="fas fa-chevron-down section-chevron"></i>
+                        </button>
+                        <div class="nav-section-body">
+                            <a class="nav-link @(isCreateOutbound ? "active" : "")" asp-controller="Vouchers" asp-action="Create" asp-route-type="2">
+                                <span class="nav-icon"><i class="fas fa-plus"></i></span> Tạo phiếu xuất
+                            </a>
+
+                            @if (isAdminOrManager)
+                            {
+                                <a class="nav-link @(ctrl == "Operations" && act == "Waves" ? "active" : "")" asp-controller="Operations" asp-action="Waves">
+                                    <span class="nav-icon"><i class="fas fa-layer-group"></i></span> Đợt gom đơn
+                                </a>
+                            }
+                            <a class="nav-link @(ctrl == "Operations" && act == "PickTasks" ? "active" : "")" asp-controller="Operations" asp-action="PickTasks">
+                                <span class="nav-icon"><i class="fas fa-list-check"></i></span> Nhiệm vụ lấy hàng
+                            </a>
+                            <a class="nav-link @(ctrl == "Operations" && act == "RfPicking" ? "active" : "")" asp-controller="Operations" asp-action="RfPicking">
+                                <span class="nav-icon"><i class="fas fa-mobile-alt"></i></span> Quét lấy hàng bằng điện thoại
+                            </a>
+                            <a class="nav-link @(ctrl == "Operations" && act == "NextTask" ? "active" : "")" asp-controller="Operations" asp-action="NextTask">
+                                <span class="nav-icon"><i class="fas fa-forward"></i></span> Nhiệm vụ tiếp theo
+                            </a>
+                            @if (isAdminOrManager)
+                            {
+                                <a class="nav-link @(ctrl == "Operations" && act == "Shipping" ? "active" : "")" asp-controller="Operations" asp-action="Shipping">
+                                    <span class="nav-icon"><i class="fas fa-truck-fast"></i></span> Đóng gói & giao
+                                </a>
+                                <a class="nav-link @(ctrl == "Operations" && act == "ShippingDispatch" ? "active" : "")" asp-controller="Operations" asp-action="ShippingDispatch">
+                                    <span class="nav-icon"><i class="fas fa-route"></i></span> Điều phối vận chuyển
+                                </a>
+                                <a class="nav-link @(ctrl == "Operations" && act == "DeliveryReconciliation" ? "active" : "")" asp-controller="Operations" asp-action="DeliveryReconciliation">
+                                    <span class="nav-icon"><i class="fas fa-clipboard-check"></i></span> Đối soát giao hàng
+                                </a>
+                                <a class="nav-link @(ctrl == "Operations" && act == "CarrierConnectors" ? "active" : "")" asp-controller="Operations" asp-action="CarrierConnectors">
+                                    <span class="nav-icon"><i class="fas fa-plug-circle-bolt"></i></span> Bộ kết nối vận tải
+                                </a>
+                                <a class="nav-link @(ctrl == "Operations" && (act == "ShipmentLoads" || act == "ShipmentLoadDetails") ? "active" : "")" asp-controller="Operations" asp-action="ShipmentLoads">
+                                    <span class="nav-icon"><i class="fas fa-truck-ramp-box"></i></span> Bảng chuyến xe
+                                </a>
+                                <a class="nav-link @(ctrl == "Labels" ? "active" : "")" asp-controller="Labels" asp-action="PrintJobs">
+                                    <span class="nav-icon"><i class="fas fa-tags"></i></span> Nhãn & chứng từ
+                                </a>
+                                <a class="nav-link @(ctrl == "Operations" && act == "CrossDockOpportunities" ? "active" : "")" asp-controller="Operations" asp-action="CrossDockOpportunities">
+                                    <span class="nav-icon"><i class="fas fa-shuffle"></i></span> Chuyển thẳng
+                                </a>
+                            }
+                            @if (isStaff)
+                            {
+                                <a class="nav-link @(ctrl == "Labels" ? "active" : "")" asp-controller="Labels" asp-action="PrintJobs">
+                                    <span class="nav-icon"><i class="fas fa-tags"></i></span> Nhãn & chứng từ
+                                </a>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @* ═══ TỒN KHO ═══ *@
+                <div class="nav-section nav-rail-group" data-section="inventory" data-nav-kind="group" data-nav-label="Tồn kho">
+                    <button class="nav-section-title nav-section-inventory" type="button" data-section="inventory" aria-expanded="true" aria-label="Tồn kho">
+                        <span class="nav-section-icon"><i class="fas fa-boxes-stacked"></i></span>
+                        <span class="nav-section-label">TỒN KHO</span>
+                        <i class="fas fa-chevron-down section-chevron"></i>
+                    </button>
+                    <div class="nav-section-body">
+                        <a class="nav-link @(ctrl == "Items" ? "active" : "")" asp-controller="Items" asp-action="Index">
+                            <span class="nav-icon"><i class="fas fa-boxes-stacked"></i></span> Sản phẩm / vật tư
+                        </a>
+                        <a class="nav-link @(act == "Inventory" ? "active" : "")" asp-controller="Reports" asp-action="Inventory">
+                            <span class="nav-icon"><i class="fas fa-clipboard-list"></i></span> Xem tồn kho
+                        </a>
+                        <a class="nav-link @(act == "InventoryMap" ? "active" : "")" asp-controller="Warehouses" asp-action="InventoryMap">
+                            <span class="nav-icon"><i class="fas fa-th"></i></span> Sơ đồ kho
+                        </a>
+                        <a class="nav-link @(act == "StockMovement" ? "active" : "")" asp-controller="Reports" asp-action="StockMovement">
+                            <span class="nav-icon"><i class="fas fa-exchange-alt"></i></span> Lịch sử nhập xuất
+                        </a>
+                        <a class="nav-link @(act == "InventoryTransactions" ? "active" : "")" asp-controller="Reports" asp-action="InventoryTransactions">
+                            <span class="nav-icon"><i class="fas fa-list-check"></i></span> Sổ giao dịch tồn kho
+                        </a>
+                        @if (canOperate)
+                        {
+                            <a class="nav-link @(ctrl == "Operations" && act == "LpnLookup" ? "active" : "")" asp-controller="Operations" asp-action="LpnLookup">
+                                <span class="nav-icon"><i class="fas fa-tags"></i></span> Tra cứu mã kiện
+                            </a>
+                            <a class="nav-link @(ctrl == "Operations" && act == "SerialLookup" ? "active" : "")" asp-controller="Operations" asp-action="SerialLookup">
+                                <span class="nav-icon"><i class="fas fa-fingerprint"></i></span> Tra cứu số sê-ri
+                            </a>
+                        }
+                        @if (isAdminOrManager)
+                        {
+                            <a class="nav-link @(ctrl == "Operations" && act == "Replenishment" ? "active" : "")" asp-controller="Operations" asp-action="Replenishment">
+                                <span class="nav-icon"><i class="fas fa-arrows-left-right-to-line"></i></span> Bổ sung hàng
+                            </a>
+                            <a class="nav-link @(ctrl == "Operations" && act == "Slotting" ? "active" : "")" asp-controller="Operations" asp-action="Slotting">
+                                <span class="nav-icon"><i class="fas fa-compass-drafting"></i></span> Tối ưu vị trí
+                            </a>
+                            <a class="nav-link @(ctrl == "Operations" && act == "OptimizationDashboard" ? "active" : "")" asp-controller="Operations" asp-action="OptimizationDashboard">
+                                <span class="nav-icon"><i class="fas fa-route"></i></span> Tối ưu vận hành
+                            </a>
+                            <a class="nav-link @(ctrl == "Operations" && act == "SortationConfigs" ? "active" : "")" asp-controller="Operations" asp-action="SortationConfigs">
+                                <span class="nav-icon"><i class="fas fa-table-cells-large"></i></span> Cấu hình phân loại đơn
+                            </a>
+                            <a class="nav-link @(ctrl == "Operations" && act == "OrderStreamingConfigs" ? "active" : "")" asp-controller="Operations" asp-action="OrderStreamingConfigs">
+                                <span class="nav-icon"><i class="fas fa-bolt"></i></span> Cấu hình phát hành trực tiếp
+                            </a>
+                            <a class="nav-link @(ctrl == "Operations" && act == "MovementTasks" ? "active" : "")" asp-controller="Operations" asp-action="MovementTasks">
+                                <span class="nav-icon"><i class="fas fa-list-check"></i></span> Nhiệm vụ di chuyển
+                            </a>
+                            <a class="nav-link @(ctrl == "Operations" && (act == "KittingWorkOrders" || act == "CreateKittingWorkOrder" || act == "KittingWorkOrderDetails") ? "active" : "")" asp-controller="Operations" asp-action="KittingWorkOrders">
+                                <span class="nav-icon"><i class="fas fa-boxes-packing"></i></span> Phiếu lắp bộ hàng
+                            </a>
+                            <a class="nav-link @(ctrl == "Operations" && (act == "VasWorkOrders" || act == "CreateVasWorkOrder" || act == "VasWorkOrderDetails") ? "active" : "")" asp-controller="Operations" asp-action="VasWorkOrders">
+                                <span class="nav-icon"><i class="fas fa-screwdriver-wrench"></i></span> Gia công phụ trợ
+                            </a>
+                            <a class="nav-link @(ctrl == "Operations" && act == "RfMovement" ? "active" : "")" asp-controller="Operations" asp-action="RfMovement">
+                                <span class="nav-icon"><i class="fas fa-mobile-screen"></i></span> Quét di chuyển bằng điện thoại
+                            </a>
+                            <a class="nav-link @(ctrl == "Operations" && act == "LaborProductivity" ? "active" : "")" asp-controller="Operations" asp-action="LaborProductivity">
+                                <span class="nav-icon"><i class="fas fa-users-gear"></i></span> Năng suất lao động
+                            </a>
+                            <a class="nav-link @(ctrl == "Operations" && act == "AutomationDashboard" ? "active" : "")" asp-controller="Operations" asp-action="AutomationDashboard">
+                                <span class="nav-icon"><i class="fas fa-robot"></i></span> Tự động hóa thiết bị
+                            </a>
+                            <a class="nav-link @(ctrl == "Operations" && act == "IntegrationDashboard" ? "active" : "")" asp-controller="Operations" asp-action="IntegrationDashboard">
+                                <span class="nav-icon"><i class="fas fa-network-wired"></i></span> Tích hợp hệ thống
+                            </a>
+                        }
+                    </div>
+                </div>
+
+                @* ═══ TRA CỨU PHIẾU ═══ *@
+                <div class="nav-section nav-rail-link" data-nav-kind="link" data-nav-label="Tra cứu phiếu">
+                    <a class="nav-link @(ctrl == "Vouchers" && act != "Create" ? "active" : "")" asp-controller="Vouchers" asp-action="Index" aria-label="Tra cứu phiếu">
+                        <span class="nav-icon"><i class="fas fa-file-invoice"></i></span> Tra cứu phiếu
+                    </a>
+                </div>
+
+                @if (isAdminOrManager)
+                {
+                    @* ═══ BÁO CÁO ═══ *@
+                    <div class="nav-section nav-rail-group" data-section="reports" data-nav-kind="group" data-nav-label="Báo cáo">
+                        <button class="nav-section-title nav-section-reports" type="button" data-section="reports" aria-expanded="true" aria-label="Báo cáo">
+                            <span class="nav-section-icon"><i class="fas fa-chart-bar"></i></span>
+                            <span class="nav-section-label">BÁO CÁO</span>
+                            <i class="fas fa-chevron-down section-chevron"></i>
+                        </button>
+                        <div class="nav-section-body">
+                            <a class="nav-link @(act == "OpsKpi" ? "active" : "")" asp-controller="Reports" asp-action="OpsKpi">
+                                <span class="nav-icon"><i class="fas fa-gauge-high"></i></span> Chỉ số vận hành
+                            </a>
+                            <a class="nav-link @(act == "StockCount" ? "active" : "")" asp-controller="Reports" asp-action="StockCount">
+                                <span class="nav-icon"><i class="fas fa-clipboard-check"></i></span> Kiểm kê
+                            </a>
+                            @if (canSeeFinancialReports)
+                            {
+                                <a class="nav-link @(act == "StockValuation" ? "active" : "")" asp-controller="Reports" asp-action="StockValuation">
+                                    <span class="nav-icon"><i class="fas fa-coins"></i></span> Định giá tồn kho
+                                </a>
+                            }
+                            <a class="nav-link @(act == "TopItems" ? "active" : "")" asp-controller="Reports" asp-action="TopItems">
+                                <span class="nav-icon"><i class="fas fa-trophy"></i></span> Nhập xuất nhiều
+                            </a>
+                            <a class="nav-link @(act == "ExpiryReport" ? "active" : "")" asp-controller="Reports" asp-action="ExpiryReport">
+                                <span class="nav-icon"><i class="fas fa-clock"></i></span> Sắp hết hạn
+                            </a>
+                            <a class="nav-link @(act == "SlowMovingReport" ? "active" : "")" asp-controller="Reports" asp-action="SlowMovingReport">
+                                <span class="nav-icon"><i class="fas fa-hourglass-half"></i></span> Hàng chậm
+                            </a>
+                            <a class="nav-link @(act == "AbcAnalysis" ? "active" : "")" asp-controller="Reports" asp-action="AbcAnalysis">
+                                <span class="nav-icon"><i class="fas fa-chart-pie"></i></span> Phân nhóm quan trọng
+                            </a>
+                            <a class="nav-link @(ctrl == "Operations" && act == "ExceptionCenter" ? "active" : "")" asp-controller="Operations" asp-action="ExceptionCenter">
+                                <span class="nav-icon"><i class="fas fa-triangle-exclamation"></i></span> Bất thường
+                            </a>
+                            <a class="nav-link @(act == "Analytics" ? "active" : "")" asp-controller="Reports" asp-action="Analytics">
+                                <span class="nav-icon"><i class="fas fa-chart-line"></i></span> Phân tích vận hành
+                            </a>
+                            <a class="nav-link @(act == "SemanticBi" ? "active" : "")" asp-controller="Reports" asp-action="SemanticBi">
+                                <span class="nav-icon"><i class="fas fa-chart-simple"></i></span> Báo cáo quản trị dữ liệu
+                            </a>
+                            @if (isAdminOrManager && canSeeFinancialReports)
+                            {
+                                <a class="nav-link @(act == "FinancialCostDashboard" ? "active" : "")" asp-controller="Reports" asp-action="FinancialCostDashboard">
+                                    <span class="nav-icon"><i class="fas fa-coins"></i></span> Chi phí vận hành
+                                </a>
+                            }
+                            <a class="nav-link @(act == "PredictiveAlerts" ? "active" : "")" asp-controller="Reports" asp-action="PredictiveAlerts">
+                                <span class="nav-icon"><i class="fas fa-triangle-exclamation"></i></span> Cảnh báo dự báo
+                            </a>
+                            @if (!isStaff)
+                            {
+                                <a class="nav-link @(act == "AiAssistant" ? "active" : "")" asp-controller="Reports" asp-action="AiAssistant">
+                                    <span class="nav-icon"><i class="fas fa-brain"></i></span> Trợ lý dữ liệu nội bộ
+                                </a>
+                            }
+                            <a class="nav-link @(act == "SpaceUtilization" ? "active" : "")" asp-controller="Reports" asp-action="SpaceUtilization">
+                                <span class="nav-icon"><i class="fas fa-cubes"></i></span> Hiệu suất không gian
+                            </a>
+                            <a class="nav-link @(act == "DockToStock" ? "active" : "")" asp-controller="Reports" asp-action="DockToStock">
+                                <span class="nav-icon"><i class="fas fa-stopwatch"></i></span> Thời gian nhập kho
+                            </a>
+                            <a class="nav-link @(act == "ScheduledReports" ? "active" : "")" asp-controller="Reports" asp-action="ScheduledReports">
+                                <span class="nav-icon"><i class="fas fa-calendar-check"></i></span> Lịch báo cáo
+                            </a>
+                        </div>
+                    </div>
+
+                    @* ═══ DANH MỤC ═══ *@
+                    <div class="nav-section nav-rail-group" data-section="master" data-nav-kind="group" data-nav-label="Danh mục">
+                        <button class="nav-section-title nav-section-master" type="button" data-section="master" aria-expanded="true" aria-label="Danh mục">
+                            <span class="nav-section-icon"><i class="fas fa-database"></i></span>
+                            <span class="nav-section-label">DANH MỤC</span>
+                            <i class="fas fa-chevron-down section-chevron"></i>
+                        </button>
+                        <div class="nav-section-body">
+                            <a class="nav-link @(ctrl == "Warehouses" && act == "Index" ? "active" : "")" asp-controller="Warehouses" asp-action="Index">
+                                <span class="nav-icon"><i class="fas fa-warehouse"></i></span> Cấu hình kho
+                            </a>
+                            <a class="nav-link @(ctrl == "Partners" ? "active" : "")" asp-controller="Partners" asp-action="Index">
+                                <span class="nav-icon"><i class="fas fa-handshake"></i></span> Đối tác
+                            </a>
+                            <a class="nav-link @(ctrl == "Categories" ? "active" : "")" asp-controller="Categories" asp-action="Index">
+                                <span class="nav-icon"><i class="fas fa-tags"></i></span> Danh mục vật tư
+                            </a>
+                            <a class="nav-link @(ctrl == "Units" ? "active" : "")" asp-controller="Units" asp-action="Index">
+                                <span class="nav-icon"><i class="fas fa-ruler"></i></span> Đơn vị tính
+                            </a>
+                        </div>
+                    </div>
+                }
+
+                @if (canOperate)
+                {
+                    @* ═══ HỆ THỐNG ═══ *@
+                    <div class="nav-section nav-rail-group" data-section="system" data-nav-kind="group" data-nav-label="Hệ thống">
+                        <button class="nav-section-title nav-section-system" type="button" data-section="system" aria-expanded="true" aria-label="Hệ thống">
+                            <span class="nav-section-icon"><i class="fas fa-shield-halved"></i></span>
+                            <span class="nav-section-label">HỆ THỐNG</span>
+                            <i class="fas fa-chevron-down section-chevron"></i>
+                        </button>
+                        <div class="nav-section-body">
+                            @if (isAdmin)
+                            {
+                                <a class="nav-link @(ctrl == "Users" && act == "Index" ? "active" : "")" asp-controller="Users" asp-action="Index">
+                                    <span class="nav-icon"><i class="fas fa-users-cog"></i></span> Người dùng
+                                </a>
+                                <a class="nav-link @(ctrl == "Users" && act == "LoginHelpRequests" ? "active" : "")" asp-controller="Users" asp-action="LoginHelpRequests">
+                                    <span class="nav-icon"><i class="fas fa-life-ring"></i></span> Yêu cầu truy cập
+                                </a>
+                            }
+                            @if (isAdminOrManager)
+                            {
+                                <a class="nav-link @(ctrl == "Operations" && act == "ZoneAssignment" ? "active" : "")" asp-controller="Operations" asp-action="ZoneAssignment">
+                                    <span class="nav-icon"><i class="fas fa-map-marked-alt"></i></span> Phân quyền khu vực
+                                </a>
+                                <a class="nav-link @(ctrl == "Operations" && act == "WorkflowProfiles" ? "active" : "")" asp-controller="Operations" asp-action="WorkflowProfiles">
+                                    <span class="nav-icon"><i class="fas fa-sliders"></i></span> Cấu hình quy trình
+                                </a>
+                            }
+                            @if (isAdmin)
+                            {
+                                <a class="nav-link @(ctrl == "System" && act == "SreDashboard" ? "active" : "")" asp-controller="System" asp-action="SreDashboard">
+                                    <span class="nav-icon"><i class="fas fa-heart-pulse"></i></span> Giám sát hệ thống
+                                </a>
+                                <a class="nav-link @(act == "AuditAnalytics" ? "active" : "")" asp-controller="Reports" asp-action="AuditAnalytics">
+                                    <span class="nav-icon"><i class="fas fa-user-shield"></i></span> Phân tích nhật ký
+                                </a>
+                                <a class="nav-link @(act == "Alerts" ? "active" : "")" asp-controller="Reports" asp-action="Alerts">
+                                    <span class="nav-icon"><i class="fas fa-bell"></i></span> Cảnh báo
+                                </a>
+                                <a class="nav-link @(act == "AuditTrail" ? "active" : "")" asp-controller="Reports" asp-action="AuditTrail">
+                                    <span class="nav-icon"><i class="fas fa-history"></i></span> Nhật ký
+                                </a>
+                                <a class="nav-link @(act == "StockSnapshot" ? "active" : "")" asp-controller="Reports" asp-action="StockSnapshot">
+                                    <span class="nav-icon"><i class="fas fa-lock"></i></span> Chốt tồn
+                                </a>
+                                <a class="nav-link @(act == "PeriodLocks" ? "active" : "")" asp-controller="Reports" asp-action="PeriodLocks">
+                                    <span class="nav-icon"><i class="fas fa-calendar-check"></i></span> Khóa kỳ
+                                </a>
+                            }
+                            <a class="nav-link @(act == "TrustedDevices" ? "active" : "")" asp-controller="Account" asp-action="TrustedDevices">
+                                <span class="nav-icon"><i class="fas fa-shield-halved"></i></span> Thiết bị tin cậy
+                            </a>
+                        </div>
+                    </div>
+                }
+
+                @* ═══ TRỢ GIÚP ═══ *@
+                <div class="nav-section nav-rail-link" data-nav-kind="link" data-nav-label="Hướng dẫn sử dụng">
+                    <a class="nav-link @(ctrl == "Help" ? "active" : "")" asp-controller="Help" asp-action="Index" aria-label="Hướng dẫn sử dụng">
+                        <span class="nav-icon"><i class="fas fa-book-open"></i></span> Hướng dẫn sử dụng
+                    </a>
+                </div>
+            </nav>
+            <div class="sidebar-footer">
+                @if (User.Identity?.IsAuthenticated == true)
+                {
+                    <div class="user-info">
+                        <div class="user-avatar">@(User.Identity.Name?.Length >= 1 ? User.Identity.Name.Substring(0, 1).ToUpper() : "?")</div>
+                        <div class="user-details">
+                            <div class="user-name">@(User.FindFirst("FullName")?.Value ?? User.Identity.Name)</div>
+                            @{
+                                var roleClaim = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "User";
+                                var roleDisplay = roleClaim switch {
+                                    "Admin" => "Quản trị viên",
+                                    "Manager" => "Quản lý kho",
+                                    "Staff" => "Nhân viên kho",
+                                    "Viewer" => "Chỉ xem",
+                                    _ => roleClaim
+                                };
+                            }
+                            <div class="user-role">@roleDisplay</div>
+                        </div>
+                        <form method="post" asp-controller="Account" asp-action="Logout" class="sidebar-logout-form">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" title="Đăng xuất" class="sidebar-logout-btn">
+                                <i class="fas fa-sign-out-alt"></i>
+                            </button>
+                        </form>
+                    </div>
+                    <div class="sidebar-security-note">
+                        <i class="fas fa-shield-check text-success"></i> Được bảo vệ bởi lớp bảo mật hệ thống kho
+                    </div>
+                }
+                else
+                {
+                    <a asp-controller="Account" asp-action="Login" class="btn btn-primary sidebar-login-btn">
+                        <i class="fas fa-sign-in-alt"></i> Đăng nhập
+                    </a>
+                }
+            </div>
+        </aside>
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+        @* ═══ QUICK SEARCH OVERLAY (Cmd+K) ═══ *@
+        <div class="qs-overlay" id="qsOverlay">
+            <div class="qs-modal">
+                <div class="qs-header">
+                    <i class="fas fa-search qs-icon"></i>
+                    <input type="text" id="qsInput" class="qs-input" placeholder="Tìm mã phiếu, vật tư, mã vạch... (Esc để đóng)" autocomplete="off" />
+                    <kbd class="qs-kbd">ESC</kbd>
+                </div>
+                <div class="qs-results" id="qsResults">
+                    <div class="qs-empty"><i class="fas fa-lightbulb"></i> Gõ để tìm kiếm nhanh. Dùng <kbd>Ctrl+K</kbd> để mở bất cứ lúc nào.</div>
+                </div>
+            </div>
+        </div>
+
+        <main class="main-content">
+            <div class="content-shell">
+            <div class="workspace-toolbar app-page-context">
+                <div class="workspace-context">
+                @* ═══ BREADCRUMB ═══ *@
+                <nav class="breadcrumb" id="breadcrumb">
+                    <a asp-controller="Home" asp-action="Index" class="breadcrumb-item"><i class="fas fa-home"></i></a>
+                    @{
+                        var bcCtrl = ViewContext.RouteData.Values["controller"]?.ToString() ?? "";
+                        var bcAct = ViewContext.RouteData.Values["action"]?.ToString() ?? "";
+                        var bcNames = new Dictionary<string, string> {
+                            {"Home","Trang chính"},{"Vouchers","Phiếu"},{"Items","Vật tư"},
+                            {"Operations","Vận hành"},{"Reports","Báo cáo"},{"Warehouses","Kho"},
+                            {"Partners","Đối tác"},{"Categories","Danh mục"},{"Units","ĐVT"},
+                            {"Users","Người dùng"},{"Account","Tài khoản"},{"Help","Trợ giúp"}
+                        };
+                        bcNames["Labels"] = "Nhãn và chứng từ";
+                        var bcActNames = new Dictionary<string, string> {
+                            {"Index",""},{"Create","Tạo mới"},{"Edit","Chỉnh sửa"},{"Details","Chi tiết"},
+                            {"Inventory","Tồn kho"},{"InventoryMap","Sơ đồ"},{"StockMovement","Lịch sử"},
+                            {"RfReceiving","Quét nhận"},{"RfPicking","Quét lấy"},{"Receiving","Tiếp nhận"},{"InboundApprovals","Duyệt phiếu nhập"},
+                            {"Waves","Đợt gom đơn"},{"PickTasks","Nhiệm vụ lấy hàng"},{"Shipping","Đóng gói & giao hàng"},{"ShippingDispatch","Điều phối vận chuyển"},{"DeliveryReconciliation","Đối soát giao hàng"},{"CarrierConnectors","Bộ kết nối vận tải"},{"ShipmentLoads","Bảng chuyến xe"},{"ShipmentLoadDetails","Chi tiết chuyến xe"},
+                            {"Replenishment","Bổ sung"},{"Slotting","Tối ưu vị trí"},{"OptimizationDashboard","Tối ưu vận hành"},
+                            {"MovementTasks","Nhiệm vụ di chuyển"},{"RfMovement","Quét di chuyển bằng điện thoại"},
+                            {"ExceptionCenter","Bất thường"},{"LpnLookup","Mã kiện"},{"SerialLookup","Số sê-ri"},
+                            {"OpsKpi","Chỉ số vận hành"},{"StockCount","Kiểm kê"},{"TopItems","Nhập xuất nhiều"},
+                            {"ExpiryReport","Hết hạn"},{"SlowMovingReport","Hàng chậm"},{"AbcAnalysis","Phân nhóm quan trọng"},
+                            {"SemanticBi","Báo cáo quản trị dữ liệu"},{"FinancialCostDashboard","Chi phí vận hành"},{"PredictiveAlerts","Cảnh báo dự báo"},{"AuditAnalytics","Phân tích nhật ký"},{"AiAssistant","Trợ lý dữ liệu nội bộ"},
+                            {"Alerts","Cảnh báo"},{"AuditTrail","Nhật ký"},{"StockSnapshot","Chốt tồn"},
+                            {"PeriodLocks","Khóa kỳ"},{"TrustedDevices","Thiết bị tin cậy"},{"SreDashboard","Giám sát hệ thống"},
+                            {"CrossDockOpportunities","Chuyển thẳng"},{"LaborProductivity","Năng suất lao động"},{"AutomationDashboard","Tự động hóa thiết bị"},{"IntegrationDashboard","Tích hợp hệ thống"},{"WorkflowProfiles","Cấu hình quy trình"},
+                            {"DockBoard","Bảng điều phối cửa bến"},
+                            {"YardManagement","Quản lý bãi đỗ"},
+                            {"YardBillingCharges","Đối soát phí bãi"},
+                            {"YardBillingRates","Bảng giá phí bãi"},
+                            {"PackageLookup","Mã kiện hàng"},{"SerialReceiving","Nhận số sê-ri"},
+                            {"QualityInspection","Kiểm tra chất lượng"},{"Analytics","Phân tích vận hành"},
+                            {"SpaceUtilization","Hiệu suất kho"},{"DockToStock","Thời gian nhập kho"},
+                            {"NextTask","Nhiệm vụ tiếp theo"}
+                        };
+                        bcActNames["Templates"] = "Mẫu nhãn khách hàng";
+                        bcActNames["CreateTemplate"] = "Tạo mẫu nhãn";
+                        bcActNames["EditTemplate"] = "Sửa mẫu nhãn";
+                        bcActNames["ItemRules"] = "Mã hàng theo khách hàng";
+                        bcActNames["PrintJobs"] = "Nhật ký in nhãn";
+                        bcActNames["Print"] = "In nhãn";
+                        bcActNames["ShippingDocument"] = "In chứng từ vận chuyển";
+                        bcActNames["VasWorkOrders"] = "Lệnh gia công phụ trợ";
+                        bcActNames["CreateVasWorkOrder"] = "Tạo lệnh gia công";
+                        bcActNames["VasWorkOrderDetails"] = "Chi tiết lệnh gia công";
+                        bcActNames["StockValuation"] = "Định giá tồn kho";
+                        bcActNames["SortationConfigs"] = "Cấu hình phân loại đơn";
+                        bcActNames["OrderStreamingConfigs"] = "Cấu hình phát hành trực tiếp";
+                        bcActNames["SemanticBi"] = "Báo cáo quản trị dữ liệu";
+                        bcActNames["FinancialCostDashboard"] = "Chi phí vận hành";
+                        bcActNames["PredictiveAlerts"] = "Cảnh báo dự báo";
+                        bcActNames["AuditAnalytics"] = "Phân tích nhật ký";
+                        bcActNames["AiAssistant"] = "Trợ lý dữ liệu nội bộ";
+                        bcActNames["WorkflowProfiles"] = "Cấu hình quy trình";
+                        bcActNames["SreDashboard"] = "Giám sát hệ thống";
+                        bcActNames["ThreePlBillingRuns"] = "Kỳ tính phí kho nhiều chủ hàng";
+                        bcActNames["ThreePlBillingRunDetails"] = "Chi tiết kỳ tính phí kho nhiều chủ hàng";
+                        bcActNames["ThreePlBillingRates"] = "Bảng giá kho nhiều chủ hàng";
+                        bcActNames["ThreePlContracts"] = "Hợp đồng kho nhiều chủ hàng";
+                        bcActNames["ThreePlInvoiceDetails"] = "Chi tiết hóa đơn kho nhiều chủ hàng";
+                        bcActNames["ThreePlClientPortal"] = "Khu vực chủ hàng";
+                        bcActNames["KittingWorkOrders"] = "Phiếu lắp bộ hàng";
+                        bcActNames["CreateKittingWorkOrder"] = "Tạo phiếu lắp bộ hàng";
+                        bcActNames["KittingWorkOrderDetails"] = "Chi tiết phiếu lắp bộ hàng";
+                    }
+                    @if (bcCtrl != "Home")
+                    {
+                        <span class="breadcrumb-sep"><i class="fas fa-chevron-right"></i></span>
+                        <a href="@Url.Action("Index", bcCtrl)" class="breadcrumb-item">@(bcNames.GetValueOrDefault(bcCtrl, bcCtrl))</a>
+                        var actLabel = bcActNames.GetValueOrDefault(bcAct, bcAct);
+                        if (!string.IsNullOrEmpty(actLabel))
+                        {
+                            <span class="breadcrumb-sep"><i class="fas fa-chevron-right"></i></span>
+                            <span class="breadcrumb-item active">@actLabel</span>
+                        }
+                    }
+                </nav>
+                </div>
+            </div>
+            <div class="workspace-body">
+            @if (TempData["Success"] != null)
+            {
+                <script>
+                    document.addEventListener('DOMContentLoaded', function(){
+                        var raw = @Html.Raw(Json.Serialize(TempData["Success"]?.ToString() ?? ""));
+                        // P0-R2-1: title của SweetAlert2 parse HTML -> tắt để chặn XSS qua thông báo lỗi động.
+                        window.enterpriseNotify({ title: raw, icon: 'success', timer: 4000 });
+                    });
+                </script>
+            }
+            @if (TempData["Error"] != null)
+            {
+                <script>
+                    document.addEventListener('DOMContentLoaded', function(){
+                        var raw = @Html.Raw(Json.Serialize(TempData["Error"]?.ToString() ?? ""));
+                        // P0-R2-1: title của SweetAlert2 parse HTML -> tắt để chặn XSS qua thông báo lỗi động.
+                        window.enterpriseNotify({ title: raw, icon: 'error', timer: 6000 });
+                    });
+                </script>
+            }
+            @RenderBody()
+            </div>
+            </div>
+        </main>
+        @if (showMobileQuickDock)
+        {
+            <nav class="mobile-quick-dock" aria-label="Lối tắt quét trên điện thoại">
+                <a asp-controller="Operations" asp-action="NextTask" class="mobile-quick-link @(ctrl == "Operations" && act == "NextTask" ? "active" : "")">
+                    <i class="fas fa-forward"></i><span>Nhiệm vụ</span>
+                </a>
+                <a asp-controller="Operations" asp-action="RfReceiving" class="mobile-quick-link @(ctrl == "Operations" && act == "RfReceiving" ? "active" : "")">
+                    <i class="fas fa-truck-loading"></i><span>Nhận</span>
+                </a>
+                <a asp-controller="Operations" asp-action="RfPicking" class="mobile-quick-link @(ctrl == "Operations" && act == "RfPicking" ? "active" : "")">
+                    <i class="fas fa-hand-pointer"></i><span>Lấy</span>
+                </a>
+                <a asp-controller="Operations" asp-action="RfMovement" class="mobile-quick-link @(ctrl == "Operations" && act == "RfMovement" ? "active" : "")">
+                    <i class="fas fa-dolly"></i><span>Di chuyển</span>
+                </a>
+                <a asp-controller="Operations" asp-action="LpnLookup" class="mobile-quick-link @(ctrl == "Operations" && act == "LpnLookup" ? "active" : "")">
+                    <i class="fas fa-qrcode"></i><span>Mã kiện</span>
+                </a>
+            </nav>
+        }
+    }
+    else
+    {
+        @RenderBody()
+    }
+
+    @if (layoutCanOperate)
+    {
+        <partial name="_ScannerModal" />
+        <div class="offline-queue-widget" id="offlineQueueWidget" aria-live="polite">
+            <button type="button" class="offline-queue-toggle" id="offlineQueueToggle">
+                <i class="fas fa-cloud-arrow-up"></i>
+                <span>Hàng đợi quét</span>
+                <strong class="offline-queue-badge" id="offlineQueueBadge">0</strong>
+            </button>
+            <button type="button" class="offline-queue-hide" id="offlineQueueHide" title="Thu gọn hàng đợi quét" aria-label="Thu gọn hàng đợi quét">
+                <i class="fas fa-xmark"></i>
+            </button>
+            <button type="button" class="offline-queue-restore" id="offlineQueueRestore" title="Hiện hàng đợi quét" aria-label="Hiện hàng đợi quét">
+                <i class="fas fa-cloud-arrow-up"></i>
+                <strong class="offline-queue-badge" id="offlineQueueRestoreBadge">0</strong>
+            </button>
+            <aside class="offline-queue-panel" id="offlineQueuePanel" aria-label="Hàng đợi thao tác quét">
+                <div class="offline-queue-panel-header">
+                    <div>
+                        <strong>Hàng đợi quét</strong>
+                        <span id="offlineQueueSummary">Đang kiểm tra thao tác chờ gửi...</span>
+                    </div>
+                    <button type="button" class="modal-close" id="offlineQueueClose" aria-label="Đóng hàng đợi">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="offline-queue-panel-body" id="offlineQueueList">
+                    <div class="offline-queue-empty">Đang tải hàng đợi...</div>
+                </div>
+                <div class="offline-queue-panel-footer">
+                    <button type="button" class="btn btn-primary" id="offlineQueueFlush">
+                        <i class="fas fa-rotate"></i> Gửi lại thao tác chờ
+                    </button>
+                    <span>Chỉ lưu thao tác quét ngắn khi mạng yếu.</span>
+                </div>
+            </aside>
+        </div>
+    }
+    <script>
+        /* ── Collapsible sidebar sections (Enterprise UX) ── */
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebar = document.getElementById('sidebar');
+            const toggle = document.getElementById('sidebarToggle');
+            const overlay = document.getElementById('sidebarOverlay');
+            const pinToggle = document.getElementById('sidebarPinToggle');
+            const sidebarSearch = document.getElementById('sidebarSearchInput');
+            const desktopQuery = window.matchMedia('(min-width: 1025px)');
+
+            function readCollapsedState() {
+                try {
+                    return JSON.parse(localStorage.getItem('wms_nav_collapsed') || '{}');
+                } catch {
+                    return {};
+                }
+            }
+
+            function writeCollapsedState(collapsed) {
+                localStorage.setItem('wms_nav_collapsed', JSON.stringify(collapsed));
+            }
+
+            function isDesktopCollapsed() {
+                return desktopQuery.matches && document.body.classList.contains('sidebar-collapsed');
+            }
+
+            function setSectionExpanded(section, expanded, persist) {
+                section.classList.toggle('collapsed', !expanded);
+                var button = section.querySelector('.nav-section-title');
+                if (button) button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                if (persist && section.dataset.section) {
+                    var collapsed = readCollapsedState();
+                    collapsed[section.dataset.section] = !expanded;
+                    writeCollapsedState(collapsed);
+                }
+            }
+
+            function closeSidebarFlyout() {
+                document.querySelectorAll('.sidebar .nav-section.flyout-open').forEach(function(section) {
+                    section.classList.remove('flyout-open');
+                    if (isDesktopCollapsed()) {
+                        var button = section.querySelector('.nav-section-title');
+                        if (button) button.setAttribute('aria-expanded', 'false');
+                    }
+                });
+            }
+
+            function syncSidebarAria() {
+                document.querySelectorAll('.sidebar .nav-section[data-section]').forEach(function(section) {
+                    var button = section.querySelector('.nav-section-title');
+                    if (!button) return;
+                    if (isDesktopCollapsed()) {
+                        button.setAttribute('aria-expanded', section.classList.contains('flyout-open') ? 'true' : 'false');
+                    } else {
+                        button.setAttribute('aria-expanded', section.classList.contains('collapsed') ? 'false' : 'true');
+                    }
+                });
+            }
+
+            function openSidebarFlyout(section) {
+                if (!section || !isDesktopCollapsed()) return;
+                var body = section.querySelector('.nav-section-body');
+                if (!body) return;
+
+                document.querySelectorAll('.sidebar .nav-section.flyout-open').forEach(function(openSection) {
+                    if (openSection !== section) {
+                        openSection.classList.remove('flyout-open');
+                        var openButton = openSection.querySelector('.nav-section-title');
+                        if (openButton) openButton.setAttribute('aria-expanded', 'false');
+                    }
+                });
+
+                var headerHeight = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--header-height'), 10) || 56;
+                var rect = section.getBoundingClientRect();
+                var maxPanelHeight = Math.min(560, Math.max(260, window.innerHeight - headerHeight - 20));
+                var top = Math.max(headerHeight + 8, Math.min(rect.top, window.innerHeight - maxPanelHeight - 12));
+                section.style.setProperty('--flyout-top', top + 'px');
+                section.classList.add('flyout-open');
+                var button = section.querySelector('.nav-section-title');
+                if (button) button.setAttribute('aria-expanded', 'true');
+            }
+
+            function handleSectionToggle(button) {
+                var section = button.closest('.nav-section');
+                if (!section) return;
+                if (isDesktopCollapsed()) {
+                    if (section.classList.contains('flyout-open')) {
+                        closeSidebarFlyout();
+                    } else {
+                        openSidebarFlyout(section);
+                    }
+                    return;
+                }
+
+                var expanded = section.classList.contains('collapsed');
+                setSectionExpanded(section, expanded, true);
+            }
+
+            /* restore collapsed state from localStorage */
+            var collapsed = readCollapsedState();
+            document.querySelectorAll('.nav-section[data-section]').forEach(function(sec) {
+                var key = sec.dataset.section;
+                /* auto-expand if section contains active link */
+                var hasActive = sec.querySelector('.nav-link.active');
+                if (hasActive) {
+                    sec.classList.add('has-active');
+                    sec.classList.remove('collapsed');
+                    collapsed[key] = false;
+                } else if (collapsed[key]) {
+                    sec.classList.add('collapsed');
+                }
+                var button = sec.querySelector('.nav-section-title');
+                if (button) button.setAttribute('aria-expanded', sec.classList.contains('collapsed') ? 'false' : 'true');
+            });
+            writeCollapsedState(collapsed);
+
+            /* điều hướng trái: mở trên điện thoại, thu gọn trên máy tính */
+            function toggleSidebar() {
+                if (!sidebar || !overlay) return;
+                if (desktopQuery.matches) {
+                    document.body.classList.toggle('sidebar-collapsed');
+                    closeSidebarFlyout();
+                    syncSidebarAria();
+                    localStorage.setItem('wms_sidebar_collapsed', document.body.classList.contains('sidebar-collapsed') ? 'true' : 'false');
+                    return;
+                }
+
+                sidebar.classList.toggle('open');
+                overlay.classList.toggle('active');
+                document.body.style.overflow = sidebar.classList.contains('open') ? 'hidden' : '';
+            }
+
+            function closeMobileSidebar() {
+                if (!sidebar || !overlay) return;
+                sidebar.classList.remove('open');
+                overlay.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+
+            if(toggle) toggle.addEventListener('click', toggleSidebar);
+            if(pinToggle) pinToggle.addEventListener('click', toggleSidebar);
+            if(overlay) overlay.addEventListener('click', closeMobileSidebar);
+            if (localStorage.getItem('wms_sidebar_collapsed') === 'true' && desktopQuery.matches) {
+                document.body.classList.add('sidebar-collapsed');
+                syncSidebarAria();
+            }
+            desktopQuery.addEventListener?.('change', function(event) {
+                closeSidebarFlyout();
+                if (!event.matches) document.body.classList.remove('sidebar-collapsed');
+                syncSidebarAria();
+                closeMobileSidebar();
+            });
+
+            document.querySelectorAll('.sidebar .nav-section-title').forEach(function(button) {
+                var section = button.closest('.nav-section');
+                button.addEventListener('click', function(event) {
+                    event.preventDefault();
+                    handleSectionToggle(button);
+                });
+                button.addEventListener('mouseenter', function() {
+                    if (isDesktopCollapsed()) openSidebarFlyout(section);
+                });
+                button.addEventListener('focus', function() {
+                    if (isDesktopCollapsed()) openSidebarFlyout(section);
+                });
+            });
+
+            document.querySelectorAll('.sidebar .nav-rail-group').forEach(function(section) {
+                section.addEventListener('mouseleave', function() {
+                    window.setTimeout(function() {
+                        if (isDesktopCollapsed() && !section.matches(':hover') && !section.contains(document.activeElement)) {
+                            section.classList.remove('flyout-open');
+                            syncSidebarAria();
+                        }
+                    }, 120);
+                });
+            });
+
+            document.addEventListener('click', function(event) {
+                if (isDesktopCollapsed() && sidebar && !sidebar.contains(event.target)) {
+                    closeSidebarFlyout();
+                }
+            });
+
+            document.addEventListener('keydown', function(event) {
+                if (event.key === 'Escape') {
+                    closeSidebarFlyout();
+                }
+            });
+
+            if (sidebarSearch) {
+                sidebarSearch.addEventListener('input', function() {
+                    var query = this.value.trim().toLocaleLowerCase('vi');
+                    document.querySelectorAll('.sidebar .nav-link').forEach(function(link) {
+                        var matched = !query || link.textContent.toLocaleLowerCase('vi').includes(query);
+                        link.classList.toggle('nav-filter-hidden', !matched);
+                    });
+                    document.querySelectorAll('.sidebar .nav-section').forEach(function(section) {
+                        var hasVisibleLink = !!section.querySelector('.nav-link:not(.nav-filter-hidden)');
+                        section.classList.toggle('nav-filter-hidden', query && !hasVisibleLink);
+                    });
+                });
+            }
+
+            /* prevent same-page reload */
+            document.querySelectorAll('.sidebar .nav-link').forEach(function(link) {
+                link.addEventListener('click', function(e) {
+                    const currentUrl = new URL(window.location.href);
+                    const targetUrl = new URL(link.href, window.location.origin);
+                    const isSamePath = currentUrl.pathname.replace(/\/+$/, '') === targetUrl.pathname.replace(/\/+$/, '');
+                    const isSameQuery = currentUrl.search === targetUrl.search;
+                    if (isSamePath && isSameQuery) {
+                        e.preventDefault();
+                    }
+                    if (!desktopQuery.matches) closeMobileSidebar();
+                });
+            });
+
+            /* scroll active link into view */
+            var activeLink = document.querySelector('.sidebar .nav-link.active');
+            if (activeLink) {
+                activeLink.scrollIntoView({ block: 'center', behavior: 'instant' });
+            }
+        });
+
+        /* ── Tìm kiếm nhanh (Ctrl+K) ── */
+        var qsTimer = null;
+        var quickSearchUrls = {
+            createInbound: '@Url.Action("Create", "Vouchers", new { type = 1 })',
+            itemByBarcode: '@Url.Action("GetItemByBarcode", "Items")',
+            itemDetails: '@Url.Action("Details", "Items")',
+            vouchers: '@Url.Action("Index", "Vouchers")',
+            items: '@Url.Action("Index", "Items")',
+            inventory: '@Url.Action("Inventory", "Reports")'
+        };
+        function openQuickSearch() {
+            var ov = document.getElementById('qsOverlay');
+            ov.classList.add('active');
+            document.getElementById('qsInput').value = '';
+            document.getElementById('qsResults').innerHTML = '<div class="qs-empty"><i class="fas fa-lightbulb"></i> Gõ mã phiếu, vật tư hoặc mã vạch để tìm.</div>';
+            setTimeout(function(){ document.getElementById('qsInput').focus(); }, 100);
+        }
+        function closeQuickSearch() {
+            document.getElementById('qsOverlay').classList.remove('active');
+        }
+        document.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); openQuickSearch(); }
+            if (e.key === 'Escape') closeQuickSearch();
+            /* Ctrl+N → create new voucher */
+            if ((e.ctrlKey || e.metaKey) && e.key === 'n' && !e.shiftKey) {
+                var activeEl = document.activeElement;
+                if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) return;
+                e.preventDefault();
+                window.location.href = quickSearchUrls.createInbound;
+            }
+        });
+        document.getElementById('qsOverlay')?.addEventListener('click', function(e) {
+            if (e.target === this) closeQuickSearch();
+        });
+        document.getElementById('qsInput')?.addEventListener('input', function() {
+            clearTimeout(qsTimer);
+            var q = this.value.trim();
+            if (q.length < 2) {
+                document.getElementById('qsResults').innerHTML = '<div class="qs-empty"><i class="fas fa-lightbulb"></i> Gõ ít nhất 2 ký tự.</div>';
+                return;
+            }
+            document.getElementById('qsResults').innerHTML = '<div class="qs-empty"><i class="fas fa-spinner fa-spin"></i> Đang tìm...</div>';
+            qsTimer = setTimeout(function(){ doQuickSearch(q); }, 300);
+        });
+        function doQuickSearch(q) {
+            var results = [];
+            /* tìm vật tư */
+            fetch(quickSearchUrls.itemByBarcode + '?barcode=' + encodeURIComponent(q))
+                .then(function(r){ return r.ok ? r.json() : null; })
+                .then(function(item){
+                    if (item) results.push({type:'item', icon:'fa-box', label:item.itemCode + ' — ' + item.itemName, url: quickSearchUrls.itemDetails + '/' + item.itemId});
+                })
+                .catch(function(){})
+                .finally(function(){
+                    renderQsResults(results, q);
+                });
+        }
+        function renderQsResults(results, q) {
+            var html = '';
+            /* always add shortcut links */
+            html += '<div class="qs-group-title">Đi nhanh</div>';
+            html += '<a class="qs-item" href="' + quickSearchUrls.vouchers + '?search=' + encodeURIComponent(q) + '"><i class="fas fa-file-invoice"></i> Tìm phiếu "' + escHtml(q) + '"</a>';
+            html += '<a class="qs-item" href="' + quickSearchUrls.items + '?search=' + encodeURIComponent(q) + '"><i class="fas fa-boxes-stacked"></i> Tìm vật tư "' + escHtml(q) + '"</a>';
+            html += '<a class="qs-item" href="' + quickSearchUrls.inventory + '?search=' + encodeURIComponent(q) + '"><i class="fas fa-clipboard-list"></i> Tìm tồn kho "' + escHtml(q) + '"</a>';
+            if (results.length > 0) {
+                html += '<div class="qs-group-title">Kết quả khớp</div>';
+                results.forEach(function(r){
+                    html += '<a class="qs-item qs-match" href="' + r.url + '"><i class="fas ' + r.icon + '"></i> ' + escHtml(r.label) + '</a>';
+                });
+            }
+            document.getElementById('qsResults').innerHTML = html;
+        }
+        function escHtml(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+        /* ── Sortable Tables (Enterprise) ── */
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('thead th.sortable').forEach(function(th) {
+                th.addEventListener('click', function() {
+                    var table = th.closest('table');
+                    var tbody = table.querySelector('tbody');
+                    var rows = Array.from(tbody.querySelectorAll('tr'));
+                    var colIndex = Array.from(th.parentElement.children).indexOf(th);
+                    var isAsc = th.classList.contains('sort-asc');
+
+                    /* reset all headers in this table */
+                    th.parentElement.querySelectorAll('th.sortable').forEach(function(h) {
+                        h.classList.remove('sort-asc', 'sort-desc');
+                    });
+
+                    var direction = isAsc ? 'desc' : 'asc';
+                    th.classList.add('sort-' + direction);
+
+                    rows.sort(function(a, b) {
+                        var aText = (a.children[colIndex]?.textContent || '').trim();
+                        var bText = (b.children[colIndex]?.textContent || '').trim();
+                        var aNum = parseFloat(aText.replace(/[^0-9.,-]/g, '').replace(',', '.'));
+                        var bNum = parseFloat(bText.replace(/[^0-9.,-]/g, '').replace(',', '.'));
+                        if (!isNaN(aNum) && !isNaN(bNum)) {
+                            return direction === 'asc' ? aNum - bNum : bNum - aNum;
+                        }
+                        return direction === 'asc' ? aText.localeCompare(bText, 'vi') : bText.localeCompare(aText, 'vi');
+                    });
+
+                    rows.forEach(function(row) { tbody.appendChild(row); });
+                });
+            });
+        });
+
+        /* ── Xuất Excel phục vụ vận hành doanh nghiệp ── */
+        function getVietnamDateStamp() {
+            return new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'Asia/Ho_Chi_Minh',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            }).format(new Date());
+        }
+
+        function exportTableToExcel(tableSelector, filename) {
+            var table = document.querySelector(tableSelector);
+            if (!table) { window.enterpriseNotify({ title:'Không tìm thấy bảng dữ liệu', icon:'warning', timer:3000 }); return; }
+            var clone = table.cloneNode(true);
+            clone.querySelectorAll('script, style, button, .td-actions, .no-export').forEach(function(node) { node.remove(); });
+            clone.querySelectorAll('a').forEach(function(link) { link.replaceWith(document.createTextNode(link.textContent.trim())); });
+            var html = '<html><head><meta charset="utf-8" /></head><body>' + clone.outerHTML + '</body></html>';
+            var blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = (filename || 'xuat_du_lieu') + '_' + getVietnamDateStamp() + '.xls';
+            a.click();
+            URL.revokeObjectURL(url);
+            var rows = table.querySelectorAll('tbody tr').length || Math.max(0, table.querySelectorAll('tr').length - 1);
+            window.enterpriseNotify({ title:'Đã xuất Excel ' + rows + ' dòng', icon:'success', timer:3000 });
+        }
+
+        function exportTableToCsv(tableSelector, filename) {
+            exportTableToExcel(tableSelector, filename);
+        }
+    </script>
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    @if (layoutCanOperate)
+    {
+        <script src="~/lib/html5-qrcode/html5-qrcode.min.js" asp-append-version="true"></script>
+        <script src="~/js/mobile-scanner.js" asp-append-version="true"></script>
+        <script src="~/js/offline-scan-queue.js" asp-append-version="true"></script>
+    }
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    <script src="~/js/pwa.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

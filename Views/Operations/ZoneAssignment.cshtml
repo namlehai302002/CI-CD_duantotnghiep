@@ -1,0 +1,190 @@
+@using WMS.Models
+@{
+    ViewData["Title"] = "Phân khu vực lấy hàng";
+    var users = (List<AppUser>)(ViewBag.Users ?? new List<AppUser>());
+    var zones = (List<Zone>)(ViewBag.Zones ?? new List<Zone>());
+    var assignments = (List<UserZoneAssignment>)(ViewBag.Assignments ?? new List<UserZoneAssignment>());
+    var assignedUserIds = assignments.Select(a => a.UserId).Distinct().ToHashSet();
+    var assignedUsers = users.Count(u => assignedUserIds.Contains(u.UserId));
+    var unassignedUsers = Math.Max(0, users.Count - assignedUsers);
+    var assignmentCount = assignments.Count;
+    var warehouseCount = zones.Select(z => z.WarehouseId).Distinct().Count();
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-map-marked-alt text-accent"></i> Phân khu vực lấy hàng</h1>
+        <p class="page-subtitle">Gán vùng làm việc cho nhân viên kho để nhiệm vụ lấy hàng, gom đơn và RF picking chỉ hiển thị trong đúng phạm vi vận hành.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Operations" asp-action="PickTasks" class="btn btn-secondary"><i class="fas fa-list-check"></i> Nhiệm vụ lấy hàng</a>
+        <a asp-controller="Operations" asp-action="RfPicking" class="btn btn-secondary"><i class="fas fa-barcode"></i> RF picking</a>
+        <a asp-controller="Warehouses" asp-action="Index" class="btn btn-secondary"><i class="fas fa-warehouse"></i> Kho & khu vực</a>
+    </div>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card accent">
+        <div class="stat-icon"><i class="fas fa-user-check"></i></div>
+        <div class="stat-value">@users.Count</div>
+        <div class="stat-label">Nhân viên lấy hàng</div>
+    </div>
+    <div class="stat-card success">
+        <div class="stat-icon"><i class="fas fa-circle-check"></i></div>
+        <div class="stat-value">@assignedUsers</div>
+        <div class="stat-label">Đã gán khu vực</div>
+    </div>
+    <div class="stat-card warning">
+        <div class="stat-icon"><i class="fas fa-triangle-exclamation"></i></div>
+        <div class="stat-value">@unassignedUsers</div>
+        <div class="stat-label">Chưa gán khu vực</div>
+    </div>
+    <div class="stat-card info">
+        <div class="stat-icon"><i class="fas fa-draw-polygon"></i></div>
+        <div class="stat-value">@zones.Count</div>
+        <div class="stat-label">Khu vực khả dụng</div>
+    </div>
+    <div class="stat-card purple">
+        <div class="stat-icon"><i class="fas fa-warehouse"></i></div>
+        <div class="stat-value">@warehouseCount</div>
+        <div class="stat-label">Kho có khu vực</div>
+    </div>
+</div>
+
+<section class="enterprise-section zone-assignment-playbook">
+    <div class="enterprise-section-header">
+        <div>
+            <div class="enterprise-section-title">Nguyên tắc điều phối</div>
+            <div class="enterprise-section-subtitle">Phạm vi khu vực là lớp bảo vệ vận hành cho RF picking, task interleaving và bảng nhiệm vụ theo kho.</div>
+        </div>
+        <span class="badge badge-accent">Warehouse scope</span>
+    </div>
+    <div class="quality-step-grid">
+        <div class="quality-step"><i class="fas fa-user"></i><span>Chọn nhân viên kho</span></div>
+        <div class="quality-step"><i class="fas fa-map-location-dot"></i><span>Gán khu vực trong cùng kho</span></div>
+        <div class="quality-step"><i class="fas fa-mobile-screen"></i><span>RF chỉ thấy nhiệm vụ hợp lệ</span></div>
+        <div class="quality-step"><i class="fas fa-shield-halved"></i><span>Quản lý giữ đúng phạm vi</span></div>
+    </div>
+</section>
+
+@if (!users.Any())
+{
+    <section class="enterprise-section empty-card">
+        <div class="empty-state">
+            <div class="empty-icon"><i class="fas fa-user-slash"></i></div>
+            <div class="empty-text">Chưa có nhân viên kho hoạt động</div>
+            <div class="empty-sub">Tạo hoặc kích hoạt tài khoản Staff trước khi phân khu vực lấy hàng.</div>
+        </div>
+    </section>
+}
+else
+{
+    <section class="enterprise-section zone-assignment-section">
+        <div class="enterprise-section-header">
+            <div>
+                <div class="enterprise-section-title">Bảng phân quyền khu vực</div>
+                <div class="enterprise-section-subtitle">Mỗi thay đổi được lưu bằng form riêng để tránh cập nhật nhầm nhiều nhân viên trong ca vận hành.</div>
+            </div>
+            <button type="button" class="btn-export" data-wms-export-table="#zoneAssignmentTable" data-wms-export-filename="phan_khu_vuc_lay_hang">
+                <i class="fas fa-file-excel"></i> Xuất Excel
+            </button>
+        </div>
+        <div class="table-container">
+            <table id="zoneAssignmentTable" class="data-table zone-assignment-table">
+                <thead>
+                    <tr>
+                        <th>Nhân viên</th>
+                        <th>Kho</th>
+                        <th>Khu vực hiện tại</th>
+                        <th>Khu vực có thể gán</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var user in users)
+                {
+                    var userZoneIds = assignments.Where(a => a.UserId == user.UserId).Select(a => a.ZoneId).ToHashSet();
+                    var userZones = zones.Where(z => userZoneIds.Contains(z.ZoneId)).OrderBy(z => z.ZoneCode).ToList();
+                    var availableZones = zones
+                        .Where(z => !user.WarehouseId.HasValue || z.WarehouseId == user.WarehouseId.Value)
+                        .OrderBy(z => z.Warehouse?.WarehouseCode)
+                        .ThenBy(z => z.ZoneCode)
+                        .ToList();
+                    <tr class="@(userZones.Any() ? "" : "is-attention-row")">
+                        <td class="zone-assignment-person-cell">
+                            <div class="td-code">@user.FullName</div>
+                            <div class="table-subtext text-muted">@user.UserName</div>
+                        </td>
+                        <td class="zone-assignment-warehouse-cell">
+                            <span class="badge badge-secondary">@(user.Warehouse?.WarehouseCode ?? "Toàn kho")</span>
+                            <div class="table-subtext text-muted">@(user.Warehouse?.WarehouseName ?? "Không giới hạn kho")</div>
+                        </td>
+                        <td class="zone-assignment-current-cell">
+                            @if (userZones.Any())
+                            {
+                                <div class="zone-chip-list">
+                                    @foreach (var z in userZones)
+                                    {
+                                        <span class="badge badge-info zone-chip">@z.ZoneCode</span>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <span class="badge badge-warning">Chưa gán</span>
+                                <div class="table-subtext text-muted">Nhân viên không thấy nhiệm vụ lấy hàng theo khu vực.</div>
+                            }
+                        </td>
+                        <td class="zone-assignment-options-cell">
+                            <form method="post" asp-controller="Operations" asp-action="SaveZoneAssignment" class="zone-assignment-form" data-enterprise-confirm="Lưu phân khu vực cho @user.FullName?" data-enterprise-confirm-ok="Lưu phân khu">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="userId" value="@user.UserId" />
+                                @if (availableZones.Any())
+                                {
+                                    <div class="zone-option-list">
+                                        @foreach (var z in availableZones)
+                                        {
+                                            var isChecked = userZoneIds.Contains(z.ZoneId);
+                                            <label class="zone-option @(isChecked ? "is-selected" : "")">
+                                                <input type="checkbox" name="zoneIds" value="@z.ZoneId" @(isChecked ? "checked" : "") />
+                                                <span class="zone-option-main">
+                                                    <span class="zone-option-code">@z.ZoneCode</span>
+                                                    <span class="zone-option-name">@z.ZoneName</span>
+                                                </span>
+                                                <span class="zone-option-meta">@z.ZoneTypeName</span>
+                                            </label>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="empty-inline-alert">
+                                        <i class="fas fa-circle-info"></i>
+                                        <span>Kho của nhân viên chưa có khu vực hoạt động.</span>
+                                    </div>
+                                }
+                                <div class="zone-assignment-actions">
+                                    <button class="btn btn-primary btn-sm" type="submit"><i class="fas fa-save"></i> Lưu</button>
+                                </div>
+                            </form>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+}
+
+@if (!zones.Any())
+{
+    <section class="enterprise-section empty-card">
+        <div class="empty-state">
+            <div class="empty-icon"><i class="fas fa-map"></i></div>
+            <div class="empty-text">Chưa có khu vực hoạt động</div>
+            <div class="empty-sub">Tạo khu vực trong quản lý kho trước khi phân quyền nhiệm vụ lấy hàng.</div>
+            <div class="empty-action">
+                <a asp-controller="Warehouses" asp-action="Index" class="btn btn-primary btn-sm"><i class="fas fa-warehouse"></i> Quản lý kho & khu vực</a>
+            </div>
+        </div>
+    </section>
+}

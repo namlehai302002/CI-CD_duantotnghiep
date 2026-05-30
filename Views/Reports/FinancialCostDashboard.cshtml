@@ -1,0 +1,71 @@
+@model WMS.ViewModels.FinancialCostDashboardViewModel
+@{
+    ViewData["Title"] = "Chi phí vận hành";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Chi phí vận hành</h1>
+        <p class="page-subtitle">Chi phí theo chủ hàng, kho, dịch vụ và nguồn phát sinh.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-secondary" asp-action="SemanticBi"><i class="fas fa-chart-line"></i> Báo cáo quản trị dữ liệu</a>
+    </div>
+</div>
+
+<form method="get" class="filter-panel">
+    <div>
+        <label>Kho</label>
+        <select class="form-control" name="warehouseId">
+            <option value="">Tất cả kho</option>
+            @foreach (var wh in Model.Warehouses)
+            {
+                <option value="@wh.WarehouseId" selected="@(Model.WarehouseId == wh.WarehouseId)">@wh.WarehouseCode - @wh.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div>
+        <label>Số ngày</label>
+        <input class="form-control" type="number" min="1" max="365" name="days" value="@Model.Days" />
+    </div>
+    <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc</button>
+</form>
+
+<div class="metric-grid">
+    <div class="metric-card accent"><div class="metric-value">@Model.TotalCost.ToString("N0")</div><div class="metric-label">Tổng chi phí</div></div>
+    <div class="metric-card"><div class="metric-value">@Model.Rows.Select(x => x.OwnerName).Distinct().Count()</div><div class="metric-label">Chủ hàng</div></div>
+    <div class="metric-card"><div class="metric-value">@Model.Rows.Select(x => x.ServiceType).Distinct().Count()</div><div class="metric-label">Dịch vụ</div></div>
+    <div class="metric-card"><div class="metric-value">@Model.Rows.Count</div><div class="metric-label">Dòng nguồn</div></div>
+</div>
+
+<section class="enterprise-section">
+    <div class="enterprise-section-header">
+        <div>
+            <div class="enterprise-section-title">Drill-down nguồn chi phí</div>
+            <div class="enterprise-section-subtitle">Mỗi dòng liên kết về hóa đơn kho nhiều chủ hàng hoặc tác vụ lao động đã phát sinh chi phí.</div>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead><tr><th>Chủ hàng</th><th>Kho</th><th>Dịch vụ</th><th>Nguồn</th><th>Mã nguồn</th><th>Số lượng</th><th>Chi phí</th></tr></thead>
+            <tbody>
+                @if (!Model.Rows.Any())
+                {
+                    <tr><td colspan="7" class="empty-state">Chưa có chi phí trong kỳ lọc.</td></tr>
+                }
+                @foreach (var row in Model.Rows)
+                {
+                    <tr>
+                        <td>@row.OwnerName</td>
+                        <td>@row.WarehouseName</td>
+                        <td><span class="status-badge">@row.ServiceType</span></td>
+                        <td>@row.SourceType</td>
+                        <td class="td-code">@row.SourceCode</td>
+                        <td class="td-number">@row.Quantity.ToString("N2")</td>
+                        <td class="td-number">@row.Amount.ToString("N0")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

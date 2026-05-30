@@ -1,0 +1,518 @@
+﻿@model WMS.ViewModels.YardManagementPageViewModel
+@using WMS.Models
+@using WMS.ViewModels
+@{
+    ViewData["Title"] = "Quản lý bãi đỗ";
+    var canManageSpots = User.IsInRole("Admin") || User.IsInRole("Manager");
+    var selectedWarehouseId = Model.WarehouseId ?? Model.Warehouses.FirstOrDefault()?.WarehouseId;
+    var availableSpots = Model.Spots
+        .Where(s => s.IsActive && s.Status == YardSpotStatusEnum.Available && string.IsNullOrWhiteSpace(s.OccupiedByTrailer))
+        .OrderBy(s => s.SpotCode)
+        .ToList();
+
+    string FormatDateTime(DateTime? value) => value.HasValue ? value.Value.ToString("dd/MM HH:mm") : "Chưa cập nhật";
+    string YardStayText(int minutes)
+    {
+        var safe = Math.Max(0, minutes);
+        var days = safe / 1440;
+        var hours = (safe % 1440) / 60;
+        var mins = safe % 60;
+        return days > 0 ? $"{days} ngày {hours} giờ {mins} phút" : $"{hours} giờ {mins} phút";
+    }
+    string SpotStatusClass(YardSpotStatusEnum status) => status switch
+    {
+        YardSpotStatusEnum.Available => "success",
+        YardSpotStatusEnum.Occupied => "warning",
+        YardSpotStatusEnum.Blocked => "danger",
+        YardSpotStatusEnum.Maintenance => "danger",
+        _ => "neutral"
+    };
+    string SpotTileClass(YardSpotStatusEnum status) => status switch
+    {
+        YardSpotStatusEnum.Occupied => "occupied",
+        YardSpotStatusEnum.Blocked => "blocked",
+        YardSpotStatusEnum.Maintenance => "maintenance",
+        _ => ""
+    };
+    string VisitStatusClass(YardVisitStatusEnum status) => status switch
+    {
+        YardVisitStatusEnum.Parked => "success",
+        YardVisitStatusEnum.AtDock => "info",
+        YardVisitStatusEnum.GatedOut => "neutral",
+        YardVisitStatusEnum.Cancelled => "danger",
+        _ => "warning"
+    };
+    string TranslateTrailerType(TrailerTypeEnum type) => type switch {
+        TrailerTypeEnum.Trailer => "Rơ-moóc thường",
+        TrailerTypeEnum.Container => "Công-ten-nơ",
+        TrailerTypeEnum.Reefer => "Xe lạnh",
+        TrailerTypeEnum.Flatbed => "Thùng lửng",
+        TrailerTypeEnum.Tanker => "Xe bồn",
+        _ => "Loại xe khác"
+    };
+    string TranslateYardVisitPurpose(YardVisitPurposeEnum purpose) => purpose switch {
+        YardVisitPurposeEnum.Inbound => "Nhập kho",
+        YardVisitPurposeEnum.Outbound => "Xuất kho",
+        YardVisitPurposeEnum.Transfer => "Luân chuyển",
+        YardVisitPurposeEnum.EmptyStorage => "Lưu rỗng",
+        YardVisitPurposeEnum.Other => "Khác",
+        _ => "Khác"
+    };
+    string TranslateYardSpotType(YardSpotTypeEnum type) => type switch {
+        YardSpotTypeEnum.Standard => "Tiêu chuẩn",
+        YardSpotTypeEnum.Reefer => "Cắm điện xe lạnh",
+        YardSpotTypeEnum.Hazmat => "Hàng nguy hiểm",
+        YardSpotTypeEnum.Empty => "Rỗng",
+        YardSpotTypeEnum.Maintenance => "Bảo trì",
+        _ => "Loại vị trí khác"
+    };
+    string TranslateYardSpotStatus(YardSpotStatusEnum status) => status switch {
+        YardSpotStatusEnum.Available => "Trống",
+        YardSpotStatusEnum.Occupied => "Đang có xe",
+        YardSpotStatusEnum.Blocked => "Khóa",
+        YardSpotStatusEnum.Maintenance => "Bảo trì",
+        _ => "Không xác định"
+    };
+    string SpotDisplayStatus(YardSpotStatusEnum status) => status switch {
+        YardSpotStatusEnum.Available => "Trống",
+        YardSpotStatusEnum.Occupied => "Đang có xe",
+        YardSpotStatusEnum.Blocked => "Khóa",
+        YardSpotStatusEnum.Maintenance => "Bảo trì",
+        _ => "Không xác định"
+    };
+    string VisitDisplayStatus(YardVisitStatusEnum status) => status switch {
+        YardVisitStatusEnum.Parked => "Trong bãi",
+        YardVisitStatusEnum.AtDock => "Tại cửa bến",
+        YardVisitStatusEnum.GatedOut => "Đã rời bãi",
+        YardVisitStatusEnum.Cancelled => "Đã hủy",
+        _ => "Không xác định"
+    };
+}
+
+<div class="yardops-shell">
+    <div class="yardops-pagehead">
+        <div>
+            <h1 class="yardops-title">Quản lý bãi đỗ</h1>
+            <p class="yardops-subtitle">Theo dõi rơ-moóc, công-ten-nơ trong bãi, vị trí đang có xe, cổng vào/ra và thời gian lưu bãi. Không bao gồm tính phí lưu bãi.</p>
+        </div>
+        <div class="yardops-head-actions">
+            <span class="yardops-clock"><i class="fas fa-clock"></i> @Model.Now.ToString("HH:mm:ss")</span>
+        </div>
+    </div>
+
+    <form method="get" class="yardops-filter">
+        <div class="form-group yardops-span-3">
+            <label class="form-label">Kho</label>
+            <select class="form-control" name="warehouseId">
+                <option value="">Tất cả</option>
+                @foreach (var w in Model.Warehouses)
+                {
+                    <option value="@w.WarehouseId" selected="@(Model.WarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+                }
+            </select>
+        </div>
+        <div class="form-group yardops-span-4">
+            <label class="form-label">Tìm rơ-moóc, công-ten-nơ, vị trí hoặc phiếu</label>
+            <input class="form-control" name="search" value="@Model.Search" placeholder="VD: CONT123, Y-01, NK..." />
+        </div>
+        <div class="form-group yardops-span-2">
+            <label class="form-label">&nbsp;</label>
+            <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc</button>
+        </div>
+    </form>
+
+    <div class="yardops-kpis">
+        <div class="yardops-kpi">
+            <div class="yardops-kpi-value">@Model.ActiveVisitCount <span class="yardops-kpi-unit">lượt</span></div>
+            <div class="yardops-kpi-label">Đang trong bãi</div>
+        </div>
+        <div class="yardops-kpi success">
+            <div class="yardops-kpi-value">@Model.AvailableSpotCount <span class="yardops-kpi-unit">vị trí</span></div>
+            <div class="yardops-kpi-label">Vị trí bãi trống</div>
+        </div>
+        <div class="yardops-kpi warning">
+            <div class="yardops-kpi-value">@Model.OccupiedSpotCount <span class="yardops-kpi-unit">vị trí</span></div>
+            <div class="yardops-kpi-label">Vị trí đang có xe</div>
+        </div>
+        <div class="yardops-kpi danger">
+            <div class="yardops-kpi-value">@Model.BlockedSpotCount <span class="yardops-kpi-unit">vị trí</span></div>
+            <div class="yardops-kpi-label">Bảo trì / khóa</div>
+        </div>
+        <div class="yardops-kpi danger">
+            <div class="yardops-kpi-value">@Model.OverdueVisitCount <span class="yardops-kpi-unit">lượt</span></div>
+            <div class="yardops-kpi-label">Quá lịch dock</div>
+        </div>
+    </div>
+
+    @if (Model.DockAppointments.Any() || Model.RecentEvidence.Any())
+    {
+        <div class="yardops-panels">
+            <section class="yardops-panel">
+                <div class="yardops-panel-head">
+                    <div>
+                        <h2 class="yardops-panel-title">Lịch cửa bến liên quan bãi</h2>
+                        <p class="yardops-panel-subtitle">Appointment chưa đóng để nhân viên gate nhìn đúng xe, cửa và khung giờ.</p>
+                    </div>
+                    <a asp-action="DockBoard" asp-route-warehouseId="@Model.WarehouseId" class="btn btn-secondary"><i class="fas fa-calendar-days"></i> Bảng dock</a>
+                </div>
+                <div class="yardops-table-wrap">
+                    <table class="yardops-table">
+                        <thead>
+                            <tr>
+                                <th>Lịch</th>
+                                <th>Cửa</th>
+                                <th>Chủ hàng</th>
+                                <th>Khung giờ</th>
+                                <th>Cảnh báo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var a in Model.DockAppointments)
+                        {
+                            <tr>
+                                <td>
+                                    <div class="yardops-rule-title">@a.AppointmentCode</div>
+                                    <div class="yardops-subline">@EnterpriseUiLabels.DockAppointmentDirection(a.Direction) · @EnterpriseUiLabels.DockAppointmentStatus(a.Status)</div>
+                                </td>
+                                <td>@a.DockDoor</td>
+                                <td>@(a.OwnerPartner?.PartnerName ?? "-")</td>
+                                <td>@a.PlannedStartAt.ToString("dd/MM HH:mm") - @a.PlannedEndAt.ToString("HH:mm")</td>
+                                <td>@(a.OverloadWarning ?? "-")</td>
+                            </tr>
+                        }
+                        @if (!Model.DockAppointments.Any())
+                        {
+                            <tr><td colspan="5"><div class="yardops-empty">Không có lịch dock chưa đóng.</div></td></tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="yardops-panel">
+                <div class="yardops-panel-head">
+                    <div>
+                        <h2 class="yardops-panel-title">Bằng chứng gate gần nhất</h2>
+                        <p class="yardops-panel-subtitle">Ảnh seal, container, tài xế, giấy tờ và hash file phục vụ audit.</p>
+                    </div>
+                </div>
+                <div class="yardops-panel-body">
+                    @foreach (var e in Model.RecentEvidence)
+                    {
+                        <div class="yardops-inline-card evidence-row">
+                            <div>
+                                <strong>@e.YardVisit.VisitCode</strong>
+                                <div class="yardops-subline">@EnterpriseUiLabels.YardEvidenceType(e.EvidenceType) · @e.CapturedAt.ToString("dd/MM HH:mm") · @e.CapturedBy</div>
+                            </div>
+                            <a href="@Url.Action("DownloadYardVisitEvidence", "Operations", new { evidenceId = e.YardVisitEvidenceId })" target="_blank" class="btn btn-sm btn-secondary"><i class="fas fa-eye"></i> Xem</a>
+                        </div>
+                    }
+                    @if (!Model.RecentEvidence.Any())
+                    {
+                        <div class="yardops-empty">Chưa có bằng chứng gate.</div>
+                    }
+                </div>
+            </section>
+        </div>
+    }
+
+    <div class="yardops-panels @(canManageSpots ? "" : "single")">
+        <section class="yardops-panel">
+            <div class="yardops-panel-head">
+                <div>
+                    <h2 class="yardops-panel-title">Nhận rơ-moóc hoặc công-ten-nơ vào bãi</h2>
+                    <p class="yardops-panel-subtitle">Ghi nhận phương tiện, liên kết phiếu/cửa bến và gán vị trí nếu đã có vị trí bãi trống.</p>
+                </div>
+            </div>
+            <div class="yardops-panel-body">
+                <form method="post" asp-action="GateInYardVisit" asp-controller="Operations" class="yardops-form-grid">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="search" value="@Model.Search" />
+                    <div class="form-group">
+                        <label class="form-label">Kho</label>
+                        <select class="form-control" name="warehouseId" required>
+                            @foreach (var w in Model.Warehouses)
+                            {
+                                <option value="@w.WarehouseId" selected="@(selectedWarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Số rơ-moóc hoặc số công-ten-nơ</label>
+                        <input class="form-control" name="trailerNumber" maxlength="50" required placeholder="VD: CONT-001" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Số công-ten-nơ phụ</label>
+                        <input class="form-control" name="containerNumber" maxlength="50" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Loại</label>
+                        <select class="form-control" name="trailerType">
+                            @foreach (TrailerTypeEnum t in Enum.GetValues<TrailerTypeEnum>())
+                            {
+                                <option value="@t">@TranslateTrailerType(t)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Mục đích</label>
+                        <select class="form-control" name="purpose">
+                            @foreach (YardVisitPurposeEnum p in Enum.GetValues<YardVisitPurposeEnum>())
+                            {
+                                <option value="@p">@TranslateYardVisitPurpose(p)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Gán vị trí lúc nhận</label>
+                        <select class="form-control" name="yardSpotId">
+                            <option value="">Chưa gán</option>
+                            @foreach (var spot in availableSpots)
+                            {
+                                <option value="@spot.YardSpotId">@spot.SpotCode - @spot.WarehouseName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Liên kết phiếu/cửa bến</label>
+                        <select class="form-control" name="voucherId">
+                            <option value="">Không liên kết</option>
+                            @foreach (var v in Model.VoucherOptions)
+                            {
+                                <option value="@v.VoucherId">@v.VoucherCode - @(v.DockDoor ?? "chưa có cửa bến") - @FormatDateTime(v.DockAppointmentStart)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Đối tác vận tải</label>
+                        <input class="form-control" name="carrierName" maxlength="100" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Số seal</label>
+                        <input class="form-control" name="sealNumber" maxlength="50" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Biển số xe</label>
+                        <input class="form-control" name="vehicleNumber" maxlength="30" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tài xế</label>
+                        <input class="form-control" name="driverName" maxlength="100" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">SĐT tài xế</label>
+                        <input class="form-control" name="driverPhone" maxlength="20" />
+                    </div>
+                    <div class="form-group yardops-wide">
+                        <label class="form-label">Ghi chú</label>
+                        <input class="form-control" name="notes" maxlength="500" />
+                    </div>
+                    <div class="form-group yardops-wide">
+                        <button class="btn btn-success" type="submit"><i class="fas fa-right-to-bracket"></i> Nhận vào bãi</button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        @if (canManageSpots)
+        {
+            <section class="yardops-panel">
+                <div class="yardops-panel-head">
+                    <div>
+                        <h2 class="yardops-panel-title">Tạo vị trí bãi</h2>
+                        <p class="yardops-panel-subtitle">Khai báo vị trí bãi mới để vận hành gán xe và theo dõi trạng thái bãi.</p>
+                    </div>
+                </div>
+                <div class="yardops-panel-body">
+                    <form method="post" asp-action="CreateYardSpot" asp-controller="Operations" class="yardops-form-grid">
+                        @Html.AntiForgeryToken()
+                        <div class="form-group yardops-wide">
+                            <label class="form-label">Kho</label>
+                            <select class="form-control" name="warehouseId" required>
+                                @foreach (var w in Model.Warehouses)
+                                {
+                                    <option value="@w.WarehouseId" selected="@(selectedWarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Mã vị trí bãi</label>
+                            <input class="form-control" name="spotCode" maxlength="30" required placeholder="VD: Y-001" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Tên vị trí</label>
+                            <input class="form-control" name="spotName" maxlength="100" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Loại vị trí</label>
+                            <select class="form-control" name="spotType">
+                                @foreach (YardSpotTypeEnum t in Enum.GetValues<YardSpotTypeEnum>())
+                                {
+                                    <option value="@t">@TranslateYardSpotType(t)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Trạng thái</label>
+                            <select class="form-control" name="status">
+                                @foreach (YardSpotStatusEnum s in Enum.GetValues<YardSpotStatusEnum>())
+                                {
+                                    <option value="@s">@TranslateYardSpotStatus(s)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="form-group yardops-wide">
+                            <label class="form-label">Ghi chú</label>
+                            <input class="form-control" name="notes" maxlength="300" />
+                        </div>
+                        <div class="form-group yardops-wide">
+                            <button class="btn btn-primary" type="submit"><i class="fas fa-square-plus"></i> Tạo vị trí</button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+        }
+    </div>
+
+    <section class="yardops-panel">
+        <div class="yardops-panel-head">
+            <div>
+                <h2 class="yardops-panel-title">Rơ-moóc/container đang trong bãi</h2>
+                <p class="yardops-panel-subtitle">Danh sách vận hành theo bộ lọc hiện tại, gồm vị trí bãi, giờ vào cổng, thời gian lưu bãi, cửa bến, phiếu và thao tác nhanh.</p>
+            </div>
+            <span class="yardops-context-pill">@Model.ActiveVisits.Count.ToString("N0") dòng</span>
+        </div>
+        <div class="yardops-panel-body">
+            @if (!Model.ActiveVisits.Any())
+            {
+                <div class="yardops-empty"><i class="fas fa-truck-ramp-box"></i>Chưa có rơ-moóc hoặc công-ten-nơ nào đang trong bãi theo bộ lọc hiện tại.</div>
+            }
+            else
+            {
+                <div class="yardops-list">
+                    @foreach (var row in Model.ActiveVisits)
+                    {
+                        <article class="yardops-visit-card">
+                            <div class="yardops-visit-head">
+                                <div>
+                                    <div class="yardops-code">@row.VisitCode - @row.TrailerNumber</div>
+                                    <div class="yardops-subline">
+                                        @(row.ContainerNumber ?? "không có số công-ten-nơ") · @(row.CarrierName ?? "chưa có đơn vị vận chuyển") · @row.WarehouseName
+                                    </div>
+                                </div>
+                                <span class="yardops-status @VisitStatusClass(row.Status)">@VisitDisplayStatus(row.Status)</span>
+                            </div>
+                            <div class="yardops-meta-grid">
+                                <div class="yardops-meta"><span>Vị trí sân bãi</span><strong>@(row.CurrentSpotCode ?? "Chưa gán")</strong></div>
+                                <div class="yardops-meta"><span>Vào cổng</span><strong>@FormatDateTime(row.GateInAt)</strong></div>
+                                <div class="yardops-meta"><span>Thời gian lưu bãi</span><strong>@YardStayText(row.DwellMinutes)</strong></div>
+                                <div class="yardops-meta"><span>Cửa bến</span><strong>@(row.DockDoor ?? "Chưa gán cửa bến") @FormatDateTime(row.DockAppointmentStart)</strong></div>
+                                <div class="yardops-meta">
+                                    <span>Phiếu</span>
+                                    <strong>
+                                        @if (row.VoucherId.HasValue)
+                                        {
+                                            <a asp-controller="Vouchers" asp-action="Details" asp-route-id="@row.VoucherId">@row.VoucherCode</a>
+                                        }
+                                        else
+                                        {
+                                            <span>Chưa liên kết</span>
+                                        }
+                                    </strong>
+                                </div>
+                            </div>
+                            <div class="yardops-actions">
+                                <form method="post" asp-action="AssignYardSpot" asp-controller="Operations" class="yardops-inline-form">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="yardVisitId" value="@row.YardVisitId" />
+                                    <input type="hidden" name="warehouseId" value="@Model.WarehouseId" />
+                                    <input type="hidden" name="search" value="@Model.Search" />
+                                    <select class="form-control form-control-sm" name="yardSpotId" required>
+                                        <option value="">Chọn vị trí</option>
+                                        @foreach (var spot in availableSpots)
+                                        {
+                                            <option value="@spot.YardSpotId">@spot.SpotCode</option>
+                                        }
+                                    </select>
+                                    <button class="btn btn-sm btn-secondary" type="submit"><i class="fas fa-map-pin"></i> Gán vị trí</button>
+                                </form>
+                                <form method="post" asp-action="MoveYardSpot" asp-controller="Operations" class="yardops-inline-form">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="yardVisitId" value="@row.YardVisitId" />
+                                    <input type="hidden" name="warehouseId" value="@Model.WarehouseId" />
+                                    <input type="hidden" name="search" value="@Model.Search" />
+                                    <select class="form-control form-control-sm" name="yardSpotId" required>
+                                        <option value="">Chuyển sang</option>
+                                        @foreach (var spot in availableSpots)
+                                        {
+                                            <option value="@spot.YardSpotId">@spot.SpotCode</option>
+                                        }
+                                    </select>
+                                    <button class="btn btn-sm btn-info" type="submit"><i class="fas fa-arrows-left-right"></i> Chuyển</button>
+                                </form>
+                                <form method="post" asp-action="GateOutYardVisit" asp-controller="Operations" class="yardops-inline-form">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="yardVisitId" value="@row.YardVisitId" />
+                                    <input type="hidden" name="warehouseId" value="@Model.WarehouseId" />
+                                    <input type="hidden" name="search" value="@Model.Search" />
+                                    <button class="btn btn-sm btn-success" type="submit"><i class="fas fa-right-from-bracket"></i> Rời bãi</button>
+                                </form>
+                            </div>
+                            <form method="post" asp-action="UploadYardVisitEvidence" asp-controller="Operations" enctype="multipart/form-data" class="yardops-inline-form yardops-evidence-form evidence-upload">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="yardVisitId" value="@row.YardVisitId" />
+                                <input type="hidden" name="warehouseId" value="@Model.WarehouseId" />
+                                <input type="hidden" name="search" value="@Model.Search" />
+                                <select class="form-control form-control-sm" name="evidenceType">
+                                    @foreach (YardEvidenceTypeEnum evidenceType in Enum.GetValues<YardEvidenceTypeEnum>())
+                                    {
+                                        <option value="@evidenceType">@EnterpriseUiLabels.YardEvidenceType(evidenceType)</option>
+                                    }
+                                </select>
+                                <input class="form-control form-control-sm" type="file" name="evidenceFile" accept=".jpg,.jpeg,.png,.webp,.pdf" required />
+                                <input class="form-control form-control-sm" name="notes" placeholder="Ghi chú bằng chứng" />
+                                <button class="btn btn-sm btn-secondary" type="submit"><i class="fas fa-upload"></i> Lưu bằng chứng</button>
+                            </form>
+                        </article>
+                    }
+                </div>
+            }
+        </div>
+    </section>
+
+    <section class="yardops-panel">
+        <div class="yardops-panel-head">
+            <div>
+                <h2 class="yardops-panel-title">Sơ đồ vị trí bãi đỗ</h2>
+                <p class="yardops-panel-subtitle">Ô màu theo trạng thái để nhìn nhanh vị trí bãi trống, vị trí đang có xe và vị trí cần bảo trì.</p>
+            </div>
+            <span class="yardops-context-pill">@Model.Spots.Count.ToString("N0") vị trí</span>
+        </div>
+        <div class="yardops-panel-body">
+            @if (!Model.Spots.Any())
+            {
+                <div class="yardops-empty"><i class="fas fa-location-dot"></i>Chưa có vị trí bãi đỗ nào theo bộ lọc hiện tại.</div>
+            }
+            else
+            {
+                <div class="yardops-spot-grid">
+                    @foreach (var spot in Model.Spots)
+                    {
+                        <div class="yardops-spot @SpotTileClass(spot.Status)">
+                            <div class="yardops-spot-top">
+                                <div>
+                                    <div class="yardops-code">@spot.SpotCode</div>
+                                    <div class="yardops-subline">@spot.WarehouseName · @TranslateYardSpotType(spot.SpotType)</div>
+                                </div>
+                                <span class="yardops-status @SpotStatusClass(spot.Status)">@SpotDisplayStatus(spot.Status)</span>
+                            </div>
+                            <div class="yardops-spot-body">
+                                @(string.IsNullOrWhiteSpace(spot.OccupiedByTrailer) ? "Trống, sẵn sàng gán phương tiện." : $"Đang có xe: {spot.OccupiedByTrailer}")
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </section>
+</div>

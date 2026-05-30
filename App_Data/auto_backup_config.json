@@ -1,0 +1,9 @@
+{
+  "Enabled": false,
+  "Schedule": "Daily",
+  "Hour": 0,
+  "DayOfWeek": 1,
+  "DayOfMonth": 1,
+  "RetainCount": 3,
+  "LastRunUtc": null
+}

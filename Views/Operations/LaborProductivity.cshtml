@@ -1,0 +1,363 @@
+@model WMS.ViewModels.LaborProductivityPageViewModel
+@using WMS.Models
+@{
+    ViewData["Title"] = "Năng suất lao động";
+    var defaultWarehouseId = Model.WarehouseId ?? Model.Warehouses.FirstOrDefault()?.WarehouseId;
+    var totalTasks = Model.WorkerRows.Sum(x => x.TaskCount);
+    var totalQty = Model.WorkerRows.Sum(x => x.WorkQuantity);
+    var avgProductivity = Model.WorkerRows.Count == 0 ? 0 : Model.WorkerRows.Average(x => x.ProductivityPercent);
+
+    string TaskTypeLabel(string? taskType) => taskType switch
+    {
+        "Pick" => "Lấy hàng",
+        "Receive" => "Nhận hàng",
+        "Ship" => "Giao hàng",
+        "Relocate" => "Di chuyển",
+        "Replenishment" => "Bổ sung hàng",
+        "VAS" => "Gia công phụ trợ",
+        _ => string.IsNullOrWhiteSpace(taskType) ? "Tác vụ" : taskType
+    };
+}
+
+<div class="yardops-shell">
+    <div class="yardops-pagehead">
+        <div>
+            <h1 class="yardops-title">Năng suất lao động</h1>
+            <p class="yardops-subtitle">Theo dõi người, ca, khu vực, thời gian thực tế so với chuẩn, điểm nghẽn và ngoại lệ cần phê duyệt.</p>
+        </div>
+        <div class="yardops-head-actions">
+            <a asp-action="ExportLaborProductivity" asp-route-warehouseId="@Model.WarehouseId" asp-route-days="@Model.Days" class="btn btn-secondary">
+                <i class="fas fa-download"></i> Tải bảng
+            </a>
+            <button class="btn btn-primary" type="button" data-wms-call="openYardopsModal" data-wms-arg="laborStandardModal">
+                <i class="fas fa-plus"></i> Thêm chuẩn
+            </button>
+        </div>
+    </div>
+
+    <form method="get" class="yardops-filter">
+        <div class="form-group yardops-span-3">
+            <label class="form-label">Kho</label>
+            <select name="warehouseId" class="form-control">
+                <option value="">Tất cả kho</option>
+                @foreach (var w in Model.Warehouses)
+                {
+                    <option value="@w.WarehouseId" selected="@(Model.WarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+                }
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Số ngày</label>
+            <input name="days" type="number" min="1" max="120" value="@Model.Days" class="form-control" />
+        </div>
+        <div class="form-group yardops-filter-actions">
+            <label class="form-label">&nbsp;</label>
+            <button class="btn btn-secondary" type="submit"><i class="fas fa-filter"></i> Lọc</button>
+        </div>
+    </form>
+
+    <div class="yardops-kpis">
+        <div class="yardops-kpi">
+            <div class="yardops-kpi-value">@totalTasks <span class="yardops-kpi-unit">tác vụ</span></div>
+            <div class="yardops-kpi-label">Tác vụ đã ghi nhận</div>
+        </div>
+        <div class="yardops-kpi success">
+            <div class="yardops-kpi-value">@totalQty.ToString("N0") <span class="yardops-kpi-unit">đv</span></div>
+            <div class="yardops-kpi-label">Sản lượng xử lý</div>
+        </div>
+        <div class="yardops-kpi info">
+            <div class="yardops-kpi-value">@avgProductivity.ToString("N1")<span class="yardops-kpi-unit">%</span></div>
+            <div class="yardops-kpi-label">Hiệu suất bình quân</div>
+        </div>
+        <div class="yardops-kpi warning">
+            <div class="yardops-kpi-value">@Model.Exceptions.Count <span class="yardops-kpi-unit">vụ</span></div>
+            <div class="yardops-kpi-label">Ngoại lệ mở</div>
+        </div>
+    </div>
+
+    <section class="yardops-panel">
+        <div class="yardops-panel-head">
+            <div>
+                <h2 class="yardops-panel-title">Bảng năng suất theo nhân viên/ca/khu vực</h2>
+                <p class="yardops-panel-subtitle">Xem chi tiết theo tác vụ đã ghi nhận từ lấy hàng, di chuyển, nhận/giao hàng và gia công phụ trợ.</p>
+            </div>
+            <span class="yardops-context-pill">@Model.WorkerRows.Count.ToString("N0") nhóm</span>
+        </div>
+        <div class="yardops-table-wrap">
+            <table class="yardops-table" id="laborProductivityTable">
+                <thead>
+                    <tr>
+                        <th>Nhân viên</th>
+                        <th>Ca</th>
+                        <th>Kho / Khu vực</th>
+                        <th class="text-end">Tác vụ</th>
+                        <th class="text-end">Sản lượng</th>
+                        <th class="text-end">Phút chuẩn</th>
+                        <th class="text-end">Phút thực tế</th>
+                        <th class="text-end">Hiệu suất</th>
+                        <th class="text-end">Ngoại lệ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var row in Model.WorkerRows)
+                {
+                    var statusClass = row.ProductivityPercent >= 120 ? "success" : row.ProductivityPercent >= 80 ? "info" : "danger";
+                    <tr>
+                        <td><strong>@row.UserName</strong></td>
+                        <td><span class="yardops-chip">@row.ShiftCode</span></td>
+                        <td>
+                            <div class="yardops-rule-title">@row.WarehouseName</div>
+                            <div class="yardops-subline">@(row.ZoneName ?? "Tất cả khu vực")</div>
+                        </td>
+                        <td class="text-end">@row.TaskCount</td>
+                        <td class="text-end">@row.WorkQuantity.ToString("N2")</td>
+                        <td class="text-end">@row.ExpectedMinutes.ToString("N1")</td>
+                        <td class="text-end">@row.ActualMinutes.ToString("N1")</td>
+                        <td class="text-end"><span class="yardops-status @statusClass">@row.ProductivityPercent.ToString("N1")%</span></td>
+                        <td class="text-end">@row.ExceptionCount</td>
+                    </tr>
+                }
+                @if (!Model.WorkerRows.Any())
+                {
+                    <tr>
+                        <td colspan="9">
+                            <div class="yardops-empty"><i class="fas fa-users-gear"></i> Chưa có dữ liệu năng suất trong kỳ lọc.</div>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <div class="yardops-panels">
+        <section class="yardops-panel">
+            <div class="yardops-panel-head">
+                <div>
+                    <h2 class="yardops-panel-title">Bản đồ điểm nghẽn</h2>
+                    <p class="yardops-panel-subtitle">Tổng hợp việc còn chờ, thời gian chờ và hiệu suất theo khu vực.</p>
+                </div>
+            </div>
+            <div class="yardops-table-wrap">
+                <table class="yardops-table">
+                    <thead>
+                        <tr>
+                            <th>Kho / Khu vực</th>
+                            <th>Loại tác vụ</th>
+                            <th class="text-end">Việc còn chờ</th>
+                            <th class="text-end">Chờ TB</th>
+                            <th class="text-end">Hiệu suất TB</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in Model.Bottlenecks)
+                    {
+                        <tr>
+                            <td>
+                                <div class="yardops-rule-title">@row.WarehouseName</div>
+                                <div class="yardops-subline">@row.ZoneName</div>
+                            </td>
+                            <td>@TaskTypeLabel(row.TaskType)</td>
+                            <td class="text-end">@row.Backlog</td>
+                            <td class="text-end">@row.AverageWaitingMinutes.ToString("N1") phút</td>
+                            <td class="text-end">@row.AverageProductivityPercent.ToString("N1")%</td>
+                        </tr>
+                    }
+                    @if (!Model.Bottlenecks.Any())
+                    {
+                        <tr><td colspan="5"><div class="yardops-empty">Chưa phát hiện điểm nghẽn.</div></td></tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="yardops-panel">
+            <div class="yardops-panel-head">
+                <div>
+                    <h2 class="yardops-panel-title">Ngoại lệ cần phê duyệt</h2>
+                    <p class="yardops-panel-subtitle">Tác vụ bất thường, hiệu suất thấp hoặc thời gian chờ cao.</p>
+                </div>
+            </div>
+            <div class="yardops-panel-body">
+                @foreach (var ex in Model.Exceptions)
+                {
+                    <form method="post" asp-action="ApproveLaborException" class="yardops-inline-card review-row"
+                          data-enterprise-confirm="Lưu kết quả duyệt ngoại lệ năng suất cho nhân viên này?"
+                          data-enterprise-confirm-title="Xác nhận duyệt ngoại lệ"
+                          data-enterprise-confirm-ok="Lưu kết quả">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="reviewId" value="@ex.LaborExceptionReviewId" />
+                        <input type="hidden" name="warehouseId" value="@ex.LaborActivity.WarehouseId" />
+                        <div>
+                            <strong>@ex.LaborActivity.UserName</strong>
+                            <div class="yardops-subline">@TaskTypeLabel(ex.LaborActivity.TaskType) - @ex.Reason</div>
+                        </div>
+                        <input name="productivityAfter" type="number" step="0.01" value="@ex.ProductivityBefore" class="form-control" />
+                        <input name="incentiveAmount" type="number" step="0.01" value="0" class="form-control" />
+                        <input name="notes" class="form-control" placeholder="Ghi chú duyệt" />
+                        <button class="btn btn-sm btn-success" name="approve" value="true">Duyệt</button>
+                        <button class="btn btn-sm btn-danger" name="approve" value="false">Từ chối</button>
+                    </form>
+                }
+                @if (!Model.Exceptions.Any())
+                {
+                    <div class="yardops-empty">Không có ngoại lệ mở.</div>
+                }
+            </div>
+        </section>
+    </div>
+
+    <section class="yardops-panel">
+        <div class="yardops-panel-head">
+            <div>
+                <h2 class="yardops-panel-title">Chuẩn năng suất</h2>
+                <p class="yardops-panel-subtitle">Chuẩn năng suất theo loại tác vụ, kho, khu vực và nhóm hàng.</p>
+            </div>
+            <span class="yardops-context-pill">@Model.Standards.Count.ToString("N0") chuẩn</span>
+        </div>
+        <div class="yardops-table-wrap">
+            <table class="yardops-table">
+                <thead>
+                    <tr>
+                        <th>Loại tác vụ</th>
+                        <th>Kho / Khu vực</th>
+                        <th>Nhóm hàng</th>
+                        <th class="text-end">Phút/đv</th>
+                        <th class="text-end">Đv/giờ</th>
+                        <th>Hiệu lực</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var s in Model.Standards)
+                {
+                    <tr>
+                        <td>
+                            <div class="yardops-rule-title">@TaskTypeLabel(s.TaskType)</div>
+                            <div class="yardops-subline">@s.TaskTypeName</div>
+                        </td>
+                        <td>
+                            <div>@(s.Warehouse?.WarehouseName ?? "Tất cả kho")</div>
+                            <div class="yardops-subline">@(s.Zone?.ZoneName ?? "Tất cả khu vực")</div>
+                        </td>
+                        <td>@(s.ItemClass ?? "Tất cả")</td>
+                        <td class="text-end">@s.ExpectedMinutesPerUnit.ToString("N2")</td>
+                        <td class="text-end">@s.ExpectedUnitsPerHour.ToString("N2")</td>
+                        <td>@s.EffectiveFrom.ToString("dd/MM/yyyy") - @(s.EffectiveTo?.ToString("dd/MM/yyyy") ?? "chưa kết thúc")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+<div class="yardops-modal-overlay" id="laborStandardModal" aria-hidden="true">
+    <form method="post" asp-action="SaveLaborStandard" class="yardops-modal" role="dialog" aria-modal="true">
+        @Html.AntiForgeryToken()
+        <div class="yardops-modal-head">
+            <div>
+                <h2 class="yardops-modal-title">Thêm chuẩn năng suất</h2>
+                <p class="yardops-modal-subtitle">Áp dụng theo loại tác vụ, kho, khu vực và nhóm hàng.</p>
+            </div>
+            <button type="button" class="yardops-modal-close" data-wms-call="closeYardopsModal" data-wms-arg="laborStandardModal" aria-label="Đóng"><i class="fas fa-xmark"></i></button>
+        </div>
+        <div class="yardops-modal-body">
+            <div class="yardops-section-grid">
+                <section class="yardops-section">
+                    <h3 class="yardops-section-title">Phạm vi</h3>
+                    <div class="form-group">
+                        <label class="form-label">Loại tác vụ</label>
+                        <select name="taskType" class="form-control" required>
+                            <option value="Pick">Lấy hàng</option>
+                            <option value="Receive">Nhận hàng</option>
+                            <option value="Ship">Giao hàng</option>
+                            <option value="Relocate">Di chuyển</option>
+                            <option value="Replenishment">Bổ sung hàng</option>
+                            <option value="VAS">Gia công phụ trợ</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tên hiển thị</label>
+                        <input name="taskTypeName" class="form-control" required />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Kho</label>
+                        <select name="warehouseId" class="form-control">
+                            <option value="">Tất cả kho</option>
+                            @foreach (var w in Model.Warehouses)
+                            {
+                                <option value="@w.WarehouseId" selected="@(defaultWarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Khu vực</label>
+                        <select name="zoneId" class="form-control">
+                            <option value="">Tất cả khu vực</option>
+                            @foreach (var z in Model.Zones)
+                            {
+                                <option value="@z.ZoneId">@z.ZoneCode - @z.ZoneName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Nhóm hàng</label>
+                        <input name="itemClass" class="form-control" placeholder="VD: A, kho lạnh, hàng nguy hiểm" />
+                    </div>
+                </section>
+                <section class="yardops-section">
+                    <h3 class="yardops-section-title">Chuẩn đo</h3>
+                    <div class="form-group">
+                        <label class="form-label">Đơn vị công việc</label>
+                        <input name="unitOfWork" class="form-control" value="đơn vị" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Phút / đơn vị</label>
+                        <input name="expectedMinutesPerUnit" type="number" step="0.01" min="0.01" value="5" class="form-control" required />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Đơn vị / giờ</label>
+                        <input name="expectedUnitsPerHour" type="number" step="0.01" min="0.01" value="12" class="form-control" required />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Ngưỡng tối thiểu %</label>
+                        <input name="minPerformancePercent" type="number" step="0.01" value="80" class="form-control" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Ngưỡng xuất sắc %</label>
+                        <input name="excellentPerformancePercent" type="number" step="0.01" value="120" class="form-control" />
+                    </div>
+                </section>
+                <section class="yardops-section">
+                    <h3 class="yardops-section-title">Hiệu lực</h3>
+                    <div class="form-group">
+                        <label class="form-label">Từ ngày</label>
+                        <input name="effectiveFrom" type="date" value="@WMS.Common.VietnamTime.Today.ToString("yyyy-MM-dd")" class="form-control" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Đến ngày</label>
+                        <input name="effectiveTo" type="date" class="form-control" />
+                    </div>
+                </section>
+            </div>
+        </div>
+        <div class="yardops-modal-foot">
+            <button type="button" class="btn btn-secondary" data-wms-call="closeYardopsModal" data-wms-arg="laborStandardModal">Hủy</button>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Lưu chuẩn</button>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+<script>
+function openYardopsModal(id) {
+    const modal = document.getElementById(id);
+    if (modal) modal.classList.add('is-open');
+}
+function closeYardopsModal(id) {
+    const modal = document.getElementById(id);
+    if (modal) modal.classList.remove('is-open');
+}
+</script>
+}

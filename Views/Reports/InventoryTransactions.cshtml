@@ -1,0 +1,179 @@
+﻿@using WMS.Models
+@{
+    ViewData["Title"] = "Sổ cái giao dịch tồn kho";
+    var data = ViewBag.Data as List<InventoryTransaction> ?? new List<InventoryTransaction>();
+    var items = ViewBag.Items as List<Item> ?? new List<Item>();
+    var warehouses = ViewBag.Warehouses as List<Warehouse> ?? new List<Warehouse>();
+    var locations = ViewBag.Locations as List<Location> ?? new List<Location>();
+    var transactionTypes = ViewBag.TransactionTypes as InventoryTransactionTypeEnum[] ?? Array.Empty<InventoryTransactionTypeEnum>();
+    int? itemId = ViewBag.ItemId as int?;
+    int? warehouseId = ViewBag.WarehouseId as int?;
+    int? locationId = ViewBag.LocationId as int?;
+    var selectedType = ViewBag.TransactionType as InventoryTransactionTypeEnum?;
+    var referenceType = ViewBag.ReferenceType as string;
+    var referenceCode = ViewBag.ReferenceCode as string;
+    long? licensePlateId = ViewBag.LicensePlateId as long?;
+    long? serialNumberId = ViewBag.SerialNumberId as long?;
+    var vietnamToday = WMS.Common.VietnamTime.Today;
+    var dateFrom = ViewBag.DateFrom is DateTime df ? df : vietnamToday.AddDays(-30);
+    var dateTo = ViewBag.DateTo is DateTime dt ? dt : vietnamToday;
+
+    string TransactionTypeLabel(InventoryTransactionTypeEnum type) => type switch
+    {
+        InventoryTransactionTypeEnum.OpeningBalance => "Số dư đầu kỳ",
+        InventoryTransactionTypeEnum.Receive => "Nhận hàng",
+        InventoryTransactionTypeEnum.Putaway => "Cất hàng",
+        InventoryTransactionTypeEnum.Move => "Di chuyển",
+        InventoryTransactionTypeEnum.Pick => "Giữ hàng để lấy",
+        InventoryTransactionTypeEnum.Pack => "Đóng gói",
+        InventoryTransactionTypeEnum.Ship => "Giao hàng",
+        InventoryTransactionTypeEnum.Adjust => "Điều chỉnh",
+        InventoryTransactionTypeEnum.Cancel => "Hủy nghiệp vụ",
+        InventoryTransactionTypeEnum.TransferIn => "Nhập chuyển kho",
+        InventoryTransactionTypeEnum.TransferOut => "Xuất chuyển kho",
+        InventoryTransactionTypeEnum.Hold => "Khóa giữ hàng",
+        InventoryTransactionTypeEnum.ReleaseHold => "Mở khóa giữ hàng",
+        InventoryTransactionTypeEnum.Reconcile => "Đối soát tồn kho",
+        InventoryTransactionTypeEnum.KitConsume => "Tiêu hao để lắp bộ hàng",
+        InventoryTransactionTypeEnum.KitProduce => "Tạo thành phẩm bộ",
+        InventoryTransactionTypeEnum.VasConsume => "Tiêu hao dịch vụ gia tăng",
+        _ => "Không xác định"
+    };
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Sổ cái giao dịch tồn kho</h1>
+        <p class="page-subtitle">Tra cứu mọi biến động số lượng, giữ chỗ, khả dụng, mã kiện và số sê-ri theo nguồn phát sinh.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-success"
+           asp-controller="Reports"
+           asp-action="ExportInventoryTransactions"
+           asp-route-itemId="@itemId"
+           asp-route-warehouseId="@warehouseId"
+           asp-route-locationId="@locationId"
+           asp-route-transactionType="@selectedType"
+           asp-route-referenceType="@referenceType"
+           asp-route-referenceCode="@referenceCode"
+           asp-route-licensePlateId="@licensePlateId"
+           asp-route-serialNumberId="@serialNumberId"
+           asp-route-dateFrom="@dateFrom.ToString("yyyy-MM-dd")"
+           asp-route-dateTo="@dateTo.ToString("yyyy-MM-dd")">
+            <i class="fas fa-file-excel"></i> Xuất bảng tính
+        </a>
+    </div>
+</div>
+
+<form method="get" class="filter-panel">
+    <div class="col-md-2">
+        <label class="form-label">Từ ngày</label>
+        <input type="date" name="dateFrom" value="@dateFrom.ToString("yyyy-MM-dd")" class="form-control" />
+    </div>
+    <div class="col-md-2">
+        <label class="form-label">Đến ngày</label>
+        <input type="date" name="dateTo" value="@dateTo.ToString("yyyy-MM-dd")" class="form-control" />
+    </div>
+    <div class="col-md-2">
+        <label class="form-label">Kho</label>
+        <select name="warehouseId" class="form-control">
+            <option value="">Tất cả</option>
+            @foreach (var warehouse in warehouses)
+            {
+                <option value="@warehouse.WarehouseId" selected="@(warehouseId == warehouse.WarehouseId)">@warehouse.WarehouseCode</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-2">
+        <label class="form-label">Vật tư</label>
+        <select name="itemId" class="form-control">
+            <option value="">Tất cả</option>
+            @foreach (var item in items)
+            {
+                <option value="@item.ItemId" selected="@(itemId == item.ItemId)">@item.ItemCode</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-2">
+        <label class="form-label">Vị trí</label>
+        <select name="locationId" class="form-control">
+            <option value="">Tất cả</option>
+            @foreach (var location in locations)
+            {
+                <option value="@location.LocationId" selected="@(locationId == location.LocationId)">@location.LocationCode</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-2">
+        <label class="form-label">Loại giao dịch</label>
+        <select name="transactionType" class="form-control">
+            <option value="">Tất cả</option>
+            @foreach (var type in transactionTypes)
+            {
+                <option value="@type" selected="@(selectedType == type)">@TransactionTypeLabel(type)</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-2">
+        <label class="form-label">Loại tham chiếu</label>
+        <input name="referenceType" value="@referenceType" class="form-control" />
+    </div>
+    <div class="col-md-2">
+        <label class="form-label">Mã tham chiếu</label>
+        <input name="referenceCode" value="@referenceCode" class="form-control" />
+    </div>
+    <div class="col-md-2">
+        <label class="form-label">Mã kiện</label>
+        <input name="licensePlateId" value="@licensePlateId" class="form-control" />
+    </div>
+    <div class="col-md-2">
+        <label class="form-label">Số sê-ri</label>
+        <input name="serialNumberId" value="@serialNumberId" class="form-control" />
+    </div>
+    <div class="col-md-2">
+        <label class="form-label">&nbsp;</label>
+        <button type="submit" class="btn btn-primary w-100">Lọc</button>
+    </div>
+</form>
+
+<div class="table-responsive">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Thời điểm</th>
+                <th>Loại giao dịch</th>
+                <th>Kho</th>
+                <th>Vật tư</th>
+                <th>Vị trí</th>
+                <th>Lô</th>
+                <th class="text-end">Biến động số lượng</th>
+                <th class="text-end">Biến động giữ chỗ</th>
+                <th class="text-end">Biến động khả dụng</th>
+                <th>Tham chiếu</th>
+                <th>Mã kiện</th>
+                <th>Số sê-ri</th>
+                <th>Người thao tác</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var transaction in data)
+            {
+                <tr>
+                    <td>@transaction.TransactionAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                    <td>@TransactionTypeLabel(transaction.TransactionType)</td>
+                    <td>@(transaction.Warehouse?.WarehouseCode ?? transaction.WarehouseId.ToString())</td>
+                    <td>@(transaction.Item?.ItemCode ?? transaction.ItemId.ToString())</td>
+                    <td>@(transaction.Location?.LocationCode ?? transaction.LocationId.ToString())</td>
+                    <td>@(transaction.LotNumber ?? "-") / @(transaction.ExpiryDate?.ToString("yyyy-MM-dd") ?? "-")</td>
+                    <td class="text-end">@transaction.QuantityDelta.ToString("N4")</td>
+                    <td class="text-end">@transaction.ReservedDelta.ToString("N4")</td>
+                    <td class="text-end">@transaction.AvailableDelta.ToString("N4")</td>
+                    <td>@(transaction.ReferenceCode ?? transaction.ReferenceId ?? transaction.ReferenceType ?? "-")</td>
+                    <td>@(transaction.LicensePlate?.LpnCode ?? transaction.LicensePlateId?.ToString() ?? "-")</td>
+                    <td>@(transaction.SerialNumber?.SerialCode ?? transaction.SerialNumberId?.ToString() ?? "-")</td>
+                    <td>@transaction.Actor</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

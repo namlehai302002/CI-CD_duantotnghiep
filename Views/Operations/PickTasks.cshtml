@@ -1,0 +1,185 @@
+@model List<WMS.ViewModels.PickTaskBoardRow>
+@{
+    ViewData["Title"] = "Nhiệm vụ lấy hàng";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Nhiệm vụ lấy hàng</h1>
+        <p class="page-subtitle">Theo dõi từng việc cần lấy, vị trí nguồn, vị trí đích và trạng thái xử lý của nhân viên.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Operations" asp-action="ExceptionCenter" class="btn btn-secondary"><i class="fas fa-triangle-exclamation"></i> Xem bất thường</a>
+        <a asp-controller="Operations" asp-action="RfPicking" class="btn btn-secondary"><i class="fas fa-mobile-alt"></i> Màn hình quét lấy hàng</a>
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-hand-point-right"></i> Cách dùng nhanh</div>
+    <div class="step-list">
+        <span class="step-chip"><i class="fas fa-filter"></i> 1. Lọc theo đợt lấy hàng và trạng thái</span>
+        <span class="step-chip"><i class="fas fa-layer-group"></i> 2. Kiểm tra loại nhiệm vụ: lấy hàng, lấy tổng hoặc phân loại</span>
+        <span class="step-chip"><i class="fas fa-barcode"></i> 3. Dùng màn hình quét để xác nhận đúng vị trí và mã hàng</span>
+    </div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Đợt lấy hàng</label>
+        <select class="form-control" name="waveId">
+            <option value="">-- Tất cả --</option>
+            @foreach (var w in (List<WMS.Models.Wave>)ViewBag.Waves)
+            {
+                <option value="@w.WaveId" selected="@(ViewBag.WaveId != null && (long)ViewBag.WaveId == w.WaveId)">@w.WaveCode</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Trạng thái</label>
+        <select class="form-control" name="status">
+            <option value="">-- Tất cả --</option>
+            <option value="1" selected="@(ViewBag.Status != null && (byte)ViewBag.Status == 1)">Mới tạo</option>
+            <option value="2" selected="@(ViewBag.Status != null && (byte)ViewBag.Status == 2)">Đã gán</option>
+            <option value="3" selected="@(ViewBag.Status != null && (byte)ViewBag.Status == 3)">Đang lấy</option>
+            <option value="4" selected="@(ViewBag.Status != null && (byte)ViewBag.Status == 4)">Hoàn tất</option>
+            <option value="7" selected="@(ViewBag.Status != null && (byte)ViewBag.Status == 7)">Chờ lấy tổng</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-search"></i> Tìm dữ liệu</button>
+    </div>
+</form>
+
+<div class="table-container">
+    <div class="enterprise-table-tools justify-content-end">
+        <button class="btn-export" data-wms-export-table="table" data-wms-export-filename="nhiem_vu_lay_hang"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th class="sortable">Mã nhiệm vụ</th>
+                <th class="sortable">Đợt</th>
+                <th class="sortable">Phiếu</th>
+                <th class="sortable">Mã hàng</th>
+                <th>Loại nhiệm vụ</th>
+                <th>Vị trí</th>
+                <th class="sortable">Yêu cầu / Đã xử lý</th>
+                <th>Trạng thái</th>
+                <th>Người làm</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!Model.Any())
+            {
+                <tr>
+                    <td colspan="10" class="cell-empty">
+                        <div class="empty-state">
+                            <div class="empty-icon"><i class="fas fa-clipboard-list"></i></div>
+                            <div class="empty-text">Chưa có nhiệm vụ nào</div>
+                            <div class="empty-sub">Tạo đợt lấy hàng để sinh nhiệm vụ tự động.</div>
+                        </div>
+                    </td>
+                </tr>
+            }
+            else
+            {
+                foreach (var t in Model)
+                {
+                    var modeText = t.PickTaskMode switch
+                    {
+                        WMS.Models.PickTaskModeEnum.Bulk => "Lấy tổng",
+                        WMS.Models.PickTaskModeEnum.Sort => "Phân loại",
+                        _ => "Lấy hàng"
+                    };
+                    var modeBadge = t.PickTaskMode switch
+                    {
+                        WMS.Models.PickTaskModeEnum.Bulk => "badge-warning",
+                        WMS.Models.PickTaskModeEnum.Sort => "badge-info",
+                        _ => "badge-secondary"
+                    };
+                    var locationText = t.PickTaskMode switch
+                    {
+                        WMS.Models.PickTaskModeEnum.Bulk => $"{t.LocationCode} -> {t.TargetLocationCode}",
+                        WMS.Models.PickTaskModeEnum.Sort => $"{t.LocationCode} -> {t.TargetLocationCode}",
+                        _ => $"{t.LocationCode} {(!string.IsNullOrEmpty(t.ZoneCode) ? $"[{t.ZoneCode}]" : "")}"
+                    };
+                    var (statusText, statusBadge) = t.Status switch
+                    {
+                        WMS.Models.PickTaskStatusEnum.Pending => ("Mới tạo", "badge-secondary"),
+                        WMS.Models.PickTaskStatusEnum.Assigned => ("Đã gán", "badge-info"),
+                        WMS.Models.PickTaskStatusEnum.InProgress => ("Đang lấy", "badge-warning"),
+                        WMS.Models.PickTaskStatusEnum.Completed => ("Hoàn tất", "badge-success"),
+                        WMS.Models.PickTaskStatusEnum.Short => ("Thiếu hàng", "badge-danger"),
+                        WMS.Models.PickTaskStatusEnum.Cancelled => ("Đã hủy", "badge-secondary"),
+                        WMS.Models.PickTaskStatusEnum.WaitingForBulk => ("Chờ lấy tổng", "badge-secondary"),
+                        _ => ("Không xác định", "badge-secondary")
+                    };
+                    <tr>
+                        <td class="td-code">
+                            @t.TaskCode
+                            @if (t.IsBatchPick)
+                            {
+                                <span class="badge badge-info" title="Gom nhiều phiếu cùng mã hàng">Gom đơn</span>
+                            }
+                        </td>
+                        <td class="font-mono fs-sm">@t.WaveCode</td>
+                        <td class="font-mono fs-sm">@t.VoucherCode</td>
+                        <td class="td-code">@t.ItemCode</td>
+                        <td><span class="badge @modeBadge">@modeText</span></td>
+                        <td class="font-mono fs-sm">@locationText</td>
+                        <td class="td-number">@t.TargetQty.ToString("N2") / @t.PickedQty.ToString("N2")</td>
+                        <td><span class="badge @statusBadge">@statusText</span></td>
+                        <td>@(t.AssignedTo ?? User.Identity?.Name ?? "-")</td>
+                        <td>
+                            @if ((User.IsInRole("Admin") || User.IsInRole("Manager"))
+                                && t.Status is not (WMS.Models.PickTaskStatusEnum.Completed or WMS.Models.PickTaskStatusEnum.Cancelled)
+                                && !string.IsNullOrEmpty(t.AssignedTo))
+                            {
+                                <form method="post" asp-controller="Operations" asp-action="ReassignTask" class="enterprise-inline-controls mt-2" data-enterprise-confirm="Chuyển nhiệm vụ sang nhân viên mới?">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@t.PickTaskId" />
+                                    <select class="form-control min-w-140" name="newAssignedTo" required>
+                                        <option value="">-- Chọn nhân viên mới --</option>
+                                        @if (ViewBag.EligibleUsers != null)
+                                        {
+                                            foreach (var u in (List<WMS.Models.AppUser>)ViewBag.EligibleUsers)
+                                            {
+                                                if (u.UserName != t.AssignedTo)
+                                                {
+                                                    <option value="@u.UserName">@u.FullName (@u.UserName)</option>
+                                                }
+                                            }
+                                        }
+                                    </select>
+                                    <button class="btn btn-warning" type="submit" title="Chuyển nhiệm vụ sang nhân viên khác"><i class="fas fa-exchange-alt"></i> Chuyển giao</button>
+                                </form>
+                            }
+                            @if (t.Status is WMS.Models.PickTaskStatusEnum.Pending or WMS.Models.PickTaskStatusEnum.Assigned or WMS.Models.PickTaskStatusEnum.InProgress)
+                            {
+                                if (t.PickTaskMode == WMS.Models.PickTaskModeEnum.Single)
+                                {
+                                    <form method="post" asp-controller="Vouchers" asp-action="ConfirmPickTask" class="enterprise-inline-controls mt-2">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@t.PickTaskId" />
+                                        <button class="btn btn-warning" type="submit" name="reportShort" value="true">Báo thiếu</button>
+                                        <input class="form-control min-w-120" name="scanValue" value="@t.PreferredScanValue" placeholder="Mã hàng hoặc số lô" />
+                                        <input class="form-control w-100px" type="number" step="0.0001" min="0.0001" max="@((t.TargetQty - t.PickedQty).ToString("0.####", System.Globalization.CultureInfo.InvariantCulture))" name="qty" placeholder="Số lượng" />
+                                        <button class="btn btn-primary" type="submit">Xác nhận lấy</button>
+                                    </form>
+                                }
+                                else
+                                {
+                                    <a class="btn btn-primary mt-2" asp-controller="Operations" asp-action="RfPicking">
+                                        <i class="fas fa-mobile-alt"></i> Mở màn hình quét
+                                    </a>
+                                }
+                            }
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>

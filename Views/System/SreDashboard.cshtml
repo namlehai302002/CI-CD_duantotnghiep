@@ -1,0 +1,108 @@
+@model WMS.ViewModels.SreDashboardViewModel
+@using WMS.Models
+@using WMS.ViewModels
+@{
+    ViewData["Title"] = "Giám sát vận hành hệ thống";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Giám sát vận hành hệ thống</h1>
+        <p class="page-subtitle">Theo dõi mã truy vết, độ trễ, tỷ lệ lỗi, độ sâu hàng đợi, hàng lỗi và lỗi tích hợp.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-secondary" asp-action="ExportSreSnapshot" asp-route-periodMinutes="@Model.PeriodMinutes"><i class="fas fa-download"></i> Tải bản ghi giám sát</a>
+    </div>
+</div>
+
+<form method="get" class="filter-panel">
+    <div>
+        <label>Khoảng thời gian phút</label>
+        <input class="form-control" type="number" min="1" max="1440" name="periodMinutes" value="@Model.PeriodMinutes" />
+    </div>
+    <button class="btn btn-primary" type="submit"><i class="fas fa-rotate"></i> Làm mới</button>
+</form>
+
+<div class="metric-grid">
+    <div class="metric-card"><div class="metric-value">@Model.Snapshot.RequestCount</div><div class="metric-label">Yêu cầu</div></div>
+    <div class="metric-card @(Model.Snapshot.ErrorRatePercent > 1 ? "danger" : "success")"><div class="metric-value">@Model.Snapshot.ErrorRatePercent.ToString("N2")%</div><div class="metric-label">Tỷ lệ lỗi</div></div>
+    <div class="metric-card"><div class="metric-value">@Model.Snapshot.P95LatencyMs.ToString("N0")</div><div class="metric-label">Độ trễ p95 (ms)</div></div>
+    <div class="metric-card warning"><div class="metric-value">@Model.Snapshot.QueueDepth</div><div class="metric-label">Độ sâu hàng đợi</div></div>
+    <div class="metric-card danger"><div class="metric-value">@Model.Snapshot.DeadLetterCount</div><div class="metric-label">Hàng lỗi</div></div>
+    <div class="metric-card"><div class="metric-value">@Model.Snapshot.WebhookFailureCount</div><div class="metric-label">Điểm nhận lỗi</div></div>
+</div>
+
+<section class="enterprise-section">
+    <div class="enterprise-section-header">
+        <div>
+            <div class="enterprise-section-title">Yêu cầu gần nhất</div>
+            <div class="enterprise-section-subtitle">Dùng mã truy vết để lần theo giao diện -> bộ xử lý -> dịch vụ -> dữ liệu/sự kiện.</div>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead><tr><th>Thời gian</th><th>Mã truy vết</th><th>Phương thức</th><th>Đường dẫn</th><th>Trạng thái</th><th>Thời lượng</th><th>Người dùng</th></tr></thead>
+            <tbody>
+                @if (!Model.RecentRequests.Any())
+                {
+                    <tr><td colspan="7" class="empty-state">Chưa có dữ liệu giám sát yêu cầu.</td></tr>
+                }
+                @foreach (var row in Model.RecentRequests)
+                {
+                    <tr>
+                        <td>@row.CreatedAt.ToString("dd/MM HH:mm:ss")</td>
+                        <td class="td-code">@row.CorrelationId</td>
+                        <td>@row.Method</td>
+                        <td>@row.Path</td>
+                        <td><span class="status-badge">@row.StatusCode</span></td>
+                        <td class="td-number">@row.DurationMs ms</td>
+                        <td>@row.UserName</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="enterprise-section">
+    <div class="enterprise-section-header">
+        <div>
+            <div class="enterprise-section-title">Hàng đợi và tích hợp</div>
+            <div class="enterprise-section-subtitle">Theo dõi hàng đợi gửi đi, điểm nhận tự động và các dòng cần thử lại hoặc đã vào hàng lỗi.</div>
+        </div>
+    </div>
+    <div class="yardops-two-column">
+        <div>
+            <h3>Hàng đợi gửi đi</h3>
+            <table class="data-table">
+                <thead><tr><th>Sự kiện</th><th>Hệ thống nhận</th><th>Trạng thái</th><th>Số lần thử lại</th></tr></thead>
+                <tbody>
+                    @foreach (var row in Model.OutboxRows.Take(20))
+                    {
+                        <tr><td>@EnterpriseUiLabels.IntegrationEvent(row.EventType)</td><td>@EnterpriseUiLabels.TargetSystem(row.TargetSystem)</td><td><span class="status-badge">@EnterpriseUiLabels.OutboxStatus(row.Status)</span></td><td>@row.RetryCount</td></tr>
+                    }
+                    @if (!Model.OutboxRows.Any())
+                    {
+                        <tr><td colspan="4" class="empty-state">Hàng đợi gửi đi không có dòng lỗi hoặc chờ xử lý.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div>
+            <h3>Điểm nhận tự động lỗi</h3>
+            <table class="data-table">
+                <thead><tr><th>Kênh đăng ký</th><th>Sự kiện</th><th>Trạng thái</th><th>Số lần thử lại</th></tr></thead>
+                <tbody>
+                    @foreach (var row in Model.WebhookFailures.Take(20))
+                    {
+                        <tr><td>@row.Subscription.SubscriptionCode</td><td>@EnterpriseUiLabels.IntegrationEvent(row.EventType)</td><td><span class="status-badge">@EnterpriseUiLabels.DeliveryStatus(row.Status)</span></td><td>@row.RetryCount</td></tr>
+                    }
+                    @if (!Model.WebhookFailures.Any())
+                    {
+                        <tr><td colspan="4" class="empty-state">Không có điểm nhận tự động bị lỗi.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>

@@ -1,0 +1,145 @@
+@model List<WMS.ViewModels.InboundReceivingRow>
+@{
+    ViewData["Title"] = "Tiếp nhận hàng";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Tiếp nhận hàng</h1>
+        <p class="page-subtitle">Theo dõi xe đến, khung giờ nhận hàng và mức độ sẵn sàng của số sê-ri để đội nhận hàng xử lý đúng thứ tự.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Operations" asp-action="ExceptionCenter" class="btn btn-secondary"><i class="fas fa-triangle-exclamation"></i> Xem bất thường</a>
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-truck-loading"></i> Cách dùng nhanh</div>
+    <div class="step-list">
+        <span class="step-chip"><i class="fas fa-filter"></i> 1) Lọc theo kho và trạng thái xử lý</span>
+        <span class="step-chip"><i class="fas fa-clock"></i> 2) Ưu tiên xe sắp tới hoặc đang trễ lịch</span>
+        <span class="step-chip"><i class="fas fa-fingerprint"></i> 3) Nếu mặt hàng có số sê-ri, ghi nhận số sê-ri trước khi hoàn tất</span>
+    </div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select class="form-control" name="warehouseId">
+            <option value="">Tất cả</option>
+            @foreach (var w in (List<WMS.Models.Warehouse>)ViewBag.Warehouses)
+            {
+                <option value="@w.WarehouseId" selected="@(ViewBag.WarehouseId != null && (int)ViewBag.WarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Trạng thái</label>
+        <select class="form-control" name="status">
+            <option value="">Tất cả</option>
+            <option value="1" selected="@(ViewBag.Status != null && (byte)ViewBag.Status == 1)">Nháp</option>
+            <option value="2" selected="@(ViewBag.Status != null && (byte)ViewBag.Status == 2)">Chờ duyệt</option>
+            <option value="3" selected="@(ViewBag.Status != null && (byte)ViewBag.Status == 3)">Đã duyệt</option>
+            <option value="4" selected="@(ViewBag.Status != null && (byte)ViewBag.Status == 4)">Đang nhận hàng</option>
+            <option value="5" selected="@(ViewBag.Status != null && (byte)ViewBag.Status == 5)">Hoàn tất</option>
+            <option value="6" selected="@(ViewBag.Status != null && (byte)ViewBag.Status == 6)">Từ chối</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Tìm nhanh</label>
+        <input type="text" class="form-control" name="search" value="@ViewBag.Search" placeholder="Mã phiếu, mã lịch nhận hàng, cửa nhận hàng, biển số xe..." />
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-search"></i> Lọc dữ liệu</button>
+    </div>
+</form>
+
+<div class="table-container">
+    <div class="receiving-table-toolbar">
+        <button class="btn-export" data-wms-export-table="table" data-wms-export-filename="tiep_nhan_hang"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th class="sortable">Phiếu / mã lịch nhận hàng</th>
+                <th>Kho</th>
+                <th class="sortable">Đối tác</th>
+                <th class="sortable">Giờ đến dự kiến</th>
+                <th>Cửa / khung giờ nhận hàng</th>
+                <th>Xe / đơn vị vận chuyển</th>
+                <th>Trạng thái</th>
+                <th>Số sê-ri</th>
+                <th class="sortable cell-right">Dòng hàng</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @if (!Model.Any())
+        {
+            <tr><td colspan="10" class="cell-flush"><div class="empty-state"><div class="empty-icon"><i class="fas fa-truck-loading"></i></div><div class="empty-text">Chưa có phiếu nhập nào</div><div class="empty-sub">Tạo phiếu nhập mới hoặc thay đổi bộ lọc để xem dữ liệu phù hợp</div></div></td></tr>
+        }
+        else
+        {
+            foreach (var row in Model)
+            {
+                var (statusLabel, statusBadge) = row.InboundStatus switch
+                {
+                    WMS.Models.InboundStatusEnum.Draft => ("Nháp", "badge-secondary"),
+                    WMS.Models.InboundStatusEnum.PendingApproval => ("Chờ duyệt", "badge-info"),
+                    WMS.Models.InboundStatusEnum.Approved => ("Đã duyệt", "badge-accent"),
+                    WMS.Models.InboundStatusEnum.Receiving => ("Đang nhận hàng", "badge-warning"),
+                    WMS.Models.InboundStatusEnum.Completed => ("Hoàn tất", "badge-success"),
+                    WMS.Models.InboundStatusEnum.Rejected => ("Từ chối", "badge-danger"),
+                    _ => ("Không xác định", "badge-secondary")
+                };
+
+                <tr>
+                    <td>
+                        <div class="td-code fs-body-sm">@row.VoucherCode</div>
+                        <div class="text-muted fs-xs mt-1">Mã lịch nhận hàng: <span class="font-mono">@(row.AsnCode ?? "Chưa cập nhật")</span></div>
+                    </td>
+                    <td>@row.WarehouseName</td>
+                    <td>@(row.PartnerName ?? "Chưa cập nhật")</td>
+                    <td>@(row.ExpectedArrivalAt?.ToString("dd/MM/yyyy HH:mm") ?? "Chưa cập nhật")</td>
+                    <td>
+                        <div>@(row.DockDoor ?? "Chưa gán cửa nhận hàng")</div>
+                        <div class="text-muted fs-xs">
+                            @(row.DockAppointmentStart.HasValue && row.DockAppointmentEnd.HasValue
+                                ? $"{row.DockAppointmentStart:HH:mm} - {row.DockAppointmentEnd:HH:mm}"
+                                : "Chưa có khung giờ nhận hàng")
+                        </div>
+                    </td>
+                    <td>
+                        <div>@(row.VehicleNumber ?? "Chưa cập nhật")</div>
+                        <div class="text-muted fs-xs">@(row.CarrierName ?? "Chưa cập nhật")</div>
+                    </td>
+                    <td><span class="badge @statusBadge">@statusLabel</span></td>
+                    <td>
+                        @if (!row.HasSerialTrackedLines)
+                        {
+                            <span class="text-muted">Không áp dụng</span>
+                        }
+                        else if (row.PendingSerialCount <= 0)
+                        {
+                            <span class="badge badge-success">Đủ @row.RequiredSerialCount/@row.RequiredSerialCount</span>
+                        }
+                        else
+                        {
+                            <span class="badge badge-warning">Thiếu @row.PendingSerialCount/@row.RequiredSerialCount</span>
+                        }
+                    </td>
+                    <td class="td-number">@row.TotalLines</td>
+                    <td class="td-actions">
+                        @if (row.HasSerialTrackedLines)
+                        {
+                            <a asp-controller="Operations" asp-action="SerialReceiving" asp-route-id="@row.VoucherId" class="btn btn-sm btn-info"><i class="fas fa-fingerprint"></i> Ghi nhận số sê-ri</a>
+                        }
+                        <a asp-controller="Vouchers" asp-action="Details" asp-route-id="@row.VoucherId" class="btn btn-sm btn-primary"><i class="fas fa-eye"></i> Mở phiếu</a>
+                    </td>
+                </tr>
+            }
+        }
+        </tbody>
+    </table>
+</div>

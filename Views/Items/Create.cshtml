@@ -1,0 +1,323 @@
+﻿@model ItemFormViewModel
+@{ ViewData["Title"] = Model.Item.ItemId == 0 ? "Thêm vật tư" : "Sửa vật tư"; }
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">@ViewData["Title"]</h1>
+        <p class="page-subtitle">@(Model.Item.ItemId == 0 ? "Thêm vật tư / hàng hóa mới vào hệ thống" : $"Chỉnh sửa: {Model.Item.ItemCode}")</p>
+    </div>
+        <a asp-controller="Items" asp-action="Index" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Quay lại</a>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="user-guide mb-3">
+            <div class="user-guide-title"><i class="fas fa-circle-info"></i> Lưu ý nghiệp vụ</div>
+            <div class="step-list">
+                <span class="step-chip"><i class="fas fa-layer-group"></i> Số lô/Hạn dùng được nhập ở Phiếu nhập kho</span>
+                <span class="step-chip"><i class="fas fa-fingerprint"></i> Số sê-ri được quét ở màn nhận số sê-ri nhập kho</span>
+                <span class="step-chip"><i class="fas fa-box-open"></i> Màn hình này là nơi khai báo dữ liệu gốc của vật tư</span>
+            </div>
+        </div>
+        <form method="post" enctype="multipart/form-data">
+            @Html.AntiForgeryToken()
+            <div class="form-section-title">1) Thông tin nhận diện vật tư</div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Mã vật tư *</label>
+                    <input type="text" name="Item.ItemCode" id="ItemCodeInput" class="form-control" value="@(Model.Item.ItemCode)" required placeholder="Nhập mã vật tư" maxlength="50" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tên vật tư *</label>
+                    <input type="text" name="Item.ItemName" class="form-control" value="@Model.Item.ItemName" required placeholder="VD: Thép cuộn" />
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Mã vạch</label>
+                    <input type="text" name="Item.Barcode" class="form-control" value="@Model.Item.Barcode" placeholder="Để trống sẽ tự lấy theo mã vật tư" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Mã nội bộ</label>
+                    <input type="text" name="Item.SkuCode" class="form-control" value="@Model.Item.SkuCode" placeholder="VD: BL-M20-500" />
+                </div>
+            </div>
+
+            <div class="form-section-title">2) Phân loại và đơn vị</div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Danh mục</label>
+                    <select name="Item.CategoryId" class="form-control select2-init">
+                        <option value="">-- Chọn --</option>
+                        @foreach (var c in Model.Categories)
+                        { <option value="@c.CategoryId" selected="@(Model.Item.CategoryId == c.CategoryId)">@c.CategoryName</option> }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Loại *</label>
+                    <select name="Item.ItemType" class="form-control" required>
+                        <option value="1" selected="@(Model.Item.ItemType == WMS.Models.ItemTypeEnum.NguyenVatLieu)">Nguyên vật liệu</option>
+                        <option value="2" selected="@(Model.Item.ItemType == WMS.Models.ItemTypeEnum.ThanhPham)">Thành phẩm</option>
+                        <option value="3" selected="@(Model.Item.ItemType == WMS.Models.ItemTypeEnum.BanThanhPham)">Bán thành phẩm</option>
+                        <option value="4" selected="@(Model.Item.ItemType == WMS.Models.ItemTypeEnum.PhuTung)">Phụ tùng / Linh kiện</option>
+                        <option value="5" selected="@(Model.Item.ItemType == WMS.Models.ItemTypeEnum.BaoBi)">Bao bì</option>
+                        <option value="6" selected="@(Model.Item.ItemType == WMS.Models.ItemTypeEnum.HoaChat)">Hóa chất</option>
+                        <option value="7" selected="@(Model.Item.ItemType == WMS.Models.ItemTypeEnum.HangMau)">Hàng mẫu / Kiểm tra</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Đơn vị tính cơ bản *</label>
+                    <select name="Item.BaseUomId" class="form-control select2-init" required>
+                        @foreach (var u in Model.Uoms)
+                        { <option value="@u.UomId" selected="@(Model.Item.BaseUomId == u.UomId)">@u.UomCode - @u.UomName</option> }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Khối lượng (kg)</label>
+                    <input type="number" step="0.0001" name="Item.Weight" class="form-control" value="@(Model.Item.Weight?.ToString("0.####") ?? "")" placeholder="VD: 0.005" />
+                </div>
+            </div>
+
+            <div class="form-section-title">3) Cấu hình tồn kho</div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Vị trí mặc định</label>
+                    <select name="Item.DefaultLocationId" class="form-control select2-init">
+                        <option value="">-- Chưa chọn --</option>
+                        @foreach (var loc in Model.Locations)
+                        { <option value="@loc.LocationId" selected="@(Model.Item.DefaultLocationId == loc.LocationId)">@loc.LocationCode</option> }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tồn tối thiểu</label>
+                    <input type="number" step="1" name="Item.MinThreshold" class="form-control" value="@(Model.Item.MinThreshold > 0 ? Model.Item.MinThreshold.ToString("0.####") : "")" placeholder="VD: 50" min="0" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tồn tối đa</label>
+                    <input type="number" step="1" name="Item.MaxThreshold" class="form-control" value="@(Model.Item.MaxThreshold?.ToString("0.####") ?? "")" placeholder="VD: 500" min="0" />
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Điểm đặt hàng lại</label>
+                    <input type="number" step="1" name="Item.ReorderPoint" class="form-control" value="@(Model.Item.ReorderPoint?.ToString("0.####") ?? "")" placeholder="VD: 120" min="0" />
+                </div>
+                <div class="form-group form-check-grid">
+                    <label class="form-check-option">
+                        <input type="checkbox" name="Item.TrackExpiry" value="true" @(Model.Item.TrackExpiry ? "checked" : "") />
+                        <i class="fas fa-calendar-times text-warning"></i> Quản lý HSD
+                    </label>
+                    <label class="form-check-option">
+                        <input type="checkbox" name="Item.TrackLot" value="true" @(Model.Item.TrackLot ? "checked" : "") />
+                        <i class="fas fa-barcode text-info"></i> Quản lý theo lô
+                    </label>
+                    <label class="form-check-option">
+                        <input type="checkbox" name="Item.TrackSerial" value="true" @(Model.Item.TrackSerial ? "checked" : "") />
+                        <i class="fas fa-microchip text-accent"></i> Quản lý theo số sê-ri
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-section-title">3b) cân trọng lượng thực tế</div>
+            <div class="form-row">
+                <div class="form-group form-check-grid">
+                    <label class="form-check-option">
+                        <input type="checkbox" name="Item.TrackCatchWeight" value="true" @(Model.Item.TrackCatchWeight ? "checked" : "") />
+                        <i class="fas fa-scale-balanced text-accent"></i> Bật cân trọng lượng thực tế
+                    </label>
+                    <label class="form-check-option">
+                        <input type="checkbox" name="Item.RequireCatchWeightAtReceive" value="true" @(Model.Item.RequireCatchWeightAtReceive ? "checked" : "") />
+                        Cân khi nhập
+                    </label>
+                    <label class="form-check-option">
+                        <input type="checkbox" name="Item.RequireCatchWeightAtPickPack" value="true" @(Model.Item.RequireCatchWeightAtPickPack ? "checked" : "") />
+                        Cân khi lấy hàng, đóng gói
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Đơn vị cân</label>
+                    <select name="Item.CatchWeightUomId" class="form-control select2-init">
+                        <option value="">-- Chưa chọn --</option>
+                        @foreach (var u in Model.Uoms)
+                        { <option value="@u.UomId" selected="@(Model.Item.CatchWeightUomId == u.UomId)">@u.UomCode - @u.UomName</option> }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Cân danh nghĩa theo đơn vị gốc</label>
+                    <input type="number" step="0.0001" name="Item.NominalWeightPerBaseUnit" class="form-control" value="@(Model.Item.NominalWeightPerBaseUnit?.ToString("0.####") ?? "")" placeholder="VD: 10.5" min="0" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Dung sai (%)</label>
+                    <input type="number" step="0.0001" name="Item.CatchWeightTolerancePercent" class="form-control" value="@(Model.Item.CatchWeightTolerancePercent?.ToString("0.####") ?? "")" placeholder="VD: 2" min="0" />
+                </div>
+            </div>
+
+            <div class="form-section-title">3c) Kích thước đơn vị (cm)</div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Dài (cm)</label>
+                    <input type="number" step="0.01" name="Item.Length" class="form-control" value="@(Model.Item.Length?.ToString("0.##") ?? "")" placeholder="VD: 30" min="0" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Rộng (cm)</label>
+                    <input type="number" step="0.01" name="Item.Width" class="form-control" value="@(Model.Item.Width?.ToString("0.##") ?? "")" placeholder="VD: 20" min="0" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Cao (cm)</label>
+                    <input type="number" step="0.01" name="Item.Height" class="form-control" value="@(Model.Item.Height?.ToString("0.##") ?? "")" placeholder="VD: 15" min="0" />
+                </div>
+            </div>
+
+            <div class="form-section-title">4) Hình ảnh và mô tả</div>
+            <div class="enterprise-media-grid">
+                <!-- Upload zone -->
+                <div class="enterprise-upload-column">
+                    <div id="ImageDropZone" class="enterprise-upload-dropzone" data-wms-click-target="#ImageFileInput">
+                        @if (!string.IsNullOrEmpty(Model.Item.ImageUrl))
+                        {
+                            <img id="ImagePreview" src="@Model.Item.ImageUrl" alt="Preview" class="enterprise-upload-preview-img" />
+                        }
+                        else
+                        {
+                            <div id="ImagePreview" class="enterprise-upload-preview">
+                                <div>
+                                    <i class="fas fa-cloud-upload-alt"></i>
+                                    <span class="enterprise-upload-title">Kéo thả ảnh vào đây</span>
+                                    <span class="enterprise-upload-subtitle">hoặc bấm để chọn</span>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    <input type="file" id="ImageFileInput" name="ImageFile" accept="image/*" data-wms-change-call="previewImage" data-wms-change-self="true" class="d-none" />
+                    <input type="hidden" name="Item.ImageUrl" id="ImageUrlHidden" value="@Model.Item.ImageUrl" />
+                    <div class="enterprise-upload-hint">
+                        <small>JPG, PNG · Tối đa 5MB</small>
+                    </div>
+                </div>
+                <!-- Description fields -->
+                <div class="enterprise-textarea-stack">
+                    <div class="form-group">
+                        <label class="form-label"><i class="fas fa-align-left text-accent"></i> Mô tả</label>
+                        <textarea name="Item.Description" class="form-control" rows="3" placeholder="Mô tả ngắn gọn về vật tư...">@Model.Item.Description</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label"><i class="fas fa-cogs text-info"></i> Thông số kỹ thuật</label>
+                        <textarea name="Item.Specifications" class="form-control" rows="3" placeholder="VD: Kích thước, chất liệu, tiêu chuẩn...">@Model.Item.Specifications</textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="enterprise-action-row">
+                <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Lưu</button>
+                <a asp-controller="Items" asp-action="Index" class="btn btn-secondary">Hủy</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script>
+        function previewImage(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            // Validate file type
+            const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+            if (!validTypes.includes(file.type)) {
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire('File không hợp lệ', 'Vui lòng chọn ảnh JPG, PNG, GIF hoặc WebP.', 'warning');
+                } else {
+                    enterpriseNotify({ title: 'File không hợp lệ', text: 'Vui lòng chọn ảnh JPG, PNG, GIF hoặc WebP.', icon: 'warning' });
+                }
+                input.value = '';
+                return;
+            }
+
+            // Validate file size (5MB max)
+            if (file.size > 5 * 1024 * 1024) {
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire('File quá lớn', 'Kích thước ảnh không được vượt quá 5MB.', 'warning');
+                } else {
+                    enterpriseNotify({ title: 'File quá lớn', text: 'Kích thước ảnh không được vượt quá 5MB.', icon: 'warning' });
+                }
+                input.value = '';
+                return;
+            }
+
+            // Hiển thị ảnh xem trước trong vùng chọn ảnh.
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const zone = document.getElementById('ImageDropZone');
+                zone.innerHTML = `<img id="ImagePreview" src="${e.target.result}" alt="Preview" class="enterprise-upload-preview-img" />`;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        document.addEventListener("DOMContentLoaded", function() {
+            var typeSelect = document.querySelector('select[name="Item.ItemType"]');
+            var codeInput = document.querySelector('input[name="Item.ItemCode"]');
+            var dropZone = document.getElementById('ImageDropZone');
+            var fileInput = document.getElementById('ImageFileInput');
+            if (dropZone && fileInput) {
+                dropZone.addEventListener('dragover', function(event) {
+                    event.preventDefault();
+                    dropZone.classList.add('is-dragover');
+                });
+                dropZone.addEventListener('dragleave', function() {
+                    dropZone.classList.remove('is-dragover');
+                });
+                dropZone.addEventListener('drop', function(event) {
+                    event.preventDefault();
+                    dropZone.classList.remove('is-dragover');
+                    fileInput.files = event.dataTransfer.files;
+                    previewImage(fileInput);
+                });
+            }
+            
+            if(typeSelect && codeInput && @(Model.Item.ItemId == 0 ? "true" : "false")) {
+                typeSelect.addEventListener('change', async function() {
+                    var type = this.value;
+                    var busy = window.wmsLoading?.begin(codeInput, { text: 'Đang sinh mã vật tư...', delay: 700, disable: false });
+                    try {
+                        const data = await fetch('/Items/GenerateItemCode?itemType=' + type)
+                            .then(async r => {
+                                const raw = await r.text();
+                                const data = raw ? JSON.parse(raw) : null;
+                                if (!r.ok || !data) throw new Error('Không sinh được mã vật tư.');
+                                return data;
+                            });
+                        codeInput.value = data.code;
+                    } catch (err) {
+                        console.error(err);
+                        if (typeof Swal !== 'undefined') {
+                            Swal.fire('Không sinh được mã', err?.message || 'Vui lòng thử lại.', 'warning');
+                        }
+                    } finally {
+                        window.wmsLoading?.end(busy);
+                    }
+                });
+
+                if (!codeInput.value && typeSelect.value) {
+                    typeSelect.dispatchEvent(new Event('change'));
+                }
+            }
+
+            // Khởi tạo Select2 cho các danh sách dài.
+            $('.select2-init').select2({
+                width: '100%',
+                dropdownAutoWidth: true,
+                language: {
+                    noResults: function() { return "Không tìm thấy kết quả"; }
+                }
+            });
+            
+            // Tự đặt con trỏ vào ô tìm kiếm của Select2.
+            $(document).on('select2:open', () => {
+                document.querySelector('.select2-search__field')?.focus();
+            });
+        });
+    </script>
+}

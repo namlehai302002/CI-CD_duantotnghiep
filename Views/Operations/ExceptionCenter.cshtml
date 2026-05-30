@@ -1,0 +1,225 @@
+﻿@model List<WMS.ViewModels.OperationExceptionRow>
+@{
+    ViewData["Title"] = "Trung tâm bất thường";
+    var categories = ViewBag.Categories as List<(string CategoryKey, string CategoryLabel, int Count)> ?? new();
+    var eligibleUsers = ViewBag.EligibleUsers as List<WMS.Models.AppUser> ?? new();
+    var canManage = User.IsInRole("Admin") || User.IsInRole("Manager");
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Trung tâm bất thường</h1>
+        <p class="page-subtitle">Theo dõi các tình huống lệch nhịp vận hành, giao người xử lý và đóng bất thường ngay tại một màn hình chung.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Reports" asp-action="OpsKpi" class="btn btn-secondary"><i class="fas fa-gauge-high"></i> Xem chỉ số vận hành</a>
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-circle-exclamation"></i> Cách dùng nhanh</div>
+    <div class="step-list">
+        <span class="step-chip"><i class="fas fa-fire"></i> 1) Ưu tiên mức Khẩn cấp / Cao</span>
+        <span class="step-chip"><i class="fas fa-user-check"></i> 2) Ghi nhận hoặc giao người phụ trách</span>
+        <span class="step-chip"><i class="fas fa-check-double"></i> 3) Đóng bất thường sau khi đã xử lý xong</span>
+    </div>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-label">Tổng bất thường</div>
+        <div class="stat-value">@ViewBag.TotalExceptions</div>
+    </div>
+    <div class="stat-card @(ViewBag.CriticalCount > 0 ? "danger" : "success")">
+        <div class="stat-label">Khẩn cấp</div>
+        <div class="stat-value">@ViewBag.CriticalCount</div>
+    </div>
+    <div class="stat-card @(ViewBag.HighCount > 0 ? "warning" : "success")">
+        <div class="stat-label">Mức cao</div>
+        <div class="stat-value">@ViewBag.HighCount</div>
+    </div>
+    <div class="stat-card @(ViewBag.MediumCount > 0 ? "accent" : "success")">
+        <div class="stat-label">Trung bình</div>
+        <div class="stat-value">@ViewBag.MediumCount</div>
+    </div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select class="form-control" name="warehouseId">
+            <option value="">Tất cả</option>
+            @foreach (var w in (List<WMS.Models.Warehouse>)ViewBag.Warehouses)
+            {
+                <option value="@w.WarehouseId" selected="@(ViewBag.WarehouseId != null && (int)ViewBag.WarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Nhóm bất thường</label>
+        <select class="form-control" name="category">
+            <option value="">Tất cả</option>
+            @foreach (var category in categories)
+            {
+                <option value="@category.CategoryKey" selected="@(string.Equals((string?)ViewBag.Category, category.CategoryKey, StringComparison.OrdinalIgnoreCase))">@category.CategoryLabel (@category.Count)</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Mức độ</label>
+        <select class="form-control" name="severity">
+            <option value="">Tất cả</option>
+            <option value="critical" selected="@(string.Equals((string?)ViewBag.Severity, "critical", StringComparison.OrdinalIgnoreCase))">Khẩn cấp</option>
+            <option value="high" selected="@(string.Equals((string?)ViewBag.Severity, "high", StringComparison.OrdinalIgnoreCase))">Cao</option>
+            <option value="medium" selected="@(string.Equals((string?)ViewBag.Severity, "medium", StringComparison.OrdinalIgnoreCase))">Trung bình</option>
+        </select>
+    </div>
+    <div class="form-group min-w-280">
+        <label class="form-label">Tìm nhanh</label>
+        <input type="text" class="form-control" name="search" value="@ViewBag.Search" placeholder="Mã phiếu, nhiệm vụ, vật tư, vị trí..." />
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc dữ liệu</button>
+    </div>
+</form>
+
+<div class="table-container exception-center-table-container">
+    <table class="data-table exception-center-table">
+        <thead>
+            <tr>
+                <th>Mức độ</th>
+                <th>Trạng thái xử lý</th>
+                <th>Kho</th>
+                <th>Tham chiếu</th>
+                <th>Nội dung</th>
+                <th>Người phụ trách</th>
+                <th>Đến hạn / tuổi lỗi</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @if (!Model.Any())
+        {
+            <tr>
+                <td colspan="8" class="cell-empty cell-empty-md">
+                    Không có bất thường nào khớp điều kiện lọc. Đây là dấu hiệu tốt cho vận hành hiện tại.
+                </td>
+            </tr>
+        }
+        else
+        {
+            foreach (var row in Model)
+            {
+                var severityBadge = row.SeverityKey switch
+                {
+                    "critical" => "badge-danger",
+                    "high" => "badge-warning",
+                    "medium" => "badge-accent",
+                    _ => "badge-secondary"
+                };
+
+                var caseBadge = row.CaseStatusKey switch
+                {
+                    "resolved" => "badge-success",
+                    "acknowledged" => "badge-info",
+                    _ => "badge-secondary"
+                };
+
+                <tr>
+                    <td><span class="badge @severityBadge">@row.SeverityLabel</span></td>
+                    <td><span class="badge @caseBadge">@row.CaseStatusLabel</span></td>
+                    <td>@row.WarehouseName</td>
+                    <td>
+                        <div class="fw-700">@row.ReferenceCode</div>
+                        <div class="text-muted fs-sm">@row.CategoryLabel</div>
+                        @if (!string.IsNullOrWhiteSpace(row.SecondaryReference))
+                        {
+                            <div class="text-muted fs-sm">@row.SecondaryReference</div>
+                        }
+                    </td>
+                    <td>
+                        <div class="fw-700">@row.Summary</div>
+                        <div class="text-muted fs-body-sm mt-1">@row.Detail</div>
+                        @if (!string.IsNullOrWhiteSpace(row.ItemCode) || !string.IsNullOrWhiteSpace(row.LocationCode))
+                        {
+                            <div class="text-muted fs-sm mt-2">
+                                @if (!string.IsNullOrWhiteSpace(row.ItemCode))
+                                {
+                                    <span>Vật tư: <b>@row.ItemCode</b></span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(row.LocationCode))
+                                {
+                                    <span class="ms-2">Vị trí: <b>@row.LocationCode</b></span>
+                                }
+                            </div>
+                        }
+                    </td>
+                    <td class="min-w-220">
+                        <div class="fw-700">@(row.AssignedTo ?? "Chưa giao")</div>
+                        @if (row.AcknowledgedAt.HasValue)
+                        {
+                            <div class="text-muted fs-sm">Đã ghi nhận: @row.AcknowledgedAt.Value.ToString("dd/MM HH:mm")</div>
+                        }
+                        @if (row.ResolvedAt.HasValue)
+                        {
+                            <div class="text-success fs-sm">Đã đóng: @row.ResolvedAt.Value.ToString("dd/MM HH:mm")</div>
+                            @if (!string.IsNullOrWhiteSpace(row.ResolvedBy))
+                            {
+                                <div class="text-muted fs-sm">Người đóng: @row.ResolvedBy</div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(row.ResolutionNote))
+                            {
+                                <div class="text-muted fs-sm">Ghi chú: @row.ResolutionNote</div>
+                            }
+                        }
+                    </td>
+                    <td>
+                        <div>@(row.DueAt?.ToString("dd/MM/yyyy HH:mm") ?? "---")</div>
+                        <div class="text-muted fs-sm">
+                            @(row.AgeHours.HasValue ? $"{row.AgeHours.Value:N1} giờ" : "Mới phát hiện")
+                        </div>
+                    </td>
+                    <td class="td-actions min-w-260 exception-action-cell">
+                        <a href="@row.ActionUrl" class="btn btn-sm btn-primary mb-2">
+                            <i class="fas fa-arrow-up-right-from-square"></i> @row.ActionLabel
+                        </a>
+
+                        @if (row.CaseStatusKey != "resolved")
+                        {
+                            <form method="post" asp-controller="Operations" asp-action="AcknowledgeException" class="d-inline-flex mb-2">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="exceptionKey" value="@row.ExceptionKey" />
+                                <button class="btn btn-sm btn-secondary" type="submit"><i class="fas fa-eye"></i> Ghi nhận</button>
+                            </form>
+                        }
+
+                        @if (canManage)
+                        {
+                            <form method="post" asp-controller="Operations" asp-action="AssignException" class="enterprise-inline-controls mb-2" data-enterprise-confirm="Giao bất thường này cho nhân sự đã chọn?">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="exceptionKey" value="@row.ExceptionKey" />
+                                <select class="form-control min-w-130" name="assignedTo" required>
+                                    <option value="">-- Giao người --</option>
+                                    @foreach (var user in eligibleUsers)
+                                    {
+                                        <option value="@user.UserName" selected="@(string.Equals(user.UserName, row.AssignedTo, StringComparison.OrdinalIgnoreCase))">@user.FullName (@user.UserName)</option>
+                                    }
+                                </select>
+                                <button class="btn btn-sm btn-warning" type="submit"><i class="fas fa-user-plus"></i> Giao</button>
+                            </form>
+
+                            <form method="post" asp-controller="Operations" asp-action="ResolveException" class="enterprise-inline-controls" data-enterprise-confirm="Đóng bất thường này sau khi đã xử lý?">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="exceptionKey" value="@row.ExceptionKey" />
+                                <input class="form-control" name="resolutionNote" placeholder="Ghi chú xử lý" value="Đã kiểm tra và xử lý xong" />
+                                <button class="btn btn-sm btn-success" type="submit"><i class="fas fa-check-double"></i> Đóng</button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+        }
+        </tbody>
+    </table>
+</div>

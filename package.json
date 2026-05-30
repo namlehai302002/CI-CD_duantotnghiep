@@ -1,0 +1,14 @@
+{
+  "private": true,
+  "scripts": {
+    "visual:public": "playwright test -c tests/visual/playwright.public.config.ts",
+    "visual:auth": "playwright test -c tests/visual/playwright.auth.config.ts",
+    "visual:update": "playwright test -c tests/visual/playwright.config.ts --update-snapshots",
+    "visual:test": "playwright test -c tests/visual/playwright.config.ts",
+    "visual:no-device": "playwright test -c tests/visual/playwright.no-device.config.ts",
+    "visual:mobile-deep": "playwright test -c tests/visual/playwright.mobile-deep.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0"
+  }
+}

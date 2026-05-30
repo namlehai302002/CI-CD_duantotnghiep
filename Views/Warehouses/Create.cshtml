@@ -1,0 +1,39 @@
+@model WMS.Models.Warehouse
+@{
+    ViewData["Title"] = "Thêm kho";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Thêm kho</h1>
+        <p class="page-subtitle">Khai báo kho vật lý, người phụ trách và thông tin liên hệ để dùng thống nhất trong vận hành.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Warehouses" asp-action="Index" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Quay lại</a>
+    </div>
+</div>
+
+<div class="enterprise-form-layout">
+    <div class="card enterprise-form-card">
+        <div class="card-header">
+            <span class="card-title"><i class="fas fa-warehouse text-accent"></i> Hồ sơ kho mới</span>
+        </div>
+        <div class="card-body">
+            @await Html.PartialAsync("_Form", Model)
+        </div>
+    </div>
+
+    <aside class="enterprise-form-aside">
+        <div class="card">
+            <div class="card-header"><span class="card-title">Kiểm tra trước khi lưu</span></div>
+            <div class="card-body">
+                <ol class="audit-checklist">
+                    <li>Mã kho ngắn, duy nhất và dễ đọc trên chứng từ.</li>
+                    <li>Tên kho phản ánh đúng khu vực vận hành thực tế.</li>
+                    <li>Địa chỉ đủ rõ để dùng cho bàn giao, vận chuyển và đối soát.</li>
+                    <li>Người quản lý kho là người chịu trách nhiệm ca vận hành.</li>
+                </ol>
+            </div>
+        </div>
+    </aside>
+</div>

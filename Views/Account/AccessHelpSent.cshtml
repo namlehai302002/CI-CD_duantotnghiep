@@ -1,0 +1,33 @@
+@{ ViewData["Title"] = "Đã gửi yêu cầu hỗ trợ"; Layout = "_Layout"; }
+
+<div class="login-page enterprise-auth-page access-help-page">
+    <div class="enterprise-auth-stage access-help-stage single-panel">
+        <section class="enterprise-auth-panel login-card access-help-success" aria-labelledby="accessHelpSentTitle">
+            <div class="login-logo enterprise-auth-form-head">
+                <div class="logo-icon"><img src="~/images/logo.svg" asp-append-version="true" alt="Biểu trưng WMS Pro" class="brand-mark-img" /></div>
+                <h1 id="accessHelpSentTitle">Yêu cầu đã được ghi nhận</h1>
+                <p>Quản trị viên sẽ kiểm tra và liên hệ lại theo thông tin bạn cung cấp.</p>
+            </div>
+
+            <div class="enterprise-auth-success-box">
+                <i class="fas fa-circle-check"></i>
+                <div>
+                    <strong>Yêu cầu hỗ trợ truy cập đã được gửi.</strong>
+                    <span>Vui lòng chờ phản hồi từ quản trị kho hoặc bộ phận công nghệ thông tin trong kênh nội bộ của ca vận hành.</span>
+                </div>
+            </div>
+
+            @if (TempData["AccessHelpRequestCode"] != null)
+            {
+                <div class="enterprise-auth-form-note">
+                    <i class="fas fa-ticket"></i>
+                    <span>Mã yêu cầu: <strong>@TempData["AccessHelpRequestCode"]</strong></span>
+                </div>
+            }
+
+            <a asp-action="Login" class="btn btn-primary btn-lg full-width-action enterprise-auth-submit">
+                <i class="fas fa-arrow-left"></i> Quay lại đăng nhập
+            </a>
+        </section>
+    </div>
+</div>

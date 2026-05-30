@@ -1,0 +1,291 @@
+@model WMS.ViewModels.ThreePlContractPageViewModel
+@using WMS.Models
+@using System.Globalization
+@{
+    ViewData["Title"] = "Hợp đồng kho nhiều chủ hàng";
+    var defaultWarehouseId = Model.WarehouseId ?? Model.Warehouses.FirstOrDefault()?.WarehouseId;
+    var defaultOwnerId = Model.OwnerPartnerId ?? Model.Owners.FirstOrDefault()?.PartnerId;
+
+    string ChargeTypeLabel(ThreePlChargeTypeEnum type) => type switch
+    {
+        ThreePlChargeTypeEnum.Storage => "Lưu kho",
+        ThreePlChargeTypeEnum.InboundHandling => "Nhập kho",
+        ThreePlChargeTypeEnum.OutboundHandling => "Xuất kho",
+        ThreePlChargeTypeEnum.Vas => "Dịch vụ phụ trợ",
+        ThreePlChargeTypeEnum.Yard => "Bãi",
+        ThreePlChargeTypeEnum.PackageHandling => "Kiện",
+        ThreePlChargeTypeEnum.ManualAdjustment => "Điều chỉnh",
+        _ => "Phí khác"
+    };
+
+    string ChargeUnitLabel(string? unit) => unit switch
+    {
+        "unit" => "đơn vị",
+        "pallet-day" => "pallet-ngày",
+        "order" => "đơn hàng",
+        "line" => "dòng hàng",
+        "carton" => "thùng",
+        _ => string.IsNullOrWhiteSpace(unit) ? "đơn vị" : unit
+    };
+}
+
+<div class="yardops-shell">
+    <div class="yardops-pagehead">
+        <div>
+            <h1 class="yardops-title">Hợp đồng kho nhiều chủ hàng</h1>
+            <p class="yardops-subtitle">Quản trị thỏa thuận tính phí theo chủ hàng, kho, hiệu lực, tiền tệ, bậc giá, phí tối thiểu, phụ phí, thuế, chiết khấu và cam kết dịch vụ.</p>
+        </div>
+        <div class="yardops-head-actions">
+            <a asp-action="ThreePlBillingRuns" class="btn btn-secondary"><i class="fas fa-file-invoice-dollar"></i> Kỳ tính phí</a>
+            <a asp-action="ThreePlClientPortal" class="btn btn-secondary"><i class="fas fa-user-shield"></i> Khu vực chủ hàng</a>
+            <button type="button" class="btn btn-primary" data-wms-call="openYardopsModal" data-wms-arg="threePlContractModal"><i class="fas fa-plus"></i> Thêm hợp đồng</button>
+        </div>
+    </div>
+
+    <form method="get" class="yardops-filter">
+        <div class="form-group yardops-span-3">
+            <label class="form-label">Kho</label>
+            <select name="warehouseId" class="form-control">
+                <option value="">Tất cả kho</option>
+                @foreach (var wh in Model.Warehouses)
+                {
+                    <option value="@wh.WarehouseId" selected="@(Model.WarehouseId == wh.WarehouseId)">@wh.WarehouseCode - @wh.WarehouseName</option>
+                }
+            </select>
+        </div>
+        <div class="form-group yardops-span-3">
+            <label class="form-label">Chủ hàng</label>
+            <select name="ownerPartnerId" class="form-control">
+                <option value="">Tất cả chủ hàng</option>
+                @foreach (var owner in Model.Owners)
+                {
+                    <option value="@owner.PartnerId" selected="@(Model.OwnerPartnerId == owner.PartnerId)">@owner.PartnerCode - @owner.PartnerName</option>
+                }
+            </select>
+        </div>
+        <div class="form-group yardops-filter-actions">
+            <label class="form-label">&nbsp;</label>
+            <button class="btn btn-secondary" type="submit"><i class="fas fa-filter"></i> Lọc</button>
+        </div>
+    </form>
+
+    <section class="yardops-panel">
+        <div class="yardops-panel-head">
+            <div>
+                <h2 class="yardops-panel-title">Danh sách hợp đồng</h2>
+                <p class="yardops-panel-subtitle">Mỗi hợp đồng có nhiều dòng giá theo loại dịch vụ, đơn vị tính và bậc số lượng để bộ tính phí chọn đúng mức.</p>
+            </div>
+            <span class="yardops-context-pill">@Model.Contracts.Count.ToString("N0") hợp đồng</span>
+        </div>
+        <div class="yardops-table-wrap">
+            <table class="yardops-table" id="threePlContractsTable">
+                <thead>
+                    <tr>
+                        <th>Hợp đồng</th>
+                        <th>Kho</th>
+                        <th>Chủ hàng</th>
+                        <th>Hiệu lực</th>
+                        <th class="text-end">Phí tối thiểu</th>
+                        <th>Thuế / chiết khấu</th>
+                        <th>Dòng giá</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var contract in Model.Contracts)
+                {
+                    <tr>
+                        <td>
+                            <div class="yardops-rule-title">@contract.ContractCode</div>
+                            <div class="yardops-subline">@contract.ContractName</div>
+                        </td>
+                        <td>@contract.Warehouse.WarehouseCode - @contract.Warehouse.WarehouseName</td>
+                        <td>@contract.OwnerPartner?.PartnerCode - @contract.OwnerPartner?.PartnerName</td>
+                        <td>@contract.EffectiveFrom.ToString("dd/MM/yyyy") - @(contract.EffectiveTo?.ToString("dd/MM/yyyy") ?? "chưa kết thúc")</td>
+                        <td class="text-end">@contract.MinimumCharge.ToString("N2") @contract.Currency</td>
+                        <td>@contract.TaxPercent.ToString("N2")% / @contract.DiscountPercent.ToString("N2")%</td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-secondary" data-wms-call="prepareRateModal" data-wms-arg="@contract.ThreePlContractId">
+                                <i class="fas fa-plus"></i> Thêm dòng
+                            </button>
+                            <div class="yardops-rate-list">
+                                @foreach (var rate in contract.Rates.OrderBy(r => r.ChargeType).ThenBy(r => r.TierFromQty))
+                                {
+                                    <div class="yardops-subline">
+                                        <strong>@ChargeTypeLabel(rate.ChargeType)</strong> @rate.TierFromQty.ToString("N2") - @(rate.TierToQty?.ToString("N2") ?? "∞") · @rate.UnitRate.ToString("N4")/@ChargeUnitLabel(rate.ChargeUnit)
+                                    </div>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+                @if (!Model.Contracts.Any())
+                {
+                    <tr><td colspan="7"><div class="yardops-empty"><i class="fas fa-file-contract"></i> Chưa có hợp đồng kho nhiều chủ hàng phù hợp bộ lọc.</div></td></tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+<div class="yardops-modal-overlay" id="threePlContractModal" aria-hidden="true">
+    <form method="post" asp-action="SaveThreePlContract" class="yardops-modal">
+        @Html.AntiForgeryToken()
+        <div class="yardops-modal-head">
+            <div>
+                <h2 class="yardops-modal-title">Thêm hợp đồng kho nhiều chủ hàng</h2>
+                <p class="yardops-modal-subtitle">Cấu hình phạm vi hợp đồng, tiền tệ, phí tối thiểu, thuế và chiết khấu.</p>
+            </div>
+            <button type="button" class="yardops-modal-close" data-wms-call="closeYardopsModal" data-wms-arg="threePlContractModal" aria-label="Đóng"><i class="fas fa-xmark"></i></button>
+        </div>
+        <div class="yardops-modal-body">
+            <div class="yardops-section-grid">
+                <section class="yardops-section">
+                    <h3 class="yardops-section-title">Phạm vi</h3>
+                    <div class="form-group">
+                        <label class="form-label">Kho</label>
+                        <select name="warehouseId" class="form-control" required>
+                            @foreach (var wh in Model.Warehouses)
+                            {
+                                <option value="@wh.WarehouseId" selected="@(defaultWarehouseId == wh.WarehouseId)">@wh.WarehouseCode - @wh.WarehouseName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Chủ hàng</label>
+                        <select name="ownerPartnerId" class="form-control" required>
+                            @foreach (var owner in Model.Owners)
+                            {
+                                <option value="@owner.PartnerId" selected="@(defaultOwnerId == owner.PartnerId)">@owner.PartnerCode - @owner.PartnerName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Mã hợp đồng</label>
+                        <input name="contractCode" class="form-control" placeholder="Để trống để tự sinh" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tên hợp đồng</label>
+                        <input name="contractName" class="form-control" required />
+                    </div>
+                </section>
+                <section class="yardops-section">
+                    <h3 class="yardops-section-title">Tài chính</h3>
+                    <div class="form-group">
+                        <label class="form-label">Tiền tệ</label>
+                        <input name="currency" class="form-control" value="VND" maxlength="10" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Phí tối thiểu</label>
+                        <input name="minimumCharge" type="number" step="0.0001" min="0" value="0" class="form-control" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Thuế %</label>
+                        <input name="taxPercent" type="number" step="0.0001" min="0" value="0" class="form-control" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Chiết khấu %</label>
+                        <input name="discountPercent" type="number" step="0.0001" min="0" value="0" class="form-control" />
+                    </div>
+                </section>
+                <section class="yardops-section">
+                    <h3 class="yardops-section-title">Hiệu lực</h3>
+                    <div class="form-group">
+                        <label class="form-label">Từ ngày</label>
+                        <input name="effectiveFrom" type="date" value="@WMS.Common.VietnamTime.Today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" class="form-control" required />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Đến ngày</label>
+                        <input name="effectiveTo" type="date" class="form-control" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Ghi chú</label>
+                        <textarea name="notes" class="form-control" rows="5"></textarea>
+                    </div>
+                </section>
+            </div>
+        </div>
+        <div class="yardops-modal-foot">
+            <button type="button" class="btn btn-secondary" data-wms-call="closeYardopsModal" data-wms-arg="threePlContractModal">Hủy</button>
+            <button class="btn btn-primary" type="submit"><i class="fas fa-save"></i> Lưu hợp đồng</button>
+        </div>
+    </form>
+</div>
+
+<div class="yardops-modal-overlay" id="threePlRateModal" aria-hidden="true">
+    <form method="post" asp-action="SaveThreePlContractRate" class="yardops-modal">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="contractId" id="contractRateContractId" />
+        <div class="yardops-modal-head">
+            <div>
+                <h2 class="yardops-modal-title">Thêm dòng giá hợp đồng</h2>
+                <p class="yardops-modal-subtitle">Bậc giá, phụ phí, phí tối thiểu và thưởng/phạt theo cam kết dịch vụ.</p>
+            </div>
+            <button type="button" class="yardops-modal-close" data-wms-call="closeYardopsModal" data-wms-arg="threePlRateModal" aria-label="Đóng"><i class="fas fa-xmark"></i></button>
+        </div>
+        <div class="yardops-modal-body">
+            <div class="yardops-section-grid">
+                <section class="yardops-section">
+                    <h3 class="yardops-section-title">Bậc giá</h3>
+                    <div class="form-group">
+                        <label class="form-label">Loại phí</label>
+                        <select name="chargeType" class="form-control">
+                            @foreach (ThreePlChargeTypeEnum value in Enum.GetValues<ThreePlChargeTypeEnum>())
+                            {
+                                <option value="@value">@ChargeTypeLabel(value)</option>
+                            }
+                        </select>
+                    </div>
+                    <input name="rateCode" class="form-control" placeholder="Mã dòng giá" />
+                    <input name="serviceCode" class="form-control" placeholder="Mã dịch vụ" />
+                    <input name="chargeUnit" class="form-control" value="đơn vị" />
+                    <input name="unitRate" type="number" step="0.0001" min="0" class="form-control" placeholder="Đơn giá" required />
+                    <input name="tierFromQty" type="number" step="0.0001" min="0" value="0" class="form-control" placeholder="Từ số lượng" />
+                    <input name="tierToQty" type="number" step="0.0001" min="0" class="form-control" placeholder="Đến số lượng" />
+                </section>
+                <section class="yardops-section">
+                    <h3 class="yardops-section-title">Phụ phí</h3>
+                    <input name="includedQty" type="number" step="0.0001" min="0" value="0" class="form-control" placeholder="Số lượng đã bao gồm" />
+                    <input name="minimumCharge" type="number" step="0.0001" min="0" value="0" class="form-control" placeholder="Phí tối thiểu" />
+                    <input name="surchargePercent" type="number" step="0.0001" min="0" value="0" class="form-control" placeholder="Phụ phí %" />
+                    <input name="offHoursSurcharge" type="number" step="0.0001" min="0" value="0" class="form-control" placeholder="Ngoài giờ" />
+                    <input name="urgentSurcharge" type="number" step="0.0001" min="0" value="0" class="form-control" placeholder="Gấp" />
+                    <input name="hazmatSurcharge" type="number" step="0.0001" min="0" value="0" class="form-control" placeholder="Hàng nguy hiểm" />
+                    <input name="coldStorageSurcharge" type="number" step="0.0001" min="0" value="0" class="form-control" placeholder="Kho lạnh" />
+                    <input name="manualHandlingSurcharge" type="number" step="0.0001" min="0" value="0" class="form-control" placeholder="Xử lý thủ công" />
+                </section>
+                <section class="yardops-section">
+                    <h3 class="yardops-section-title">Cam kết dịch vụ và hiệu lực</h3>
+                    <input name="slaPenaltyPercent" type="number" step="0.0001" min="0" value="0" class="form-control" placeholder="Phạt không đạt cam kết %" />
+                    <input name="slaBonusPercent" type="number" step="0.0001" min="0" value="0" class="form-control" placeholder="Thưởng đạt cam kết %" />
+                    <label class="form-label">Hiệu lực từ</label>
+                    <input name="effectiveFrom" type="date" value="@WMS.Common.VietnamTime.Today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" class="form-control" />
+                    <label class="form-label">Hiệu lực đến</label>
+                    <input name="effectiveTo" type="date" class="form-control" />
+                    <label class="checkbox-row"><input name="isActive" value="true" type="checkbox" checked /> <span>Đang áp dụng</span></label>
+                </section>
+            </div>
+        </div>
+        <div class="yardops-modal-foot">
+            <button type="button" class="btn btn-secondary" data-wms-call="closeYardopsModal" data-wms-arg="threePlRateModal">Hủy</button>
+            <button class="btn btn-primary" type="submit"><i class="fas fa-save"></i> Lưu dòng giá</button>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+<script>
+function openYardopsModal(id) {
+    const modal = document.getElementById(id);
+    if (modal) modal.classList.add('is-open');
+}
+function closeYardopsModal(id) {
+    const modal = document.getElementById(id);
+    if (modal) modal.classList.remove('is-open');
+}
+function prepareRateModal(contractId) {
+    document.getElementById('contractRateContractId').value = contractId;
+    openYardopsModal('threePlRateModal');
+}
+</script>
+}

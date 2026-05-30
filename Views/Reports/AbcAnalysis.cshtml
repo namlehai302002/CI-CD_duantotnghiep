@@ -1,0 +1,103 @@
+﻿@{
+    ViewData["Title"] = "Phân hạng mức độ quan trọng hàng hóa";
+    var data = (IEnumerable<dynamic>?)ViewBag.Data;
+    var canSeeFinancial = (bool?)(ViewBag.CanSeeFinancial ?? false);
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Phân hạng mức độ quan trọng hàng hóa</h1>
+        <p class="page-subtitle">Xếp hạng vật tư theo giá trị tồn kho để ưu tiên kiểm soát, bổ sung và bố trí vị trí lưu kho hợp lý.</p>
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-circle-info"></i> Cách đọc báo cáo này</div>
+    <div class="user-guide-text">
+        Hệ thống tính giá trị tồn kho của từng mã hàng theo công thức <strong>số lượng x đơn giá</strong>, sau đó phân nhóm theo quy tắc Pareto:
+    </div>
+    <div class="step-list">
+        <span class="step-chip"><i class="fas fa-star"></i> Hạng A: nhóm quan trọng nhất, nên kiểm soát chặt và đặt ở vị trí thao tác thuận tiện.</span>
+        <span class="step-chip"><i class="fas fa-star-half-stroke"></i> Hạng B: nhóm trung bình, theo dõi định kỳ.</span>
+        <span class="step-chip"><i class="far fa-star"></i> Hạng C: nhóm giá trị thấp hơn, có thể kiểm tra thưa hơn.</span>
+    </div>
+</div>
+
+<div class="grid-3 mb-3">
+    <div class="stat-card danger">
+        <div class="stat-value">@ViewBag.CountA</div>
+        <div class="stat-label">Số mã hạng A</div>
+        @if (canSeeFinancial == true)
+        {
+            <div class="text-muted fs-xs mt-1">Giá trị: @(((decimal?)(ViewBag.ValueA ?? 0m))?.ToString("N0")) VNĐ</div>
+        }
+    </div>
+    <div class="stat-card warning">
+        <div class="stat-value">@ViewBag.CountB</div>
+        <div class="stat-label">Số mã hạng B</div>
+        @if (canSeeFinancial == true)
+        {
+            <div class="text-muted fs-xs mt-1">Giá trị: @(((decimal?)(ViewBag.ValueB ?? 0m))?.ToString("N0")) VNĐ</div>
+        }
+    </div>
+    <div class="stat-card success">
+        <div class="stat-value">@ViewBag.CountC</div>
+        <div class="stat-label">Số mã hạng C</div>
+        @if (canSeeFinancial == true)
+        {
+            <div class="text-muted fs-xs mt-1">Giá trị: @(((decimal?)(ViewBag.ValueC ?? 0m))?.ToString("N0")) VNĐ</div>
+        }
+    </div>
+</div>
+
+@if (data?.Any() == true)
+{
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th class="w-80">Hạng</th>
+                    <th class="w-80">Nhóm</th>
+                    <th>Mã vật tư</th>
+                    <th>Tên vật tư</th>
+                    <th>Danh mục</th>
+                    <th class="cell-right">Tồn kho</th>
+                    @if (canSeeFinancial == true)
+                    {
+                        <th class="cell-right">Đơn giá</th>
+                        <th class="cell-right">Giá trị tồn</th>
+                    }
+                    <th class="cell-right">Tỷ lệ tích lũy</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var d in data)
+                {
+                    var cls = (string)d.AbcClass;
+                    var badgeClass = cls == "A" ? "badge-danger" : cls == "B" ? "badge-warning" : "badge-success";
+                    <tr>
+                        <td class="text-center fw-700">@d.Rank</td>
+                        <td><span class="badge @badgeClass">@cls</span></td>
+                        <td class="td-code text-accent">@d.ItemCode</td>
+                        <td class="td-name fw-600">@d.ItemName</td>
+                        <td>@d.CategoryName</td>
+                        <td class="td-number">@d.CurrentStock.ToString("N2")</td>
+                        @if (canSeeFinancial == true)
+                        {
+                            <td class="td-number">@d.UnitCost.ToString("N0")</td>
+                            <td class="td-number fw-700">@d.TotalStockValue.ToString("N0")</td>
+                        }
+                        <td class="td-number">@d.CumulativePct.ToString("N1")%</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else
+{
+    <div class="empty-state">
+        <i class="fas fa-chart-pie empty-icon"></i>
+        <div class="empty-text">Chưa có dữ liệu tồn kho để phân hạng mức độ quan trọng.</div>
+    </div>
+}

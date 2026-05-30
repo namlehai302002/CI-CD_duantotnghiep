@@ -1,0 +1,29 @@
+<div class="modal-overlay scanner-modal-overlay" id="scannerModal" aria-hidden="true">
+    <div class="modal scanner-modal" role="dialog" aria-modal="true" aria-labelledby="scannerModalTitle">
+        <div class="modal-header scanner-modal-header">
+            <div>
+                <div class="modal-title scanner-modal-title" id="scannerModalTitle">
+                    <i class="fas fa-camera"></i> Quét mã bằng camera điện thoại
+                </div>
+                <div class="scanner-modal-subtitle">Đưa mã vạch hoặc mã phản hồi nhanh vào giữa khung hình.</div>
+            </div>
+            <button type="button" class="modal-close scanner-modal-close" data-wms-call="closeScannerModal" aria-label="Đóng màn quét">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body scanner-modal-body">
+            <div id="reader" class="scanner-reader"></div>
+            <p id="scanStatus" class="scanner-status" aria-live="polite"></p>
+            <p id="scanDebug" class="scanner-debug" aria-live="polite"></p>
+            <div class="scanner-manual-entry">
+                <label for="manualBarcodeInput" class="form-label">Nhập mã thủ công khi camera không đọc được</label>
+                <div class="scanner-manual-row">
+                    <input type="text" id="manualBarcodeInput" class="form-control" placeholder="Nhập hoặc dán mã cần quét" autocomplete="off" />
+                    <button type="button" class="btn btn-primary scanner-manual-submit" data-wms-call="submitManualBarcode">
+                        <i class="fas fa-check"></i> Dùng mã này
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,143 @@
+@model List<WMS.Models.PartnerLabelTemplate>
+@using WMS.Models
+@{
+    ViewData["Title"] = "Mẫu nhãn khách hàng";
+    var partners = (List<Partner>)ViewBag.Partners;
+    int? partnerId = ViewBag.PartnerId as int?;
+    LabelPurposeEnum? purpose = ViewBag.Purpose as LabelPurposeEnum?;
+    string PurposeText(LabelPurposeEnum p) => p switch
+    {
+        LabelPurposeEnum.OutboundVoucher => "Phiếu xuất",
+        LabelPurposeEnum.OutboundPackage => "Kiện xuất",
+        _ => "Khác"
+    };
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-tags text-accent"></i> Mẫu nhãn khách hàng</h1>
+        <p class="page-subtitle">Thiết lập mẫu nhãn theo chủ hàng, mục đích in và khổ nhãn để kho đóng gói, bàn giao và in lại đúng chuẩn.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-secondary" asp-controller="Labels" asp-action="ItemRules"><i class="fas fa-link"></i> Mã hàng theo khách hàng</a>
+        <a class="btn btn-secondary" asp-controller="Labels" asp-action="PrintJobs"><i class="fas fa-clock-rotate-left"></i> Nhật ký in</a>
+        <a class="btn btn-primary" asp-controller="Labels" asp-action="CreateTemplate"><i class="fas fa-plus"></i> Tạo mẫu nhãn</a>
+    </div>
+</div>
+
+<section class="enterprise-command-strip labelops-summary">
+    <div class="enterprise-command-card">
+        <span class="enterprise-field-label">Tổng mẫu</span>
+        <strong class="stat-value">@Model.Count</strong>
+        <span class="table-subtext text-muted">Bao gồm mẫu riêng và mẫu mặc định toàn hệ thống.</span>
+    </div>
+    <div class="enterprise-command-card">
+        <span class="enterprise-field-label">Đang dùng</span>
+        <strong class="stat-value text-success">@Model.Count(t => t.IsActive)</strong>
+        <span class="table-subtext text-muted">Mẫu có thể chọn khi in phiếu, kiện hoặc chứng từ bàn giao.</span>
+    </div>
+    <div class="enterprise-command-card">
+        <span class="enterprise-field-label">Mẫu ưu tiên</span>
+        <strong class="stat-value text-accent">@Model.Count(t => t.IsDefault)</strong>
+        <span class="table-subtext text-muted">Dùng làm mặc định khi khách hàng chưa chỉ định mẫu riêng.</span>
+    </div>
+</section>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Khách hàng</label>
+        <select class="form-control" name="partnerId">
+            <option value="">Tất cả</option>
+            @foreach (var p in partners)
+            {
+                <option value="@p.PartnerId" selected="@(partnerId == p.PartnerId)">@p.PartnerCode - @p.PartnerName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Loại nhãn</label>
+        <select class="form-control" name="purpose">
+            <option value="">Tất cả</option>
+            @foreach (LabelPurposeEnum p in Enum.GetValues<LabelPurposeEnum>())
+            {
+                <option value="@p" selected="@(purpose == p)">@PurposeText(p)</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc</button>
+    </div>
+</form>
+
+<section class="enterprise-section">
+    <div class="enterprise-section-header">
+        <div>
+            <div class="enterprise-section-title">Danh sách mẫu nhãn</div>
+            <div class="enterprise-section-subtitle">Theo dõi chủ hàng, khổ nhãn, loại mã in, trạng thái áp dụng và mẫu mặc định.</div>
+        </div>
+        <button type="button" class="btn-export" data-wms-export-table="#labelTemplateTable" data-wms-export-filename="mau_nhan_khach_hang">
+            <i class="fas fa-file-excel"></i> Xuất Excel
+        </button>
+    </div>
+    <div class="table-container">
+        <table id="labelTemplateTable" class="data-table">
+            <thead>
+                <tr>
+                    <th>Tên mẫu</th>
+                    <th>Khách hàng</th>
+                    <th>Loại nhãn</th>
+                    <th>Khổ</th>
+                    <th>Mã in</th>
+                    <th>Mặc định</th>
+                    <th>Trạng thái</th>
+                    <th class="table-actions-col"></th>
+                </tr>
+            </thead>
+            <tbody>
+            @if (!Model.Any())
+            {
+                <tr>
+                    <td colspan="8" class="cell-compact">
+                        <div class="empty-state">
+                            <div class="empty-icon"><i class="fas fa-tags"></i></div>
+                            <div class="empty-text">Chưa có mẫu nhãn nào</div>
+                            <div class="empty-sub">Tạo mẫu mặc định hoặc mẫu riêng cho khách hàng trước khi in nhãn theo chủ hàng.</div>
+                            <div class="empty-action">
+                                <a class="btn btn-primary btn-sm" asp-controller="Labels" asp-action="CreateTemplate"><i class="fas fa-plus"></i> Tạo mẫu nhãn</a>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            }
+            @foreach (var t in Model)
+            {
+                <tr>
+                    <td>
+                        <div class="fw-700">@t.TemplateName</div>
+                        <div class="table-subtext text-muted">@(!string.IsNullOrWhiteSpace(t.HeaderTemplate) ? t.HeaderTemplate : "Không có dòng đầu nhãn")</div>
+                    </td>
+                    <td>@(t.Partner == null ? "Mẫu mặc định toàn hệ thống" : $"{t.Partner.PartnerCode} - {t.Partner.PartnerName}")</td>
+                    <td><span class="badge badge-info">@PurposeText(t.LabelPurpose)</span></td>
+                    <td><span class="td-code">@t.LabelSize</span></td>
+                    <td>@(t.CodeType == "qr" ? "QR" : "Mã vạch")</td>
+                    <td>
+                        <span class="badge @(t.IsDefault ? "badge-accent" : "badge-secondary")">@(t.IsDefault ? "Có" : "Không")</span>
+                    </td>
+                    <td><span class="badge @(t.IsActive ? "badge-success" : "badge-secondary")">@(t.IsActive ? "Đang dùng" : "Đã tắt")</span></td>
+                    <td class="td-actions">
+                        <a class="btn btn-sm btn-primary" asp-controller="Labels" asp-action="EditTemplate" asp-route-id="@t.PartnerLabelTemplateId"><i class="fas fa-pen"></i> Sửa</a>
+                        <form method="post" asp-controller="Labels" asp-action="ToggleTemplate" class="inline-post-form">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="id" value="@t.PartnerLabelTemplateId" />
+                            <button class="btn btn-sm btn-secondary" type="submit">
+                                <i class="fas @(t.IsActive ? "fa-toggle-off" : "fa-toggle-on")"></i> @(t.IsActive ? "Tắt" : "Bật")
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</section>

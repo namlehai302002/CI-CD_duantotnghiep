@@ -1,0 +1,336 @@
+@model WMS.ViewModels.YardBillingRatePageViewModel
+@{
+    ViewData["Title"] = "Bảng giá phí lưu bãi";
+    var rates = Model.Rates;
+    var warehouses = Model.Warehouses;
+    var partners = Model.Partners;
+    var activeCount = rates.Count(r => r.IsActive);
+    var inactiveCount = rates.Count(r => !r.IsActive);
+    var conditionalCount = rates.Count(r => r.PartnerId.HasValue || !string.IsNullOrWhiteSpace(r.CarrierName) || r.TrailerType.HasValue || r.SpotType.HasValue);
+
+    string AllText(string? value) => string.IsNullOrWhiteSpace(value) ? "Tất cả" : value;
+    string RateStatusClass(bool isActive) => isActive ? "success" : "neutral";
+    string RateStatusText(bool isActive) => isActive ? "Hoạt động" : "Ngưng";
+    string TrailerTypeText(WMS.Models.TrailerTypeEnum type) => type switch
+    {
+        WMS.Models.TrailerTypeEnum.Trailer => "Rơ-moóc thường",
+        WMS.Models.TrailerTypeEnum.Container => "Công-ten-nơ",
+        WMS.Models.TrailerTypeEnum.Reefer => "Xe lạnh",
+        WMS.Models.TrailerTypeEnum.Flatbed => "Thùng lửng",
+        WMS.Models.TrailerTypeEnum.Tanker => "Xe bồn",
+        _ => "Loại xe khác"
+    };
+    string YardSpotTypeText(WMS.Models.YardSpotTypeEnum type) => type switch
+    {
+        WMS.Models.YardSpotTypeEnum.Standard => "Tiêu chuẩn",
+        WMS.Models.YardSpotTypeEnum.Reefer => "Cắm điện xe lạnh",
+        WMS.Models.YardSpotTypeEnum.Hazmat => "Hàng nguy hiểm",
+        WMS.Models.YardSpotTypeEnum.Empty => "Rỗng",
+        WMS.Models.YardSpotTypeEnum.Maintenance => "Bảo trì",
+        _ => "Loại vị trí khác"
+    };
+    string FreeTimeText(int minutes)
+    {
+        var days = minutes / 1440;
+        var hours = (minutes % 1440) / 60;
+        var mins = minutes % 60;
+        if (days > 0) return $"{days}d {hours}h {mins}m";
+        if (hours > 0) return $"{hours}h {mins}m";
+        return $"{mins}m";
+    }
+}
+
+<div class="yardops-shell">
+    <div class="yardops-pagehead">
+        <div>
+            <h1 class="yardops-title">Bảng giá phí lưu bãi</h1>
+            <p class="yardops-subtitle">Cấu hình quy tắc phí lưu bãi theo kho, khách hàng, hãng vận tải, loại xe và loại vị trí bãi.</p>
+        </div>
+        <div class="yardops-head-actions">
+            <button type="button" class="btn btn-primary" data-wms-calls='[["resetForm"],["openYardopsModal","rateModal"]]'>
+                <i class="fas fa-plus"></i> Thêm bảng giá
+            </button>
+        </div>
+    </div>
+
+    <div class="yardops-kpis">
+        <div class="yardops-kpi">
+            <div class="yardops-kpi-value">@rates.Count <span class="yardops-kpi-unit">quy tắc</span></div>
+            <div class="yardops-kpi-label">Tổng bảng giá</div>
+        </div>
+        <div class="yardops-kpi success">
+            <div class="yardops-kpi-value">@activeCount <span class="yardops-kpi-unit">quy tắc</span></div>
+            <div class="yardops-kpi-label">Đang hoạt động</div>
+        </div>
+        <div class="yardops-kpi warning">
+            <div class="yardops-kpi-value">@inactiveCount <span class="yardops-kpi-unit">quy tắc</span></div>
+            <div class="yardops-kpi-label">Đang ngưng</div>
+        </div>
+        <div class="yardops-kpi info">
+            <div class="yardops-kpi-value">@conditionalCount <span class="yardops-kpi-unit">quy tắc</span></div>
+            <div class="yardops-kpi-label">Có điều kiện</div>
+        </div>
+    </div>
+
+    <form method="get" class="yardops-filter">
+        <div class="form-group yardops-span-4">
+            <label class="form-label">Lọc theo kho</label>
+            <select name="warehouseId" class="form-control" data-wms-submit-form="true">
+                <option value="">-- Tất cả các kho --</option>
+                @foreach (var w in warehouses)
+                {
+                    <option value="@w.WarehouseId" selected="@(Model.WarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+                }
+            </select>
+        </div>
+        <div class="form-group yardops-span-2">
+            <label class="form-label">&nbsp;</label>
+            <button type="submit" class="btn btn-secondary"><i class="fas fa-rotate"></i> Tải lại</button>
+        </div>
+    </form>
+
+    <section class="yardops-panel">
+        <div class="yardops-panel-head">
+            <div>
+                <h2 class="yardops-panel-title">Quy tắc áp phí lưu bãi</h2>
+                <p class="yardops-panel-subtitle">Quy tắc cụ thể hơn theo đối tác, hãng vận chuyển, loại xe hoặc vị trí bãi sẽ được dùng để tính phí phù hợp.</p>
+            </div>
+            <span class="yardops-context-pill">@rates.Count.ToString("N0") dòng</span>
+        </div>
+        <div class="yardops-table-wrap">
+            <table class="yardops-table">
+                <thead>
+                    <tr>
+                        <th>Phạm vi quy tắc</th>
+                        <th>Kho</th>
+                        <th>Điều kiện áp dụng</th>
+                        <th class="text-end">Thời gian miễn phí</th>
+                        <th class="text-end">Giá/giờ</th>
+                        <th class="text-end">Trần/ngày</th>
+                        <th>Tiền tệ</th>
+                        <th>Trạng thái</th>
+                        <th>Ghi chú</th>
+                        <th class="text-end">Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in rates)
+                    {
+                        var partnerText = r.Partner != null ? $"{r.Partner.PartnerCode} - {r.Partner.PartnerName}" : "Tất cả khách hàng";
+                        var carrierText = AllText(r.CarrierName);
+                        var trailerText = r.TrailerType.HasValue ? TrailerTypeText(r.TrailerType.Value) : "Tất cả xe";
+                        var spotText = r.SpotType.HasValue ? YardSpotTypeText(r.SpotType.Value) : "Tất cả vị trí bãi";
+                        var scopeText = r.PartnerId.HasValue || !string.IsNullOrWhiteSpace(r.CarrierName) || r.TrailerType.HasValue || r.SpotType.HasValue ? "Quy tắc có điều kiện" : "Quy tắc mặc định";
+                        <tr>
+                            <td>
+                                <div class="yardops-rule-title">@scopeText</div>
+                                <div class="yardops-subline">ID @r.YardBillingRateId</div>
+                            </td>
+                            <td>
+                                <div class="yardops-rule-title">@r.Warehouse?.WarehouseCode</div>
+                                <div class="yardops-subline">@r.Warehouse?.WarehouseName</div>
+                            </td>
+                            <td>
+                                <div class="yardops-chip-row">
+                                    <span class="yardops-chip @(r.PartnerId.HasValue ? "" : "muted")"><i class="fas fa-building-user"></i><span>@partnerText</span></span>
+                                    <span class="yardops-chip @(!string.IsNullOrWhiteSpace(r.CarrierName) ? "" : "muted")"><i class="fas fa-truck-fast"></i><span>@carrierText</span></span>
+                                    <span class="yardops-chip @(r.TrailerType.HasValue ? "" : "muted")"><i class="fas fa-trailer"></i><span>@trailerText</span></span>
+                                    <span class="yardops-chip @(r.SpotType.HasValue ? "" : "muted")"><i class="fas fa-location-dot"></i><span>@spotText</span></span>
+                                </div>
+                            </td>
+                            <td class="text-end">
+                                <strong>@r.FreeTimeMinutes.ToString("N0")</strong>
+                                <div class="yardops-subline">@FreeTimeText(r.FreeTimeMinutes)</div>
+                            </td>
+                            <td class="text-end"><strong>@r.RatePerHour.ToString("N0")</strong></td>
+                            <td class="text-end">@(r.MaxDailyRate > 0 ? r.MaxDailyRate.ToString("N0") : "Không giới hạn")</td>
+                            <td><span class="yardops-chip">@r.Currency</span></td>
+                            <td><span class="yardops-status @RateStatusClass(r.IsActive)">@RateStatusText(r.IsActive)</span></td>
+                            <td><span class="yardops-muted">@(!string.IsNullOrWhiteSpace(r.Notes) ? r.Notes : "--")</span></td>
+                            <td class="text-end text-nowrap">
+                                <button type="button"
+                                        class="btn btn-sm btn-secondary"
+                                        title="Sửa bảng giá"
+                                        data-rate-id="@r.YardBillingRateId"
+                                        data-warehouse-id="@r.WarehouseId"
+                                        data-partner-id="@(r.PartnerId?.ToString() ?? "")"
+                                        data-carrier="@r.CarrierName"
+                                        data-trailer-type="@((int?)r.TrailerType ?? 0)"
+                                        data-spot-type="@((int?)r.SpotType ?? 0)"
+                                        data-free-time="@r.FreeTimeMinutes"
+                                        data-rate="@r.RatePerHour"
+                                        data-max-daily="@r.MaxDailyRate"
+                                        data-currency="@r.Currency"
+                                        data-notes="@r.Notes"
+                                        data-wms-call-self="editRate">
+                                    <i class="fas fa-pen"></i>
+                                </button>
+                                <form method="post" asp-action="ToggleYardBillingRateActive" class="yardops-inline-form" data-enterprise-confirm="Cập nhật trạng thái bảng giá lưu bãi?" data-enterprise-confirm-ok="Cập nhật">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="yardBillingRateId" value="@r.YardBillingRateId" />
+                                    <input type="hidden" name="warehouseId" value="@Model.WarehouseId" />
+                                    <button type="submit" class="btn btn-sm @(r.IsActive ? "btn-secondary" : "btn-success")" title="@(r.IsActive ? "Ngưng áp dụng" : "Kích hoạt")">
+                                        <i class="fas @(r.IsActive ? "fa-pause" : "fa-play")"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                    @if (!rates.Any())
+                    {
+                        <tr>
+                            <td colspan="10">
+                                <div class="yardops-empty"><i class="fas fa-money-bill-trend-up"></i>Chưa có bảng giá nào. Nhấn "Thêm bảng giá" để bắt đầu.</div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+<div class="yardops-modal-overlay" id="rateModal" aria-hidden="true">
+    <form method="post" asp-action="SaveYardBillingRate" class="yardops-modal" role="dialog" aria-modal="true" aria-labelledby="rateModalTitle">
+        @Html.AntiForgeryToken()
+        <div class="yardops-modal-head">
+            <div>
+                <h2 class="yardops-modal-title" id="rateModalTitle">Thêm bảng giá</h2>
+                <p class="yardops-modal-subtitle">Giữ trống điều kiện để quy tắc áp dụng cho tất cả trong cùng kho.</p>
+            </div>
+            <button type="button" class="yardops-modal-close" data-wms-call="closeYardopsModal" data-wms-arg="rateModal" aria-label="Đóng"><i class="fas fa-xmark"></i></button>
+        </div>
+        <div class="yardops-modal-body">
+            <input type="hidden" name="yardBillingRateId" id="fRateId" />
+            <div class="yardops-section-grid">
+                <section class="yardops-section">
+                    <h3 class="yardops-section-title">Phạm vi áp dụng</h3>
+                    <div class="form-group">
+                        <label class="form-label">Kho <span class="text-danger">*</span></label>
+                        <select name="warehouseId" id="fWarehouseId" class="form-control" required>
+                            @foreach (var w in warehouses) { <option value="@w.WarehouseId">@w.WarehouseCode - @w.WarehouseName</option> }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Khách hàng/đối tác</label>
+                        <select name="partnerId" id="fPartnerId" class="form-control">
+                            <option value="">Tất cả</option>
+                            @foreach (var p in partners) { <option value="@p.PartnerId">@p.PartnerCode - @p.PartnerName</option> }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Hãng vận tải</label>
+                        <input type="text" name="carrierName" id="fCarrier" class="form-control" placeholder="Để trống = áp dụng tất cả" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Loại xe</label>
+                        <select name="trailerType" id="fTrailerType" class="form-control">
+                            <option value="">Tất cả</option>
+                            <option value="1">Rơ-moóc thường</option><option value="2">Công-ten-nơ</option><option value="3">Xe lạnh</option><option value="4">Thùng lửng</option><option value="5">Xe bồn</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Loại vị trí bãi</label>
+                        <select name="spotType" id="fSpotType" class="form-control">
+                            <option value="">Tất cả</option>
+                            <option value="1">Tiêu chuẩn</option><option value="2">Cắm điện xe lạnh</option><option value="3">Hàng nguy hiểm</option><option value="4">Rỗng</option><option value="5">Bảo trì</option>
+                        </select>
+                    </div>
+                </section>
+
+                <section class="yardops-section">
+                    <h3 class="yardops-section-title">Cấu hình phí</h3>
+                    <div class="form-group">
+                        <label class="form-label">Thời gian miễn phí (phút) <span class="text-danger">*</span></label>
+                        <input type="number" name="freeTimeMinutes" id="fFreeTime" class="form-control" value="2880" min="0" required />
+                        <div class="yardops-subline">VD: 2880 = 48 giờ</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Đơn giá/giờ <span class="text-danger">*</span></label>
+                        <input type="number" name="ratePerHour" id="fRate" class="form-control" step="1000" min="0" required />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Trần phí/ngày</label>
+                        <input type="number" name="maxDailyRate" id="fMaxDaily" class="form-control" step="1000" min="0" value="0" />
+                        <div class="yardops-subline">0 = không giới hạn</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tiền tệ</label>
+                        <input type="text" name="currency" id="fCurrency" class="form-control" value="VND" maxlength="10" />
+                    </div>
+                </section>
+
+                <section class="yardops-section">
+                    <h3 class="yardops-section-title">Ghi chú</h3>
+                    <div class="form-group">
+                        <label class="form-label">Ghi chú nội bộ</label>
+                        <textarea name="notes" id="fNotes" class="form-control textarea-lg-fixed" rows="8" placeholder="Điều khoản áp dụng, ngoại lệ, lý do cấu hình..."></textarea>
+                    </div>
+                </section>
+            </div>
+        </div>
+        <div class="yardops-modal-foot">
+            <button type="button" class="btn btn-secondary" data-wms-call="closeYardopsModal" data-wms-arg="rateModal">Hủy</button>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Lưu</button>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+<script>
+function openYardopsModal(id) {
+    const modal = document.getElementById(id);
+    if (!modal) return;
+    modal.classList.add('active');
+    modal.setAttribute('aria-hidden', 'false');
+}
+function closeYardopsModal(id) {
+    const modal = document.getElementById(id);
+    if (!modal) return;
+    modal.classList.remove('active');
+    modal.setAttribute('aria-hidden', 'true');
+}
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.yardops-modal-overlay.active').forEach(function(m) {
+            closeYardopsModal(m.id);
+        });
+    }
+});
+document.addEventListener('click', function(e) {
+    if (e.target.classList && e.target.classList.contains('yardops-modal-overlay')) {
+        closeYardopsModal(e.target.id);
+    }
+});
+function resetForm() {
+    document.getElementById('rateModalTitle').textContent = 'Thêm bảng giá';
+    document.getElementById('fRateId').value = '';
+    document.getElementById('fWarehouseId').value = '@(Model.WarehouseId?.ToString() ?? warehouses.FirstOrDefault()?.WarehouseId.ToString() ?? "")';
+    document.getElementById('fPartnerId').value = '';
+    document.getElementById('fCarrier').value = '';
+    document.getElementById('fTrailerType').value = '';
+    document.getElementById('fSpotType').value = '';
+    document.getElementById('fFreeTime').value = '2880';
+    document.getElementById('fRate').value = '';
+    document.getElementById('fMaxDaily').value = '0';
+    document.getElementById('fCurrency').value = 'VND';
+    document.getElementById('fNotes').value = '';
+}
+function editRate(button) {
+    const data = button.dataset;
+    document.getElementById('rateModalTitle').textContent = 'Sửa bảng giá';
+    document.getElementById('fRateId').value = data.rateId || '';
+    document.getElementById('fWarehouseId').value = data.warehouseId || '';
+    document.getElementById('fPartnerId').value = data.partnerId || '';
+    document.getElementById('fCarrier').value = data.carrier || '';
+    document.getElementById('fTrailerType').value = data.trailerType === '0' ? '' : (data.trailerType || '');
+    document.getElementById('fSpotType').value = data.spotType === '0' ? '' : (data.spotType || '');
+    document.getElementById('fFreeTime').value = data.freeTime || '2880';
+    document.getElementById('fRate').value = data.rate || '';
+    document.getElementById('fMaxDaily').value = data.maxDaily || '0';
+    document.getElementById('fCurrency').value = data.currency || 'VND';
+    document.getElementById('fNotes').value = data.notes || '';
+    openYardopsModal('rateModal');
+}
+</script>
+}

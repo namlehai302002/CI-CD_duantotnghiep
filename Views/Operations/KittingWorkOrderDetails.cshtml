@@ -1,0 +1,143 @@
+﻿@model WMS.Models.KittingWorkOrder
+@using WMS.Models
+@{
+    ViewData["Title"] = $"Phiếu lắp bộ hàng {Model.WorkOrderCode}";
+    var canCancel = User.IsInRole("Admin") || User.IsInRole("Manager");
+    string StatusText(KittingWorkOrderStatusEnum status) => status switch
+    {
+        KittingWorkOrderStatusEnum.Draft => "Nháp",
+        KittingWorkOrderStatusEnum.Reserved => "Đã giữ chỗ",
+        KittingWorkOrderStatusEnum.Completed => "Hoàn tất",
+        KittingWorkOrderStatusEnum.Cancelled => "Đã hủy",
+        _ => "Không áp dụng"
+    };
+    string LineStatusText(KittingWorkOrderLineStatusEnum status) => status switch
+    {
+        KittingWorkOrderLineStatusEnum.Draft => "Dự kiến",
+        KittingWorkOrderLineStatusEnum.Reserved => "Đã giữ chỗ",
+        KittingWorkOrderLineStatusEnum.Consumed => "Đã tiêu hao",
+        KittingWorkOrderLineStatusEnum.Released => "Đã giải phóng",
+        _ => "Không áp dụng"
+    };
+    string StatusBadge(KittingWorkOrderStatusEnum status) => status switch
+    {
+        KittingWorkOrderStatusEnum.Reserved => "badge-info",
+        KittingWorkOrderStatusEnum.Completed => "badge-success",
+        KittingWorkOrderStatusEnum.Cancelled => "badge-danger",
+        _ => "badge-secondary"
+    };
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-boxes-packing text-accent"></i> @Model.WorkOrderCode</h1>
+        <p class="page-subtitle">Phiếu lắp mã hàng bộ từ định mức nguyên vật liệu, có nhật ký giữ chỗ, tiêu hao vật tư thành phần và nhập thành phẩm.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-secondary" asp-controller="Operations" asp-action="KittingWorkOrders"><i class="fas fa-arrow-left"></i> Danh sách</a>
+        @if (Model.Status == KittingWorkOrderStatusEnum.Completed)
+        {
+            <a class="btn btn-success" asp-controller="Operations" asp-action="PrintKittingWorkOrderLabels" asp-route-id="@Model.KittingWorkOrderId" target="_blank"><i class="fas fa-tags"></i> In tem bộ hàng</a>
+        }
+    </div>
+</div>
+
+<div class="detail-grid mb-4">
+    <div class="detail-item">
+        <div class="detail-label">Mã hàng bộ</div>
+        <div class="detail-value">@Model.FinishedItem?.ItemCode - @Model.FinishedItem?.ItemName</div>
+    </div>
+    <div class="detail-item">
+        <div class="detail-label">Kho</div>
+        <div class="detail-value">@Model.Warehouse?.WarehouseCode - @Model.Warehouse?.WarehouseName</div>
+    </div>
+    <div class="detail-item">
+        <div class="detail-label">Vị trí nhập</div>
+        <div class="detail-value">@Model.FinishedLocation?.LocationCode</div>
+    </div>
+    <div class="detail-item">
+        <div class="detail-label">Số lượng</div>
+        <div class="detail-value">@Model.CompletedQty.ToString("N0") / @Model.PlannedQty.ToString("N0") @Model.FinishedItem?.BaseUom?.UomCode</div>
+    </div>
+    <div class="detail-item">
+        <div class="detail-label">Lô/HSD thành phẩm</div>
+        <div class="detail-value">@(Model.FinishedLotNumber ?? "---") @(Model.FinishedExpiryDate.HasValue ? $" / {Model.FinishedExpiryDate:dd/MM/yyyy}" : "")</div>
+    </div>
+    <div class="detail-item">
+        <div class="detail-label">Trạng thái</div>
+        <div class="detail-value"><span class="badge @StatusBadge(Model.Status)">@StatusText(Model.Status)</span></div>
+    </div>
+</div>
+
+<div class="enterprise-card mb-4">
+    <div class="enterprise-card-header">
+        <div>
+            <h3 class="enterprise-card-title">Thao tác</h3>
+            <p class="enterprise-card-subtitle">Giữ chỗ sẽ phân bổ vật tư thành phần theo nguyên tắc hết hạn trước xuất trước. Hoàn tất sẽ trừ vật tư thành phần và nhập mã hàng bộ.</p>
+        </div>
+    </div>
+    <div class="enterprise-card-body enterprise-inline-controls">
+        @if (Model.Status == KittingWorkOrderStatusEnum.Draft)
+        {
+            <form method="post" asp-controller="Operations" asp-action="ReserveKittingWorkOrder" data-enterprise-confirm="Giữ chỗ vật tư thành phần cho phiếu lắp bộ này?">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.KittingWorkOrderId" />
+                <button class="btn btn-primary" type="submit"><i class="fas fa-lock"></i> Giữ chỗ vật tư thành phần</button>
+            </form>
+        }
+        @if (Model.Status == KittingWorkOrderStatusEnum.Reserved)
+        {
+            <form method="post" asp-controller="Operations" asp-action="CompleteKittingWorkOrder" data-enterprise-confirm="Hoàn tất phiếu lắp bộ hàng này?">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.KittingWorkOrderId" />
+                <button class="btn btn-success" type="submit"><i class="fas fa-check"></i> Hoàn tất lắp bộ hàng</button>
+            </form>
+        }
+        @if (canCancel && Model.Status is KittingWorkOrderStatusEnum.Draft or KittingWorkOrderStatusEnum.Reserved)
+        {
+            <form method="post" asp-controller="Operations" asp-action="CancelKittingWorkOrder" class="enterprise-inline-controls" data-enterprise-confirm="Hủy phiếu lắp bộ hàng này?">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.KittingWorkOrderId" />
+                <input class="form-control w-240" name="reason" placeholder="Lý do hủy" aria-label="Lý do hủy phiếu lắp bộ hàng" required />
+                <button class="btn btn-danger" type="submit"><i class="fas fa-ban"></i> Hủy phiếu</button>
+            </form>
+        }
+    </div>
+</div>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Vật tư thành phần</th>
+                <th>Vị trí nguồn</th>
+                <th>Lô/HSD</th>
+                <th class="td-number">Cần</th>
+                <th class="td-number">Giữ chỗ</th>
+                <th class="td-number">Tiêu hao</th>
+                <th class="td-number">Giải phóng</th>
+                <th>Trạng thái</th>
+                <th>Ghi chú</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var line in Model.Lines.OrderBy(l => l.ComponentItem?.ItemCode).ThenBy(l => l.ExpiryDate).ThenBy(l => l.SourceLocation?.LocationCode))
+        {
+            <tr>
+                <td>
+                    <div class="fw-700">@line.ComponentItem?.ItemCode</div>
+                    <div class="text-muted table-subtext">@line.ComponentItem?.ItemName</div>
+                </td>
+                <td><span class="td-code">@(line.SourceLocation?.LocationCode ?? "Chưa phân bổ")</span></td>
+                <td>@(line.LotNumber ?? "---") @(line.ExpiryDate.HasValue ? $" / {line.ExpiryDate:dd/MM/yyyy}" : "")</td>
+                <td class="td-number">@line.RequiredQty.ToString("N4")</td>
+                <td class="td-number">@line.ReservedQty.ToString("N4")</td>
+                <td class="td-number">@line.ConsumedQty.ToString("N4")</td>
+                <td class="td-number">@line.ReleasedQty.ToString("N4")</td>
+                <td><span class="badge badge-secondary">@LineStatusText(line.Status)</span></td>
+                <td class="table-subtext">@line.Notes</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>

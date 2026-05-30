@@ -1,0 +1,348 @@
+@model List<WMS.Models.Voucher>
+@{
+    ViewData["Title"] = "Kiểm tra chất lượng";
+    var inspections = (List<WMS.Models.QualityInspection>)(ViewBag.ExistingInspections ?? new List<WMS.Models.QualityInspection>());
+    var partners = (Dictionary<int, WMS.Models.Partner>)(ViewBag.Partners ?? new Dictionary<int, WMS.Models.Partner>());
+    var warehouses = (List<WMS.Models.Warehouse>)ViewBag.Warehouses;
+    var passedCount = inspections.Count(i => i.OverallResult == WMS.Models.QualityStatusEnum.Passed);
+    var failedCount = inspections.Count(i => i.OverallResult == WMS.Models.QualityStatusEnum.Failed);
+    var inspectedVoucherCount = inspections.Select(i => i.VoucherId).Distinct().Count();
+    var passRate = inspections.Count > 0 ? Math.Round((decimal)passedCount / inspections.Count * 100, 1) : 0m;
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-microscope text-accent"></i> Kiểm tra chất lượng</h1>
+        <p class="page-subtitle">Ghi nhận kiểm phẩm AQL/ISO 2859-1 cho phiếu nhập đang chờ duyệt hoặc đang nhận hàng, có truy vết dòng hàng và hướng xử lý.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Reports" asp-action="Analytics" class="btn btn-secondary"><i class="fas fa-chart-line"></i> Phân tích vận hành</a>
+    </div>
+</div>
+
+<section class="enterprise-section quality-playbook">
+    <div class="enterprise-section-header">
+        <div>
+            <div class="enterprise-section-title">Quy trình kiểm phẩm chuẩn</div>
+            <div class="enterprise-section-subtitle">Nhân viên chọn phiếu, xác định dòng hàng, nhập mẫu kiểm và gửi kết quả để kho tiếp tục nhận hàng hoặc xử lý ngoại lệ.</div>
+        </div>
+        <span class="badge badge-accent">AQL / ISO 2859-1</span>
+    </div>
+    <div class="quality-step-grid">
+        <div class="quality-step"><i class="fas fa-clipboard-list"></i><span>Chọn phiếu nhập</span></div>
+        <div class="quality-step"><i class="fas fa-vial"></i><span>Xác định tỷ lệ mẫu</span></div>
+        <div class="quality-step"><i class="fas fa-check-double"></i><span>Ghi SL đạt / lỗi</span></div>
+        <div class="quality-step"><i class="fas fa-stamp"></i><span>Chọn hướng xử lý</span></div>
+    </div>
+</section>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select class="form-control" name="warehouseId">
+            <option value="">Tất cả</option>
+            @foreach (var w in warehouses)
+            {
+                <option value="@w.WarehouseId" selected="@(ViewBag.WarehouseId != null && (int)ViewBag.WarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc</button>
+    </div>
+</form>
+
+<div class="stats-grid">
+    <div class="stat-card accent">
+        <div class="stat-icon"><i class="fas fa-file-import"></i></div>
+        <div class="stat-value">@Model.Count</div>
+        <div class="stat-label">Phiếu chờ kiểm tra</div>
+    </div>
+    <div class="stat-card info">
+        <div class="stat-icon"><i class="fas fa-clipboard-check"></i></div>
+        <div class="stat-value">@inspectedVoucherCount</div>
+        <div class="stat-label">Phiếu đã kiểm tra</div>
+    </div>
+    <div class="stat-card success">
+        <div class="stat-icon"><i class="fas fa-circle-check"></i></div>
+        <div class="stat-value">@passedCount</div>
+        <div class="stat-label">Dòng đạt</div>
+    </div>
+    <div class="stat-card danger">
+        <div class="stat-icon"><i class="fas fa-circle-xmark"></i></div>
+        <div class="stat-value">@failedCount</div>
+        <div class="stat-label">Dòng không đạt</div>
+    </div>
+    <div class="stat-card purple">
+        <div class="stat-icon"><i class="fas fa-percent"></i></div>
+        <div class="stat-value">@passRate%</div>
+        <div class="stat-label">Tỷ lệ đạt</div>
+    </div>
+</div>
+
+<section class="enterprise-section">
+    <div class="enterprise-section-header">
+        <div>
+            <div class="enterprise-section-title">Phiếu nhập chờ kiểm tra</div>
+            <div class="enterprise-section-subtitle">Mỗi dòng phiếu chỉ được ghi nhận kiểm phẩm một lần để tránh trùng kết quả.</div>
+        </div>
+        <button class="btn-export" type="button" data-wms-export-table="#qualityInspectionTable" data-wms-export-filename="kiem_tra_chat_luong">
+            <i class="fas fa-file-excel"></i> Xuất Excel
+        </button>
+    </div>
+    <div class="table-container">
+        <table id="qualityInspectionTable" class="data-table">
+            <thead>
+                <tr>
+                    <th class="sortable">Mã phiếu</th>
+                    <th>Kho</th>
+                    <th class="sortable">Đối tác</th>
+                    <th>Loại</th>
+                    <th class="cell-center">Trạng thái</th>
+                    <th class="cell-center">Tỷ lệ mẫu</th>
+                    <th class="cell-right sortable">Dòng</th>
+                    <th class="cell-center">Kiểm tra</th>
+                    <th class="table-actions-col"></th>
+                </tr>
+            </thead>
+            <tbody>
+            @if (!Model.Any())
+            {
+                <tr>
+                    <td colspan="9" class="cell-compact">
+                        <div class="empty-state">
+                            <div class="empty-icon"><i class="fas fa-microscope"></i></div>
+                            <div class="empty-text">Không có phiếu nhập nào cần kiểm tra</div>
+                            <div class="empty-sub">Chưa có phiếu ở giai đoạn chờ duyệt hoặc đang nhận hàng theo bộ lọc hiện tại.</div>
+                        </div>
+                    </td>
+                </tr>
+            }
+            @foreach (var v in Model)
+            {
+                var hasQc = inspections.Any(i => i.VoucherId == v.VoucherId);
+                var qcRows = inspections.Where(i => i.VoucherId == v.VoucherId).ToList();
+                var allPassed = qcRows.Count > 0 && qcRows.All(q => q.OverallResult == WMS.Models.QualityStatusEnum.Passed);
+                var anyFailed = qcRows.Any(q => q.OverallResult == WMS.Models.QualityStatusEnum.Failed);
+                var samplePercent = v.PartnerId.HasValue && partners.ContainsKey(v.PartnerId.Value) ? partners[v.PartnerId.Value].QcSamplePercent : 100m;
+                var statusLabel = v.StatusDisplay;
+                var statusBadge = v.StatusBadgeClass;
+                <tr>
+                    <td>
+                        <div class="td-code fs-body-sm">@v.VoucherCode</div>
+                        <div class="table-subtext text-muted">@v.CreatedAt.ToString("dd/MM HH:mm")</div>
+                    </td>
+                    <td>@(v.Warehouse?.WarehouseName ?? "---")</td>
+                    <td>@(v.Partner?.PartnerName ?? "---")</td>
+                    <td><span class="fs-sm">@v.VoucherTypeName</span></td>
+                    <td class="cell-center"><span class="badge @statusBadge">@statusLabel</span></td>
+                    <td class="cell-center"><span class="badge badge-accent">@samplePercent%</span></td>
+                    <td class="td-number">@v.Details.Count</td>
+                    <td class="cell-center">
+                        @if (!hasQc)
+                        {
+                            <span class="badge badge-secondary">Chưa kiểm tra</span>
+                        }
+                        else if (allPassed)
+                        {
+                            <span class="badge badge-success"><i class="fas fa-check"></i> Đạt</span>
+                        }
+                        else if (anyFailed)
+                        {
+                            <span class="badge badge-danger"><i class="fas fa-times"></i> Không đạt</span>
+                        }
+                        else
+                        {
+                            <span class="badge badge-warning">Đang kiểm tra</span>
+                        }
+                    </td>
+                    <td class="td-actions">
+                        @if (qcRows.Count >= v.Details.Count)
+                        {
+                            <button type="button" class="btn btn-sm btn-secondary" disabled title="Phiếu đã được kiểm tra"><i class="fas fa-check-circle"></i> Đã kiểm tra</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn btn-sm btn-primary" data-voucher-id="@v.VoucherId" data-voucher-code="@v.VoucherCode" data-wms-call-self="openQcFromButton"><i class="fas fa-microscope"></i> Kiểm tra</button>
+                        }
+                        <a asp-controller="Vouchers" asp-action="Details" asp-route-id="@v.VoucherId" class="btn btn-sm btn-secondary" title="Xem phiếu"><i class="fas fa-eye"></i></a>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<div id="qcModal" class="qc-overlay app-modal-overlay" aria-hidden="true">
+    <div class="qc-dialog app-modal" role="dialog" aria-modal="true" aria-labelledby="qcModalTitle">
+        <div class="qc-header app-modal-header">
+            <div class="qc-header-left">
+                <div class="qc-header-icon"><i class="fas fa-microscope"></i></div>
+                <div>
+                    <h3 class="qc-title app-modal-title" id="qcModalTitle">Ghi nhận kết quả kiểm tra</h3>
+                    <p class="qc-subtitle app-modal-subtitle" id="qcSub">---</p>
+                </div>
+            </div>
+            <button type="button" class="qc-close" data-wms-call="closeQc" title="Đóng (Esc)" aria-label="Đóng hộp thoại kiểm phẩm"><i class="fas fa-times"></i></button>
+        </div>
+
+        <form method="post" asp-action="SubmitInspection" class="qc-body app-modal-body" id="qcForm">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="voucherId" id="qcVid" />
+
+            <div class="qc-section">
+                <div class="qc-section-title"><i class="fas fa-box-open"></i> Thông tin hàng hóa</div>
+                <div class="qc-row-2">
+                    <div class="qc-field">
+                        <label class="qc-label" for="qcItem">Mã hàng <span class="qc-required">*</span></label>
+                        <select class="form-control" name="itemId" id="qcItem" required>
+                            <option value="">Chọn mặt hàng</option>
+                        </select>
+                    </div>
+                    <div class="qc-field">
+                        <label class="qc-label" for="qcDid">Mã chi tiết phiếu</label>
+                        <input type="number" class="form-control" name="voucherDetailId" id="qcDid" placeholder="Tự điền" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="qc-section">
+                <div class="qc-section-title"><i class="fas fa-calculator"></i> Số lượng kiểm tra</div>
+                <div class="qc-row-4">
+                    <div class="qc-field">
+                        <label class="qc-label" for="qcTot">Tổng số lượng</label>
+                        <input type="number" step="0.01" class="form-control" name="totalQty" id="qcTot" required min="0" placeholder="0" />
+                    </div>
+                    <div class="qc-field">
+                        <label class="qc-label" for="qcSam">SL mẫu kiểm</label>
+                        <input type="number" step="0.01" class="form-control" name="sampleQty" id="qcSam" required min="0" placeholder="0" />
+                    </div>
+                    <div class="qc-field qc-field-pass">
+                        <label class="qc-label" for="qcPass"><i class="fas fa-check-circle"></i> SL đạt</label>
+                        <input type="number" step="0.01" class="form-control qc-input-pass" name="passedQty" id="qcPass" required min="0" placeholder="0" />
+                    </div>
+                    <div class="qc-field qc-field-fail">
+                        <label class="qc-label" for="qcFail"><i class="fas fa-times-circle"></i> SL lỗi</label>
+                        <input type="number" step="0.01" class="form-control qc-input-fail" name="failedQty" id="qcFail" required min="0" placeholder="0" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="qc-section">
+                <div class="qc-section-title"><i class="fas fa-gavel"></i> Hướng xử lý và ghi chú</div>
+                <div class="qc-field mb-3">
+                    <label class="qc-label" for="qcDisposition">Hướng xử lý</label>
+                    <select class="form-control" name="disposition" id="qcDisposition">
+                        <option value="1">Chấp nhận</option>
+                        <option value="2">Từ chối</option>
+                        <option value="3">Sửa lại</option>
+                        <option value="4">Trả nhà cung cấp</option>
+                        <option value="6">Chấp nhận có điều kiện</option>
+                        <option value="5">Thanh lý</option>
+                    </select>
+                </div>
+                <div class="qc-field mb-3">
+                    <label class="qc-label" for="qcDefectDescription">Mô tả khuyết tật</label>
+                    <textarea class="form-control" name="defectDescription" id="qcDefectDescription" rows="2" placeholder="VD: Bao bì rách 3 kiện, nhãn bị mờ không đọc được mã vạch..."></textarea>
+                </div>
+                <div class="qc-field">
+                    <label class="qc-label" for="qcNotes">Ghi chú bổ sung</label>
+                    <textarea class="form-control" name="notes" id="qcNotes" rows="2" placeholder="Ghi chú thêm cho phiếu kiểm tra..."></textarea>
+                </div>
+            </div>
+
+            <div class="qc-footer app-modal-footer action-bar">
+                <button type="button" class="btn btn-secondary" data-wms-call="closeQc"><i class="fas fa-times"></i> Hủy</button>
+                <button type="submit" class="btn btn-primary" id="qcSubmitBtn"><i class="fas fa-save"></i> Ghi nhận kết quả</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+var VI = {};
+@foreach (var v in Model)
+{
+    <text>VI[@v.VoucherId] = [</text>
+    var first = true;
+    foreach (var d in v.Details)
+    {
+        if (!first) { <text>,</text> }
+        <text>{d:@d.VoucherDetailId,i:@d.ItemId,c:@Html.Raw(System.Text.Json.JsonSerializer.Serialize(d.Item?.ItemCode ?? "")),n:@Html.Raw(System.Text.Json.JsonSerializer.Serialize(d.Item?.ItemName ?? "")),q:@d.BaseQty}</text>
+        first = false;
+    }
+    <text>];</text>
+}
+var inspectedDetailIds = {};
+@foreach (var qc in inspections.Where(x => x.VoucherDetailId.HasValue))
+{
+    <text>inspectedDetailIds[@qc.VoucherDetailId!.Value] = true;</text>
+}
+
+function openQcFromButton(button) {
+    openQc(button.dataset.voucherId, button.dataset.voucherCode || '');
+}
+
+function openQc(id, code) {
+    document.getElementById('qcVid').value = id;
+    document.getElementById('qcSub').textContent = 'Phiếu: ' + code;
+    var s = document.getElementById('qcItem');
+    s.replaceChildren(new Option('Chọn mặt hàng', ''));
+    (VI[id] || []).filter(function (x) { return !inspectedDetailIds[x.d]; }).forEach(function (x) {
+        var o = new Option(x.c + ' - ' + x.n + ' (SL: ' + x.q + ')', x.i);
+        o.dataset.d = x.d;
+        o.dataset.q = x.q;
+        s.appendChild(o);
+    });
+    document.getElementById('qcSubmitBtn').disabled = s.options.length <= 1;
+    var modal = document.getElementById('qcModal');
+    modal.classList.add('is-open');
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeQc() {
+    var modal = document.getElementById('qcModal');
+    modal.classList.remove('is-open');
+    modal.setAttribute('aria-hidden', 'true');
+    document.getElementById('qcSubmitBtn').disabled = false;
+}
+
+document.getElementById('qcModal').addEventListener('click', function (e) {
+    if (e.target === this) closeQc();
+});
+
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && document.getElementById('qcModal').classList.contains('is-open')) closeQc();
+});
+
+document.getElementById('qcItem').addEventListener('change', function () {
+    var o = this.options[this.selectedIndex];
+    if (o && o.dataset.d) {
+        document.getElementById('qcDid').value = o.dataset.d;
+        document.getElementById('qcTot').value = o.dataset.q;
+        var sampleQty = Math.max(1, Math.ceil(parseFloat(o.dataset.q) * 0.1));
+        document.getElementById('qcSam').value = sampleQty;
+        document.getElementById('qcPass').value = sampleQty;
+        document.getElementById('qcFail').value = 0;
+    }
+});
+
+document.getElementById('qcForm').addEventListener('submit', function (e) {
+    var total = parseFloat(document.getElementById('qcTot').value || '0');
+    var sample = parseFloat(document.getElementById('qcSam').value || '0');
+    var pass = parseFloat(document.getElementById('qcPass').value || '0');
+    var fail = parseFloat(document.getElementById('qcFail').value || '0');
+    if (sample <= 0 || sample > total || Math.abs((pass + fail) - sample) > 0.0001) {
+        e.preventDefault();
+        enterpriseNotify({ title: 'Dữ liệu QC không hợp lệ', text: 'Kiểm tra lại Tổng SL, SL mẫu, SL đạt và SL lỗi.', icon: 'warning' });
+        return;
+    }
+    var btn = document.getElementById('qcSubmitBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang lưu...';
+});
+</script>
+}

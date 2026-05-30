@@ -1,0 +1,87 @@
+﻿@model List<WMS.Models.Warehouse>
+@{
+    ViewData["Title"] = "Quản lý kho";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Hệ thống kho</h1>
+        <p class="page-subtitle">Quản lý danh sách kho, khu vực và vị trí lưu trữ theo cách rõ ràng, dễ tra cứu và dễ vận hành.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Warehouses" asp-action="Create" class="btn btn-primary"><i class="fas fa-plus"></i> Thêm kho mới</a>
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-circle-info"></i> Gợi ý nhanh</div>
+    <div class="user-guide-text">Nên tạo kho trước, sau đó vào chi tiết kho để cấu hình khu vực, vị trí và sơ đồ lưu trữ cho đúng thực tế vận hành.</div>
+</div>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Mã kho</th>
+                <th>Tên kho</th>
+                <th>Địa chỉ</th>
+                <th>Người quản lý</th>
+                <th>Điện thoại</th>
+                <th class="text-right">Số khu vực</th>
+                <th class="text-right">Thao tác</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!Model.Any())
+            {
+                <tr>
+                    <td colspan="7" class="table-empty-cell">
+                        <div class="table-empty-content">Chưa có kho nào được thiết lập. Hãy tạo kho trước khi cấu hình khu vực và vị trí.</div>
+                    </td>
+                </tr>
+            }
+            else
+            {
+                @foreach (var w in Model)
+                {
+                    <tr>
+                        <td><a asp-controller="Warehouses" asp-action="Details" asp-route-id="@w.WarehouseId" class="td-code">@w.WarehouseCode</a></td>
+                        <td class="td-name fw-600">@w.WarehouseName</td>
+                        <td>@(string.IsNullOrEmpty(w.Address) ? "Chưa cập nhật" : w.Address)</td>
+                        <td>@(w.ManagerUser != null ? w.ManagerUser.FullName : (string.IsNullOrEmpty(w.ManagerName) ? "Chưa phân công" : w.ManagerName))</td>
+                        <td>@(string.IsNullOrEmpty(w.Phone) ? "Chưa cập nhật" : w.Phone)</td>
+                        <td class="td-number">@(w.Zones?.Count ?? 0)</td>
+                        <td class="td-actions">
+                            <a asp-controller="Warehouses" asp-action="Details" asp-route-id="@w.WarehouseId" class="btn btn-sm btn-info" title="Cấu hình vị trí"><i class="fas fa-sitemap"></i></a>
+                            <a asp-controller="Warehouses" asp-action="Edit" asp-route-id="@w.WarehouseId" class="btn btn-sm btn-secondary" title="Sửa thông tin"><i class="fas fa-edit"></i></a>
+                            <form method="post" asp-controller="Warehouses" asp-action="Delete" asp-route-id="@w.WarehouseId" class="js-confirm-warehouse-delete inline-form">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="btn btn-sm btn-danger" title="Ẩn kho"><i class="fas fa-trash"></i></button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+@section Scripts {
+<script>
+    document.querySelectorAll('.js-confirm-warehouse-delete').forEach(form => {
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            if (typeof Swal === 'undefined') { this.submit(); return; }
+            Swal.fire({
+                title: 'Ẩn kho này?',
+                text: 'Kho sẽ được ẩn khỏi danh sách thao tác, không bị xóa khỏi cơ sở dữ liệu.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Ẩn kho',
+                cancelButtonText: 'Hủy',
+                confirmButtonColor: '#ef4444'
+            }).then(r => { if (r.isConfirmed) this.submit(); });
+        });
+    });
+</script>
+}

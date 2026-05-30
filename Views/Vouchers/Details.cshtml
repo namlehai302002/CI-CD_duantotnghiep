@@ -1,0 +1,1643 @@
+@model WMS.Models.Voucher
+@{
+    ViewData["Title"] = $"Phiếu: {Model.VoucherCode}";
+    Func<DateTime, string> toVN = (dt) => dt.ToString("dd/MM/yyyy HH:mm");
+    Func<DateTime, string> toVNDate = (dt) => dt.ToString("dd/MM/yyyy");
+    var isInbound = Model.IsInboundFlow;
+    var canReviewInbound = (User.IsInRole("Admin") || User.IsInRole("Manager")) && !Model.IsPosted && isInbound && Model.InboundStatus == WMS.Models.InboundStatusEnum.Receiving;
+    var canSeeFinancial = (bool)(ViewBag.CanSeeFinancial ?? false);
+    var isOutboundFlow = Model.VoucherType is WMS.Models.VoucherTypeEnum.XuatKho or WMS.Models.VoucherTypeEnum.TraNCC or WMS.Models.VoucherTypeEnum.ChuyenKho or WMS.Models.VoucherTypeEnum.XuatSanXuat;
+    var canManageOutbound = (User.IsInRole("Admin") || User.IsInRole("Manager")) && !Model.IsPosted && !Model.IsCancelled && isOutboundFlow;
+    var canConfirmForPicking = canManageOutbound && !Model.WaveId.HasValue && Model.FulfillmentStatus < WMS.Models.FulfillmentStatusEnum.WaitingForPick;
+    var canReleaseDirect = canConfirmForPicking;
+    var canPostOutbound = canManageOutbound && !canConfirmForPicking && Model.FulfillmentStatus >= WMS.Models.FulfillmentStatusEnum.Picking;
+    var canPack = isOutboundFlow && Model.IsPosted && !Model.IsCancelled && !Model.PackedAt.HasValue && (User.IsInRole("Admin") || User.IsInRole("Manager") || User.IsInRole("Staff"));
+    var canShip = isOutboundFlow && Model.IsPosted && !Model.IsCancelled && Model.PackedAt.HasValue && !Model.ShippedAt.HasValue && (User.IsInRole("Admin") || User.IsInRole("Manager"));
+    var canSubmit = isInbound && !Model.IsCancelled && (Model.InboundStatus == WMS.Models.InboundStatusEnum.Draft || Model.InboundStatus == WMS.Models.InboundStatusEnum.Rejected);
+    var canApproveInbound = isInbound && !Model.IsCancelled && Model.InboundStatus == WMS.Models.InboundStatusEnum.PendingApproval && (User.IsInRole("Admin") || User.IsInRole("Manager"));
+    var canRejectInbound = canApproveInbound;
+    var canConfirmReceiving = isInbound && !Model.IsCancelled && Model.InboundStatus == WMS.Models.InboundStatusEnum.Approved;
+    var canComplete = canReviewInbound;
+    var canAssignDock = isInbound && !Model.IsCancelled && !Model.IsPosted && (User.IsInRole("Admin") || User.IsInRole("Manager"));
+    var isBlindReceiving = isInbound && !Model.IsCancelled && Model.InboundStatus == WMS.Models.InboundStatusEnum.Receiving;
+    var licensePlates = ViewBag.LicensePlates as IEnumerable<WMS.Models.LicensePlate>;
+    var outboundPackages = ViewBag.OutboundPackages as IEnumerable<WMS.Models.OutboundPackage>;
+    var shippingHandovers = ViewBag.ShippingHandovers as IEnumerable<WMS.Models.ShippingHandoverLog>;
+    var catchWeightEntries = ViewBag.CatchWeightEntries as IEnumerable<WMS.Models.CatchWeightEntry>;
+    var requiresCatchWeight = Model.Details.Any(d => d.Item?.TrackCatchWeight == true);
+    var serialCountsByDetail = ViewBag.SerialCountsByDetail as IDictionary<long, int> ?? new Dictionary<long, int>();
+    var completedCrossDockByDetail = ViewBag.CompletedCrossDockByDetail as IDictionary<long, decimal> ?? new Dictionary<long, decimal>();
+    var inboundReadinessIssues = new List<string>();
+    if (canReviewInbound)
+    {
+        foreach (var detail in Model.Details.OrderBy(d => d.LineNumber))
+        {
+            var item = detail.Item;
+            if (item == null) { continue; }
+            var defectBase = detail.DefectBaseQty > 0 ? detail.DefectBaseQty : detail.DefectQty * (detail.ConversionRate == 0 ? 1 : Math.Abs(detail.ConversionRate));
+            var goodBaseQty = Math.Max(0, detail.BaseQty - Math.Max(0, defectBase));
+            if (goodBaseQty <= 0.0001m) { continue; }
+            var putawayBaseQty = Math.Max(0, goodBaseQty - (completedCrossDockByDetail.TryGetValue(detail.VoucherDetailId, out var crossDockQty) ? crossDockQty : 0m));
+            if (item.TrackLot && string.IsNullOrWhiteSpace(detail.LotNumber)) inboundReadinessIssues.Add($"{item.ItemCode}: thiếu số lô.");
+            if (item.TrackExpiry && !detail.ExpiryDate.HasValue) inboundReadinessIssues.Add($"{item.ItemCode}: thiếu hạn dùng.");
+            if (putawayBaseQty > 0.0001m && !detail.LocationId.HasValue) inboundReadinessIssues.Add($"{item.ItemCode}: thiếu vị trí cất hàng cho {putawayBaseQty:N4} đơn vị.");
+            if (detail.QualityStatus is WMS.Models.QualityStatusEnum.Pending or WMS.Models.QualityStatusEnum.Inspecting or WMS.Models.QualityStatusEnum.Failed or WMS.Models.QualityStatusEnum.Quarantine or WMS.Models.QualityStatusEnum.OnHold)
+            {
+                inboundReadinessIssues.Add($"{item.ItemCode}: kiểm phẩm chưa sẵn sàng.");
+            }
+            if (item.TrackSerial)
+            {
+                var requiredSerials = goodBaseQty == decimal.Truncate(goodBaseQty) ? (int)Math.Ceiling(goodBaseQty) : -1;
+                var actualSerials = serialCountsByDetail.TryGetValue(detail.VoucherDetailId, out var serialCount) ? serialCount : 0;
+                if (requiredSerials < 0) inboundReadinessIssues.Add($"{item.ItemCode}: số lượng nhận phải là số nguyên vì có quản lý số sê-ri.");
+                else if (actualSerials != requiredSerials) inboundReadinessIssues.Add($"{item.ItemCode}: đã đăng ký {actualSerials}/{requiredSerials} số sê-ri.");
+            }
+            if (item.TrackCatchWeight && item.RequireCatchWeightAtReceive)
+            {
+                var capturedBaseQty = catchWeightEntries?.Where(e => e.VoucherDetailId == detail.VoucherDetailId && (e.CapturePoint == WMS.Models.CatchWeightCapturePointEnum.Receive || e.CapturePoint == WMS.Models.CatchWeightCapturePointEnum.Putaway)).Sum(e => e.BaseQuantity) ?? 0m;
+                if (capturedBaseQty + 0.0001m < goodBaseQty) inboundReadinessIssues.Add($"{item.ItemCode}: đã cân {capturedBaseQty:N4}/{goodBaseQty:N4} đơn vị gốc.");
+            }
+        }
+    }
+    var outboundReadinessIssues = new List<string>();
+    if (canShip)
+    {
+        var packageList = outboundPackages?.ToList() ?? new List<WMS.Models.OutboundPackage>();
+        if (packageList.Count == 0) outboundReadinessIssues.Add("Phiếu chưa có kiện xuất để bàn giao.");
+        if (requiresCatchWeight && packageList.Any(p => !p.ActualCatchWeight.HasValue || p.ActualCatchWeight.Value <= 0)) outboundReadinessIssues.Add("Còn kiện xuất thiếu trọng lượng thực tế.");
+        if (Model.VoucherType == WMS.Models.VoucherTypeEnum.ChuyenKho && string.IsNullOrWhiteSpace(Model.ManifestCode)) outboundReadinessIssues.Add("Phiếu chuyển kho cần mã chuyến bàn giao trước khi giao hàng.");
+    }
+}
+
+<div class="print-header">
+    <div class="print-company">
+        <div class="print-company-name">CÔNG TY TNHH WMS PRO</div>
+        <div class="print-company-info">Quản lý kho nguyên vật liệu & thành phẩm</div>
+    </div>
+    <div class="print-voucher-title">
+        <div class="print-title">@Model.VoucherTypeName.ToUpper()</div>
+        <div class="print-code">Số: @Model.VoucherCode</div>
+        <div class="print-date">Ngày: @toVNDate(Model.VoucherDate)</div>
+    </div>
+</div>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Chi Tiết Phiếu</h1>
+        <p class="page-subtitle">@Model.VoucherCode | Lập ngày @toVN(Model.CreatedAt)</p>
+    </div>
+    <div class="page-actions">
+        @if ((User.IsInRole("Admin") || User.IsInRole("Manager")) && Model.IsPartial && (Model.VoucherType == WMS.Models.VoucherTypeEnum.NhapKho || Model.VoucherType == WMS.Models.VoucherTypeEnum.KhachTra || Model.VoucherType == WMS.Models.VoucherTypeEnum.NhapThanhPham))
+        {
+            <a asp-controller="Vouchers" asp-action="ReplenishDefect" asp-route-id="@Model.VoucherId" class="btn btn-warning"><i class="fas fa-exclamation-triangle"></i> Bù Hàng Lỗi</a>
+        }
+        @if (canReviewInbound)
+        {
+            <form method="post" asp-controller="Vouchers" asp-action="Approve" class="d-inline" id="approveForm">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.VoucherId" />
+                <input type="hidden" name="reviewResult" id="reviewResultInput" value="2" />
+                <input type="hidden" name="responsibilityScore" id="responsibilityScoreInput" value="0" />
+                <input type="hidden" name="reviewNote" id="reviewNoteInput" value="" />
+                <button type="button" class="btn btn-success" id="approveBtn"><i class="fas fa-check-double"></i> Tăng tồn</button>
+            </form>
+        }
+        @if (canConfirmForPicking)
+        {
+            <form method="post" asp-controller="Vouchers" asp-action="ConfirmForPicking" class="d-inline"
+                  data-enterprise-confirm="Xác nhận chuyển phiếu sang luồng lấy hàng?"
+                  data-enterprise-confirm-title="Xác nhận tạo nhiệm vụ lấy hàng"
+                  data-enterprise-confirm-ok="Xác nhận">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.VoucherId" />
+                <button type="submit" class="btn btn-warning"><i class="fas fa-layer-group"></i> Xác nhận tạo nhiệm vụ lấy hàng</button>
+            </form>
+        }
+        @if (canReleaseDirect)
+        {
+            <form method="post" asp-controller="Vouchers" asp-action="ReleaseDirect" class="d-inline"
+                  data-enterprise-confirm="Phát hành trực tiếp và bỏ qua bước gom đợt lấy hàng?"
+                  data-enterprise-confirm-title="Phát hành trực tiếp"
+                  data-enterprise-confirm-ok="Phát hành">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.VoucherId" />
+                <button type="submit" class="btn btn-primary"><i class="fas fa-bolt"></i> Phát hành trực tiếp</button>
+            </form>
+        }
+        @if (canPostOutbound)
+        {
+            <form method="post" asp-controller="Vouchers" asp-action="PostReservedOutbound" class="d-inline"
+                  data-enterprise-confirm="Chốt xuất phần hàng đã lấy và ghi nhận tồn kho?"
+                  data-enterprise-confirm-title="Chốt xuất kho"
+                  data-enterprise-confirm-ok="Chốt xuất">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.VoucherId" />
+                <input type="hidden" name="cancelRemaining" value="false" />
+                <button type="submit" class="btn btn-success"><i class="fas fa-check-double"></i> Chốt phần đã lấy</button>
+            </form>
+            <form method="post" asp-controller="Vouchers" asp-action="PostReservedOutbound" class="d-inline"
+                  data-enterprise-confirm="Chốt phần đã lấy và hủy phần còn lại của phiếu?"
+                  data-enterprise-confirm-title="Chốt và hủy phần còn lại"
+                  data-enterprise-confirm-ok="Chốt và hủy">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.VoucherId" />
+                <input type="hidden" name="cancelRemaining" value="true" />
+                <button type="submit" class="btn btn-secondary"><i class="fas fa-ban"></i> Chốt & hủy phần còn lại</button>
+            </form>
+        }
+        @if (canPack)
+        {
+            <button type="button" class="btn btn-primary" id="packBtn" data-wms-call="openPackingDialog"><i class="fas fa-box"></i> Đóng gói</button>
+        }
+        @if (canShip)
+        {
+            <button type="button" class="btn btn-primary" id="shipBtn"><i class="fas fa-truck"></i> Giao Hàng</button>
+        }
+        @if (Model.IsPosted && isOutboundFlow && !Model.IsCancelled && (User.IsInRole("Admin") || User.IsInRole("Manager")))
+        {
+            var hasBackorder = Model.Description?.Contains("[Đã sinh phiếu bù") == true;
+            if (!hasBackorder)
+            {
+                <form method="post" asp-controller="Vouchers" asp-action="CreateBackorder" class="d-inline"
+                      data-enterprise-confirm="Tạo phiếu bù cho các dòng hàng thiếu?"
+                      data-enterprise-confirm-title="Xác nhận tạo phiếu bù"
+                      data-enterprise-confirm-ok="Tạo phiếu bù">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="id" value="@Model.VoucherId" />
+                    <button type="submit" class="btn btn-warning" title="Tạo phiếu bù cho hàng giao thiếu">
+                        <i class="fas fa-clipboard-list"></i> Tạo Phiếu Bù
+                    </button>
+                </form>
+            }
+        }
+
+        @if (isOutboundFlow && !Model.IsCancelled && (User.IsInRole("Admin") || User.IsInRole("Manager") || User.IsInRole("Staff")))
+        {
+            <form method="post" asp-controller="Labels" asp-action="PrintVoucher" class="d-inline">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="voucherId" value="@Model.VoucherId" />
+                <button type="submit" class="btn btn-success"><i class="fas fa-tags"></i> In nhãn khách hàng</button>
+            </form>
+        }
+        <button data-wms-window-action="print" class="btn btn-secondary"><i class="fas fa-print"></i> In Phiếu</button>
+        <a asp-controller="Vouchers" asp-action="Index" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Quay lại</a>
+    </div>
+</div>
+
+@if (inboundReadinessIssues.Count > 0)
+{
+    <div class="alert alert-warning readiness-panel">
+        <strong>Điều kiện hoàn tất nhập kho chưa đủ:</strong>
+        <ul>
+            @foreach (var issue in inboundReadinessIssues)
+            {
+                <li>@issue</li>
+            }
+        </ul>
+    </div>
+}
+
+@if (outboundReadinessIssues.Count > 0)
+{
+    <div class="alert alert-warning readiness-panel">
+        <strong>Điều kiện giao hàng cần kiểm tra:</strong>
+        <ul>
+            @foreach (var issue in outboundReadinessIssues)
+            {
+                <li>@issue</li>
+            }
+        </ul>
+    </div>
+}
+
+@if (isOutboundFlow)
+{
+    <div class="user-guide">
+        <div class="user-guide-title"><i class="fas fa-route"></i> Luồng xuất kho dễ hiểu</div>
+        <div class="step-list">
+            <span class="step-chip"><i class="fas fa-layer-group"></i> 1) Nhiệm vụ lấy</span>
+            <span class="step-chip"><i class="fas fa-barcode"></i> 2) Lấy hàng</span>
+            <span class="step-chip"><i class="fas fa-check-circle"></i> 3) Chốt xuất</span>
+            <span class="step-chip"><i class="fas fa-box"></i> 4) Đóng gói</span>
+            <span class="step-chip"><i class="fas fa-truck"></i> 5) Vận chuyển</span>
+        </div>
+    </div>
+}
+else if (isInbound)
+{
+    var currentStep = (int)Model.InboundStatus;
+    <div class="user-guide">
+        <div class="user-guide-title"><i class="fas fa-clipboard-check"></i> Luồng nhập kho cấp doanh nghiệp - 5 bước</div>
+        <div class="inbound-progress">
+            @{
+                var steps = new[] {
+                    ("fas fa-file-alt", "Nháp", 1),
+                    ("fas fa-paper-plane", "Chờ Duyệt", 2),
+                    ("fas fa-check-circle", "Đã Duyệt", 3),
+                    ("fas fa-truck-loading", "Nhận Hàng", 4),
+                    ("fas fa-flag-checkered", "Hoàn Tất", 5)
+                };
+            }
+            @foreach (var (icon, label, step) in steps)
+            {
+                var isActive = step == currentStep || (Model.InboundStatus == WMS.Models.InboundStatusEnum.Rejected && step == 2);
+                var isDone = step < currentStep && Model.InboundStatus != WMS.Models.InboundStatusEnum.Rejected;
+                var isRejected = Model.InboundStatus == WMS.Models.InboundStatusEnum.Rejected && step == 2;
+                <div class="progress-step @(isDone ? "done" : "") @(isActive ? "active" : "") @(isRejected ? "rejected" : "")">
+                    <div class="progress-icon"><i class="@icon"></i></div>
+                    <div class="progress-label">@label</div>
+                </div>
+                if (step < 5)
+                {
+                    <div class="progress-connector @(isDone ? "done" : "")"></div>
+                }
+            }
+        </div>
+        @if (Model.InboundStatus == WMS.Models.InboundStatusEnum.Rejected)
+        {
+            <div class="alert alert-danger mt-2 inbound-alert">
+                <i class="fas fa-times-circle"></i> <strong>Phiếu bị từ chối:</strong> @Model.RejectionReason
+            </div>
+        }
+        else if (string.IsNullOrWhiteSpace(Model.AsnCode) || !Model.ExpectedArrivalAt.HasValue)
+        {
+            <div class="alert alert-warning mt-2 inbound-alert">
+                <i class="fas fa-triangle-exclamation"></i> Phiếu này chưa đủ thông tin lịch xe đến. Cần khai báo giờ xe đến trước khi chuyển sang bước nhận hàng.
+            </div>
+        }
+    </div>
+
+    <div class="no-print action-bar inbound-action-bar">
+        @if (canSubmit)
+        {
+            <form method="post" asp-controller="Vouchers" asp-action="SubmitForApproval" class="inline-form"
+                  data-enterprise-confirm="Gửi phiếu nhập kho sang bước duyệt?"
+                  data-enterprise-confirm-title="Gửi duyệt phiếu"
+                  data-enterprise-confirm-ok="Gửi duyệt">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.VoucherId" />
+                <button type="submit" class="btn btn-info"><i class="fas fa-paper-plane"></i> Gửi duyệt</button>
+            </form>
+        }
+        @if (canApproveInbound)
+        {
+            <form method="post" asp-controller="Vouchers" asp-action="ApproveInbound" class="inline-form"
+                  data-enterprise-confirm="Duyệt phiếu nhập kho này để cho phép nhận hàng?"
+                  data-enterprise-confirm-title="Duyệt phiếu nhập"
+                  data-enterprise-confirm-ok="Duyệt">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.VoucherId" />
+                <button type="submit" class="btn btn-success"><i class="fas fa-check"></i> Duyệt Phiếu</button>
+            </form>
+            <button type="button" class="btn btn-danger" id="rejectBtn"><i class="fas fa-times"></i> Từ Chối</button>
+        }
+        @if (canConfirmReceiving)
+        {
+            <form method="post" asp-controller="Vouchers" asp-action="ConfirmReceiving" class="inline-form"
+                  data-enterprise-confirm="Xác nhận bắt đầu nhận hàng cho phiếu này?"
+                  data-enterprise-confirm-title="Xác nhận nhận hàng"
+                  data-enterprise-confirm-ok="Xác nhận">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.VoucherId" />
+                <button type="submit" class="btn btn-warning"><i class="fas fa-truck-loading"></i> Xác Nhận Nhận Hàng</button>
+            </form>
+        }
+        @if (canAssignDock)
+        {
+            <button type="button" class="btn btn-info" id="assignDockBtn"><i class="fas fa-door-open"></i> Lịch xe đến & cửa nhận hàng</button>
+        }
+    </div>
+}
+
+<div class="grid-2 mb-3">
+    <div class="card">
+        <div class="card-header"><span class="card-title">Thông Tin Giao Dịch</span></div>
+        <div class="card-body">
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <div class="detail-label">Loại Phiếu</div>
+                    <div class="detail-value"><span class="badge badge-info text-uppercase">@Model.VoucherTypeName</span></div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Kho Quản Lý</div>
+                    <div class="detail-value text-accent">@Model.Warehouse?.WarehouseName</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Ngày Chứng Từ</div>
+                    <div class="detail-value">@toVNDate(Model.VoucherDate)</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Trạng Thái</div>
+                    <div class="detail-value"><span class="badge @Model.StatusBadgeClass">@Model.StatusDisplay</span></div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Đối Tác</div>
+                    <div class="detail-value">@(Model.Partner?.PartnerName ?? "---")</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Số Chứng Từ Gốc</div>
+                    <div class="detail-value">@(string.IsNullOrWhiteSpace(Model.ReferenceNo) ? "---" : Model.ReferenceNo)</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Diễn Giải / Ghi Chú</div>
+                    <div class="detail-value">@(string.IsNullOrWhiteSpace(Model.Description) ? "---" : Model.Description)</div>
+                </div>
+                @if (Model.VoucherType == WMS.Models.VoucherTypeEnum.ChuyenKho)
+                {
+                    <div class="detail-item">
+                        <div class="detail-label">Kho Đích</div>
+                        <div class="detail-value">@(Model.DestWarehouse?.WarehouseName ?? "---")</div>
+                    </div>
+                }
+                @if (!string.IsNullOrWhiteSpace(Model.DockDoor))
+                {
+                    <div class="detail-item">
+                        <div class="detail-label">Cửa kho</div>
+                        <div class="detail-value text-accent">@Model.DockDoor</div>
+                    </div>
+                }
+                @if (!string.IsNullOrWhiteSpace(Model.AsnCode))
+                {
+                    <div class="detail-item">
+                        <div class="detail-label">Mã lịch nhận hàng</div>
+                        <div class="detail-value"><span class="badge badge-accent">@Model.AsnCode</span></div>
+                    </div>
+                }
+                @if (Model.ExpectedArrivalAt.HasValue)
+                {
+                    <div class="detail-item">
+                        <div class="detail-label">Giờ xe đến dự kiến</div>
+                        <div class="detail-value">@toVN(Model.ExpectedArrivalAt.Value)</div>
+                    </div>
+                }
+                @if (Model.DockAppointmentStart.HasValue && Model.DockAppointmentEnd.HasValue)
+                {
+                    <div class="detail-item">
+                        <div class="detail-label">Khung giờ nhận / xuất hàng</div>
+                        <div class="detail-value">@toVN(Model.DockAppointmentStart.Value) - @toVN(Model.DockAppointmentEnd.Value)</div>
+                    </div>
+                }
+                @if (!string.IsNullOrWhiteSpace(Model.VehicleNumber))
+                {
+                    <div class="detail-item">
+                        <div class="detail-label">Biển số xe</div>
+                        <div class="detail-value">@Model.VehicleNumber</div>
+                    </div>
+                }
+                @if (!string.IsNullOrWhiteSpace(Model.CarrierName))
+                {
+                    <div class="detail-item">
+                        <div class="detail-label">Đơn vị vận chuyển</div>
+                        <div class="detail-value">@Model.CarrierName</div>
+                    </div>
+                }
+                @if (!string.IsNullOrWhiteSpace(Model.DriverName) || !string.IsNullOrWhiteSpace(Model.DriverPhone))
+                {
+                    <div class="detail-item">
+                        <div class="detail-label">Tài xế / liên hệ</div>
+                        <div class="detail-value">@((Model.DriverName ?? "---") + (string.IsNullOrWhiteSpace(Model.DriverPhone) ? "" : $" | {Model.DriverPhone}"))</div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header"><span class="card-title">Thông Tin Vận Hành & Nguồn Lập</span></div>
+        <div class="card-body">
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <div class="detail-label">Tổng Mặt Hàng</div>
+                    <div class="detail-value">@Model.TotalLines dòng</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Nguồn Lập Phiếu</div>
+                    <div class="detail-value"><span class="badge badge-accent">@Model.SourceTypeName</span></div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Người Lập</div>
+                    <div class="detail-value">@Model.CreatedBy</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Người Kiểm</div>
+                    <div class="detail-value">@(string.IsNullOrWhiteSpace(Model.ReviewedBy) ? "---" : Model.ReviewedBy)</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Kết Quả Kiểm</div>
+                    <div class="detail-value">
+                        @(Model.ReviewResult switch {
+                            WMS.Models.ReviewResultEnum.Pass => "Đạt",
+                            WMS.Models.ReviewResultEnum.PassWithAdjustment => "Có sai lệch",
+                            _ => "Chờ kiểm"
+                        })
+                    </div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Điểm Trách Nhiệm</div>
+                    <div class="detail-value">@Model.ResponsibilityScore.ToString("N0")</div>
+                </div>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(Model.ReviewNote))
+            {
+                <div class="mt-2">
+                    <div class="detail-label">Ghi Chú Kiểm</div>
+                    <div class="detail-value fs-body-sm fw-500">@Model.ReviewNote</div>
+                </div>
+            }
+            
+            @if (Model.IsCancelled)
+            {
+                <div class="alert alert-danger mt-3 mb-0">
+                    <div>
+                        <strong><i class="fas fa-ban"></i> Phiếu đã bị hủy</strong><br/>
+                        <small>Hủy bởi: @Model.CancelledBy lúc @(Model.CancelledAt.HasValue ? toVN(Model.CancelledAt.Value) : "")</small><br/>
+                        <small>Lý do: @Model.CancelReason</small>
+                        @if (Model.CancelReasonCode.HasValue)
+                        {
+                            <br/><small>Mã lý do: @(Model.CancelReasonCode.Value switch {
+                                WMS.Models.CancelReasonEnum.InsufficientStock => "Thiếu tồn kho",
+                                WMS.Models.CancelReasonEnum.WrongInfo => "Sai thông tin",
+                                WMS.Models.CancelReasonEnum.CustomerCancelled => "Khách hàng / bộ phận hủy",
+                                WMS.Models.CancelReasonEnum.ItemDiscontinued => "Hàng ngừng sản xuất",
+                                WMS.Models.CancelReasonEnum.DuplicateVoucher => "Trùng phiếu",
+                                WMS.Models.CancelReasonEnum.OperationalError => "Lỗi thao tác",
+                                _ => "Khác"
+                            })</small>
+                        }
+                    </div>
+                </div>
+            }
+            else if (User.IsInRole("Admin") || User.IsInRole("Manager"))
+            {
+                <form method="post" asp-controller="Vouchers" asp-action="Cancel" class="mt-3" id="cancelForm">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="id" value="@Model.VoucherId" />
+                    <div class="cancel-form-row">
+                        <select name="cancelReasonCode" class="form-control cancel-reason-code" id="cancelReasonCodeSelect" data-wms-change-call="toggleCancelReasonInput">
+                            <option value="1">Thiếu tồn kho</option>
+                            <option value="2">Sai thông tin</option>
+                            <option value="3">Khách hàng / bộ phận hủy</option>
+                            <option value="4">Hàng ngừng sản xuất</option>
+                            <option value="5">Trùng phiếu</option>
+                            <option value="6">Lỗi thao tác</option>
+                            <option value="99">Lý do khác</option>
+                        </select>
+                        <input type="text" name="cancelReason" class="form-control cancel-reason-input d-none" placeholder="Nhập lý do hủy phiếu..." id="cancelReasonInput" />
+                        <button type="button" class="btn btn-danger text-nowrap" id="cancelBtn"><i class="fas fa-trash"></i> Hủy Phiếu</button>
+                    </div>
+                </form>
+            }
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><span class="card-title"><i class="fas fa-list"></i> Chi Tiết Hàng Hóa Dịch Vụ</span></div>
+    <div class="table-container flat">
+        <table class="voucher-detail-table">
+            <thead>
+                    <tr>
+                        <th class="col-line-no">#</th>
+                        <th>Mã VT</th>
+                        <th>Tên Vật Tư</th>
+                        <th>Vị Trí</th>
+                        <th class="cell-right">SL</th>
+                        <th>ĐVT</th>
+                        @if (isInbound)
+                        {
+                            <th>Ngày SX</th>
+                            <th>Hạn SD</th>
+                        }
+                        @if (canSeeFinancial)
+                        {
+                            <th class="cell-right">Đơn Giá</th>
+                            <th class="cell-right">Thành Tiền</th>
+                        }
+                        <th class="no-print">Ghi Chú</th>
+                    </tr>
+            </thead>
+            <tbody>
+                @foreach (var d in Model.Details.OrderBy(d => d.LineNumber))
+                {
+                    <tr class="@(Model.IsCancelled ? "row-dimmed" : "")">
+                        <td class="text-center text-muted">@d.LineNumber</td>
+                        <td class="td-code text-accent">@d.Item?.ItemCode</td>
+                        <td class="td-name">@d.Item?.ItemName</td>
+                        <td><span class="badge badge-purple">@(string.IsNullOrWhiteSpace(d.Location?.LocationCode) ? "Chờ xếp kho" : d.Location!.LocationCode)</span></td>
+                        <td class="td-number fw-600 text-success"
+                            data-base-qty="@d.BaseQty.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                            data-defect-qty="@d.DefectBaseQty.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                            data-trans-qty="@d.TransactionQty.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                            data-defect-trans-qty="@d.DefectQty.ToString(System.Globalization.CultureInfo.InvariantCulture)">
+                            @(isBlindReceiving ? "???" : d.BaseQty.ToString("N0"))
+                            @if (!isBlindReceiving && d.BaseQty != d.TransactionQty)
+                            {
+                                <br/><small class="text-muted fs-xs fw-500">(@d.TransactionQty.ToString("N0") × @((d.TransactionQty > 0 ? d.BaseQty / d.TransactionQty : 1).ToString("N0")))</small>
+                            }
+                            @if (d.DefectBaseQty > 0 || d.DefectQty > 0)
+                            {
+                                <br/><small class="text-danger fs-xs fw-600">Lỗi: @d.DefectBaseQty.ToString("N0")</small>
+                            }
+                            @if (canReviewInbound)
+                            {
+                                var defectMax = d.ConversionRate == 0 ? d.TransactionQty : (d.BaseQty / Math.Abs(d.ConversionRate));
+                                @if (isBlindReceiving)
+                                {
+                                    <form method="post" asp-controller="Vouchers" asp-action="ConfirmActualReceivingQty" class="no-print defect-edit-inline">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@Model.VoucherId" />
+                                        <input type="hidden" name="detailId" value="@d.VoucherDetailId" />
+                                        <input class="form-control defect-qty-input" type="number" name="actualQty" min="0" max="999999" step="0.0001" placeholder="Thực nhận" required />
+                                        <input class="form-control defect-note-input" type="text" name="reviewNote" placeholder="Ghi chú" />
+                                        <button class="btn btn-sm btn-primary defect-save-btn" type="submit">Xác nhận</button>
+                                    </form>
+                                }
+                                else
+                                {
+                                    <form method="post" asp-controller="Vouchers" asp-action="UpdateInboundDefect" class="no-print defect-edit-inline">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@Model.VoucherId" />
+                                        <input type="hidden" name="detailId" value="@d.VoucherDetailId" />
+                                        <input class="form-control defect-qty-input" type="number" name="defectQty" min="0" max="@defectMax.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)" step="0.0001" value="@d.DefectQty.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)" />
+                                        <input class="form-control defect-note-input" type="text" name="reviewNote" placeholder="Lý do chỉnh" />
+                                        <button class="btn btn-sm btn-secondary defect-save-btn" type="submit">Lưu lệch</button>
+                                    </form>
+                                }
+                            }
+                        </td>
+                        <td>
+                            @(string.IsNullOrWhiteSpace(d.TransactionUom?.UomCode) ? (d.Item?.BaseUom?.UomCode ?? "Không áp dụng") : d.TransactionUom!.UomCode)
+                        </td>
+                        @if (isInbound)
+                        {
+                            <td class="fs-sm">@(d.ManufacturingDate.HasValue ? d.ManufacturingDate.Value.ToString("dd/MM/yyyy") : "---")</td>
+                            <td class="fs-sm">@(d.ExpiryDate.HasValue ? d.ExpiryDate.Value.ToString("dd/MM/yyyy") : "---")</td>
+                        }
+                        @if (canSeeFinancial)
+                        {
+                            <td class="td-number">@d.UnitPrice.ToString("N0")</td>
+                            <td class="td-number fw-600">@d.LineAmount.ToString("N0")</td>
+                        }
+                        <td class="text-muted no-print fs-sm">
+                            @d.Notes
+                            @if (d.Item?.TrackCatchWeight == true && !Model.IsPosted)
+                            {
+                                var defaultBaseQty = Math.Max(0, d.BaseQty - d.DefectBaseQty);
+                                <form method="post" asp-controller="Vouchers" asp-action="CaptureCatchWeight" class="catch-weight-inline">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="voucherId" value="@Model.VoucherId" />
+                                    <input type="hidden" name="voucherDetailId" value="@d.VoucherDetailId" />
+                                    <input type="hidden" name="baseQuantity" value="@defaultBaseQty.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)" />
+                                    <input type="hidden" name="weightUomId" value="@(d.Item.CatchWeightUomId?.ToString() ?? "")" />
+                                    <input type="hidden" name="capturePoint" value="@(isInbound ? WMS.Models.CatchWeightCapturePointEnum.Receive : WMS.Models.CatchWeightCapturePointEnum.Pack)" />
+                                    <input class="form-control w-120 control-sm" type="number" name="actualWeight" min="0" step="0.0001" placeholder="Cân thực tế" required />
+                                    <button class="btn btn-sm btn-secondary" type="submit">Lưu cân</button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                @if (canSeeFinancial)
+                {
+                    <tr class="voucher-total-row">
+                        <td colspan="@(7 + (isInbound ? 2 : 0))" class="voucher-total-label">TỔNG CỘNG:</td>
+                        <td class="td-number text-success fs-lg">@Model.TotalAmount.ToString("N0") VNĐ</td>
+                        <td class="no-print"></td>
+                    </tr>
+                }
+                else
+                {
+                    <tr class="voucher-total-row">
+                        <td colspan="@(7 + (isInbound ? 2 : 0))" class="voucher-total-label">TỔNG CỘNG:</td>
+                    </tr>
+                }
+            </tfoot>
+        </table>
+    </div>
+</div>
+
+@if (isOutboundFlow)
+{
+    var reservations = ViewBag.Reservations as List<WMS.Models.StockReservation>;
+    var pickTasks = ViewBag.PickTasks as List<WMS.Models.PickTask>;
+    var pickTaskScanLogs = ViewBag.PickTaskScanLogs as List<WMS.Models.PickTaskScanLog>;
+    if (reservations != null && reservations.Any())
+    {
+        var consumedReservations = reservations.Where(r => r.ConsumedQty > 0).ToList();
+        var totalConsumed = reservations.Sum(r => r.ConsumedQty);
+        var totalReserved = reservations.Sum(r => r.ReservedQty);
+        var totalReleased = reservations.Sum(r => r.ReleasedQty);
+        
+        <div class="card mb-3 no-print">
+            <div class="card-header">
+                <span class="card-title"><i class="fas fa-history"></i> Lịch Sử Giữ Chỗ & Xuất Kho</span>
+                <span class="badge badge-info">@reservations.Count giữ chỗ</span>
+            </div>
+            <div class="card-body detail-card-compact">
+                <div class="detail-grid mb-3">
+                    <div class="detail-item">
+                        <div class="detail-label">Tổng đã giữ</div>
+                        <div class="detail-value text-accent">@totalReserved.ToString("N0")</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Đã xuất</div>
+                        <div class="detail-value text-success">@totalConsumed.ToString("N0")</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Đã trả</div>
+                        <div class="detail-value text-warning">@totalReleased.ToString("N0")</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Còn đang giữ</div>
+                        <div class="detail-value">@((totalReserved - totalConsumed - totalReleased).ToString("N0"))</div>
+                    </div>
+                </div>
+            </div>
+            <div class="table-container flat">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Vật tư</th>
+                            <th>Vị trí</th>
+                            <th>Số lô</th>
+                            <th class="cell-right">Đã giữ</th>
+                            <th class="cell-right">Đã xuất</th>
+                            <th class="cell-right">Đã trả</th>
+                            <th>Trạng thái</th>
+                            <th>Ngày tạo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in reservations)
+                        {
+                            var statusBadge = r.Status switch {
+                                WMS.Models.ReservationStatusEnum.Active => "badge-warning",
+                                WMS.Models.ReservationStatusEnum.Consumed => "badge-success",
+                                WMS.Models.ReservationStatusEnum.Released => "badge-secondary",
+                                _ => "badge-info"
+                            };
+                            var statusText = r.Status switch {
+                                WMS.Models.ReservationStatusEnum.Active => "Đang giữ",
+                                WMS.Models.ReservationStatusEnum.Consumed => "Đã xuất",
+                                WMS.Models.ReservationStatusEnum.Released => "Đã trả",
+                                _ => "Không áp dụng"
+                            };
+                            <tr>
+                                <td class="td-code">@(string.IsNullOrWhiteSpace(r.Item?.ItemCode) ? "-" : r.Item!.ItemCode)</td>
+                                <td>@(string.IsNullOrWhiteSpace(r.Location?.LocationCode) ? "-" : r.Location!.LocationCode)</td>
+                                <td>@(string.IsNullOrWhiteSpace(r.LotNumber) ? "-" : r.LotNumber)</td>
+                                <td class="td-number">@r.ReservedQty.ToString("N0")</td>
+                                <td class="td-number text-success">@r.ConsumedQty.ToString("N0")</td>
+                                <td class="td-number text-warning">@r.ReleasedQty.ToString("N0")</td>
+                                <td><span class="badge @statusBadge">@statusText</span></td>
+                                <td>@toVN(r.CreatedAt)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+    
+    if (pickTasks != null && pickTasks.Any())
+    {
+        <div class="card mb-3 no-print">
+            <div class="card-header">
+                <span class="card-title"><i class="fas fa-tasks"></i> Nhiệm Vụ Lấy Hàng</span>
+                <span class="badge badge-info">@pickTasks.Count nhiệm vụ</span>
+            </div>
+            <div class="table-container flat">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mã nhiệm vụ</th>
+                            <th>Vật tư</th>
+                            <th>Vị trí</th>
+                            <th class="cell-right">Yêu cầu</th>
+                            <th class="cell-right">Đã lấy</th>
+                            <th>Trạng thái</th>
+                            <th>Người làm</th>
+                            <th>Hoàn tất</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var t in pickTasks)
+                        {
+                            var tBadge = t.Status switch {
+                                WMS.Models.PickTaskStatusEnum.Pending => "badge-secondary",
+                                WMS.Models.PickTaskStatusEnum.Assigned => "badge-info",
+                                WMS.Models.PickTaskStatusEnum.InProgress => "badge-warning",
+                                WMS.Models.PickTaskStatusEnum.Completed => "badge-success",
+                                WMS.Models.PickTaskStatusEnum.Short => "badge-danger",
+                                WMS.Models.PickTaskStatusEnum.Cancelled => "badge-secondary",
+                                _ => "badge-info"
+                            };
+                            var tText = t.Status switch {
+                                WMS.Models.PickTaskStatusEnum.Pending => "Chờ",
+                                WMS.Models.PickTaskStatusEnum.Assigned => "Đã gán",
+                                WMS.Models.PickTaskStatusEnum.InProgress => "Đang lấy",
+                                WMS.Models.PickTaskStatusEnum.Completed => "Hoàn tất",
+                                WMS.Models.PickTaskStatusEnum.Short => "Thiếu",
+                                WMS.Models.PickTaskStatusEnum.Cancelled => "Đã hủy",
+                                _ => "Không áp dụng"
+                            };
+                            <tr>
+                                <td class="td-code">
+                                    @t.TaskCode
+                                    @if (t.IsBatchPick)
+                                    {
+                                        <span class="badge badge-info" title="Batch pick gom @(t.Allocations?.Count ?? 0) reservation">Batch</span>
+                                    }
+                                </td>
+                                <td>@(string.IsNullOrWhiteSpace(t.Item?.ItemCode) ? "-" : t.Item!.ItemCode)</td>
+                                <td>@(string.IsNullOrWhiteSpace(t.SourceLocation?.LocationCode) ? "-" : t.SourceLocation!.LocationCode)</td>
+                                <td class="td-number">@t.TargetQty.ToString("N0")</td>
+                                <td class="td-number text-success">@t.PickedQty.ToString("N0")</td>
+                                <td><span class="badge @tBadge">@tText</span></td>
+                                <td>@(string.IsNullOrWhiteSpace(t.AssignedTo) ? "-" : t.AssignedTo)</td>
+                                <td>@(t.CompletedAt.HasValue ? toVN(t.CompletedAt.Value) : "-")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        if (pickTaskScanLogs != null && pickTaskScanLogs.Any())
+        {
+            <div class="card mb-3 no-print">
+                <div class="card-header">
+                    <span class="card-title"><i class="fas fa-clipboard-list"></i> Lịch Sử Xác Nhận Lấy Hàng</span>
+                    <span class="badge badge-info">@pickTaskScanLogs.Count lần xác nhận</span>
+                </div>
+                <div class="table-container flat">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Thời gian</th>
+                                <th>Mã nhiệm vụ</th>
+                                <th>Người xác nhận</th>
+                                <th>Mã quét</th>
+                                <th class="cell-right">Số lượng</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var log in pickTaskScanLogs)
+                            {
+                                var taskRef = pickTasks.FirstOrDefault(t => t.PickTaskId == log.PickTaskId);
+                                <tr>
+                                    <td>@toVN(log.ScannedAt)</td>
+                                    <td class="td-code">@(string.IsNullOrWhiteSpace(taskRef?.TaskCode) ? log.PickTaskId.ToString() : taskRef!.TaskCode)</td>
+                                    <td>@(string.IsNullOrWhiteSpace(log.ScannedBy) ? "-" : log.ScannedBy)</td>
+                                    <td class="td-code">@log.ScanValue</td>
+                                    <td class="td-number text-success">@log.Qty.ToString("N0")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    }
+}
+
+@if (isInbound && Model.InboundStatus != WMS.Models.InboundStatusEnum.Draft)
+{
+    <div class="card mb-3 no-print">
+        <div class="card-header"><span class="card-title"><i class="fas fa-history"></i> Nhật Ký Duyệt Nhập Kho</span></div>
+        <div class="card-body audit-card-body">
+            <div class="detail-grid">
+                @if (Model.SubmittedAt.HasValue)
+                {
+                    <div class="detail-item">
+                        <div class="detail-label">Gửi duyệt</div>
+                        <div class="detail-value">@Model.SubmittedBy - @toVN(Model.SubmittedAt.Value)</div>
+                    </div>
+                }
+                @if (Model.ApprovedAt.HasValue)
+                {
+                    <div class="detail-item">
+                        <div class="detail-label">Đã duyệt</div>
+                        <div class="detail-value text-success">@Model.ApprovedBy - @toVN(Model.ApprovedAt.Value)</div>
+                    </div>
+                }
+                @if (Model.ReceivedAt.HasValue)
+                {
+                    <div class="detail-item">
+                        <div class="detail-label">Nhận hàng</div>
+                        <div class="detail-value text-warning">@Model.ReceivedBy - @toVN(Model.ReceivedAt.Value)</div>
+                    </div>
+                }
+                @if (Model.CompletedAt.HasValue)
+                {
+                    <div class="detail-item">
+                        <div class="detail-label">Hoàn tất</div>
+                        <div class="detail-value text-accent">@Model.CompletedBy - @toVN(Model.CompletedAt.Value)</div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Print-only: Khung chữ ký -->
+<div class="print-signatures">
+    <table class="signature-table">
+        <tr>
+            <td class="signature-cell">
+                <div class="signature-name">Người Lập Phiếu</div>
+                <div class="signature-hint">(Ký và ghi rõ họ tên)</div>
+            </td>
+            <td class="signature-cell">
+                <div class="signature-name">Thủ Kho</div>
+                <div class="signature-hint">(Ký và ghi rõ họ tên)</div>
+            </td>
+            <td class="signature-cell">
+                <div class="signature-name">Kế Toán</div>
+                <div class="signature-hint">(Ký và ghi rõ họ tên)</div>
+            </td>
+        </tr>
+    </table>
+</div>
+
+@if (isInbound && licensePlates != null && licensePlates.Any())
+{
+    <div class="card mt-3">
+        <div class="card-header"><span class="card-title"><i class="fas fa-tags"></i> Mã kiện (LPN) / Kiện hàng đã sinh</span></div>
+        <div class="table-container flat">
+            <table class="voucher-detail-table">
+                <thead>
+                    <tr>
+                        <th>Mã kiện (LPN)</th>
+                        <th>Vật tư</th>
+                        <th>Vị trí</th>
+                        <th class="cell-right">Số lượng</th>
+                        <th>Lô / HSD</th>
+                        <th>Trạng thái</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var lpn in licensePlates)
+                {
+                    var lpnDetails = lpn.Details?.OrderBy(d => d.LicensePlateDetailId).ToList() ?? new List<WMS.Models.LicensePlateDetail>();
+                    var itemText = lpnDetails.Count == 0
+                        ? "---"
+                        : string.Join(", ", lpnDetails.Take(2).Select(d => d.Item?.ItemName ?? d.ItemId.ToString())) + (lpnDetails.Count > 2 ? $" +{lpnDetails.Count - 2}" : "");
+                    var lotText = string.Join(", ", lpnDetails.Select(d => d.LotNumber).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().Take(2));
+                    var firstExpiry = lpnDetails.Select(d => d.ExpiryDate).Where(d => d.HasValue).OrderBy(d => d).FirstOrDefault();
+                    <tr>
+                        <td><span class="badge badge-accent">@lpn.LpnCode</span></td>
+                        <td>@itemText</td>
+                        <td>@(lpn.CurrentLocation?.LocationCode ?? "---")</td>
+                        <td class="td-number">@lpnDetails.Sum(d => d.Quantity).ToString("N2")</td>
+                        <td>@((string.IsNullOrWhiteSpace(lotText) ? "---" : lotText) + (firstExpiry.HasValue ? $" / {firstExpiry.Value:dd/MM/yyyy}" : ""))</td>
+                        <td>
+                            <span class="badge @(lpn.IsActive ? "badge-success" : "badge-secondary")">
+                                @(lpn.IsActive ? "Đang hiệu lực" : "Đã vô hiệu")
+                            </span>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@if (requiresCatchWeight && catchWeightEntries != null && catchWeightEntries.Any())
+{
+    <div class="card mt-3">
+        <div class="card-header"><span class="card-title"><i class="fas fa-scale-balanced"></i> cân trọng lượng thực tế</span></div>
+        <div class="table-container flat">
+            <table class="voucher-detail-table">
+                <thead>
+                    <tr>
+                        <th>Thời điểm</th>
+                        <th>Điểm cân</th>
+                        <th>Vật tư</th>
+                        <th class="cell-right">SL base</th>
+                        <th class="cell-right">Cân thực tế</th>
+                        <th>Người cân</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var entry in catchWeightEntries)
+                {
+                    <tr>
+                        <td>@entry.CapturedAt.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td><span class="badge badge-info">@entry.CapturePoint</span></td>
+                        <td>@entry.ItemId</td>
+                        <td class="td-number">@entry.BaseQuantity.ToString("N4")</td>
+                        <td class="td-number">@entry.ActualWeight.ToString("N4") @(entry.WeightUom?.UomCode ?? "")</td>
+                        <td>@entry.CapturedBy</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@if (isOutboundFlow && outboundPackages != null && outboundPackages.Any())
+{
+    <div class="card mt-3">
+        <div class="card-header"><span class="card-title"><i class="fas fa-boxes-stacked"></i> Kiện xuất đã đóng gói</span></div>
+        <div class="table-container flat">
+            <table class="voucher-detail-table">
+                <thead>
+                    <tr>
+                        <th>Mã kiện</th>
+                        <th>Nguồn kiện</th>
+                        <th>Loại kiện</th>
+                        <th>Tham chiếu mã kiện (LPN)</th>
+                        <th class="cell-right">SL tóm tắt</th>
+                        <th class="cell-right">Số SKU</th>
+                        <th class="cell-right">Cân thực tế</th>
+                        <th>Load</th>
+                        <th>Ghi chú</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var package in outboundPackages)
+                {
+                    <tr>
+                        <td><span class="badge badge-accent">@package.PackageCode</span></td>
+                        <td>@(package.SourceType == "LPN" ? "Theo mã kiện (LPN)" : "Thủ công")</td>
+                        <td>@(string.IsNullOrWhiteSpace(package.PackageType) ? "---" : package.PackageType)</td>
+                        <td>@(string.IsNullOrWhiteSpace(package.ReferenceLpnCode) ? "---" : package.ReferenceLpnCode)</td>
+                        <td class="td-number">@(package.TotalQuantity.HasValue ? package.TotalQuantity.Value.ToString("N2") : "---")</td>
+                        <td class="td-number">@package.ItemCount</td>
+                        <td class="td-number">@(package.ActualCatchWeight.HasValue ? package.ActualCatchWeight.Value.ToString("N4") : "---")</td>
+                        <td>@(package.ShipmentLoad?.LoadCode ?? "---")</td>
+                        <td>@(string.IsNullOrWhiteSpace(package.Notes) ? "---" : package.Notes)</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@if (isOutboundFlow && shippingHandovers != null && shippingHandovers.Any())
+{
+    <div class="card mt-3">
+        <div class="card-header"><span class="card-title"><i class="fas fa-truck-ramp-box"></i> Nhật ký bàn giao vận chuyển</span></div>
+        <div class="table-container flat">
+            <table class="voucher-detail-table">
+                <thead>
+                    <tr>
+                        <th>Thời điểm</th>
+                        <th>Người bàn giao</th>
+                        <th>Mã vận đơn</th>
+                        <th>Mã chuyến bàn giao</th>
+                        <th>Đơn vị vận chuyển</th>
+                        <th>Tài xế</th>
+                        <th>Biển số</th>
+                        <th>Ghi chú</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var handover in shippingHandovers)
+                {
+                    <tr>
+                        <td>@handover.HandedOverAt.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td>@handover.HandedOverBy</td>
+                        <td>@(string.IsNullOrWhiteSpace(handover.TrackingNumber) ? "---" : handover.TrackingNumber)</td>
+                        <td>@(string.IsNullOrWhiteSpace(handover.ManifestCode) ? "---" : handover.ManifestCode)</td>
+                        <td>@(string.IsNullOrWhiteSpace(handover.CarrierName) ? "---" : handover.CarrierName)</td>
+                        <td>@(string.IsNullOrWhiteSpace(handover.DriverName) ? "---" : handover.DriverName)</td>
+                        <td>@(string.IsNullOrWhiteSpace(handover.VehicleNumber) ? "---" : handover.VehicleNumber)</td>
+                        <td>@(string.IsNullOrWhiteSpace(handover.Notes) ? "---" : handover.Notes)</td>
+                        <td>
+                            <form method="post" asp-controller="Labels" asp-action="PrintDirectHandover" class="d-inline">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="shippingHandoverLogId" value="@handover.ShippingHandoverLogId" />
+                                <button class="btn btn-sm btn-secondary" type="submit"><i class="fas fa-print"></i> In biên bản</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+<div id="dockModal" class="app-modal-overlay dock-overlay" role="dialog" aria-modal="true" aria-labelledby="dockModalTitle">
+    <div class="app-modal dock-dialog">
+        <div class="app-modal-header dock-header">
+            <div>
+                <h3 id="dockModalTitle" class="app-modal-title dock-title">Cập nhật lịch xe đến và cửa nhận hàng</h3>
+                <p class="app-modal-subtitle dock-subtitle">Lập lịch cửa nhận hàng theo quy trình chuẩn cấp doanh nghiệp</p>
+            </div>
+            <button type="button" class="dock-close-btn" data-wms-call="closeDockDialog" aria-label="Đóng"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="app-modal-body dock-body">
+            <div class="dock-grid dock-grid-2">
+                <div class="form-group">
+                    <label class="form-label">Giờ xe đến dự kiến *</label>
+                    <input id="dock-expectedArrivalAt" type="datetime-local" class="form-control" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Cửa nhận hàng</label>
+                    <input id="dock-dockDoor" type="text" class="form-control" placeholder="Để trống để hệ thống tự gợi ý" />
+                </div>
+            </div>
+            <div class="dock-grid dock-grid-2">
+                <div class="form-group">
+                    <label class="form-label">Bắt đầu khung giờ nhận hàng</label>
+                    <input id="dock-dockAppointmentStart" type="datetime-local" class="form-control" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Kết thúc khung giờ nhận hàng</label>
+                    <input id="dock-dockAppointmentEnd" type="datetime-local" class="form-control" />
+                </div>
+            </div>
+            <div class="dock-grid dock-grid-2">
+                <div class="form-group">
+                    <label class="form-label">Đơn vị vận chuyển</label>
+                    <input id="dock-carrierName" type="text" class="form-control" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Biển số xe</label>
+                    <input id="dock-vehicleNumber" type="text" class="form-control" />
+                </div>
+            </div>
+            <div class="dock-grid dock-grid-2">
+                <div class="form-group">
+                    <label class="form-label">Tài xế</label>
+                    <input id="dock-driverName" type="text" class="form-control" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">SĐT tài xế</label>
+                    <input id="dock-driverPhone" type="text" class="form-control" />
+                </div>
+            </div>
+            <div id="dockValidation" class="dock-validation inline-feedback error"></div>
+        </div>
+        <div class="app-modal-footer dock-footer action-bar">
+            <button type="button" id="dockCancelBtn" class="btn btn-secondary"><i class="fas fa-times"></i> Hủy</button>
+            <button type="button" id="dockSubmitBtn" class="btn btn-primary"><i class="fas fa-check"></i> Xác nhận lịch nhận</button>
+        </div>
+    </div>
+</div>
+
+<div id="rejectModal" class="app-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="rejectModalTitle">
+    <div class="app-modal modal-sm">
+        <div class="app-modal-header">
+            <div>
+                <h3 id="rejectModalTitle" class="app-modal-title">Từ chối phiếu nhập</h3>
+                <p class="app-modal-subtitle">Ghi rõ lý do để đảm bảo audit trail và truy vết nghiệp vụ</p>
+            </div>
+        </div>
+        <div class="app-modal-body">
+            <div class="form-group">
+                <label class="form-label">Lý do từ chối *</label>
+                <textarea id="rejectReasonInput" class="form-control" rows="4" placeholder="Nhập lý do từ chối phiếu..."></textarea>
+            </div>
+            <div id="rejectValidation" class="inline-feedback error"></div>
+        </div>
+        <div class="app-modal-footer action-bar">
+            <button type="button" class="btn btn-secondary" id="rejectCancelBtn"><i class="fas fa-times"></i> Hủy</button>
+            <button type="button" class="btn btn-danger" id="rejectSubmitBtn"><i class="fas fa-ban"></i> Xác nhận từ chối</button>
+        </div>
+    </div>
+</div>
+
+<div id="shippingModal" class="app-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="shippingModalTitle">
+    <div class="app-modal modal-md">
+        <div class="app-modal-header">
+            <div>
+                <h3 id="shippingModalTitle" class="app-modal-title">Xác nhận giao hàng</h3>
+                <p class="app-modal-subtitle">Bàn giao kiện hàng cho đơn vị vận chuyển theo quy trình giao hàng chuẩn</p>
+            </div>
+        </div>
+        <div class="app-modal-body">
+            <div class="form-section">
+                <div class="form-section-header">Thông tin vận chuyển</div>
+                <div class="form-section-body">
+                    <div class="form-group">
+                        <label class="form-label">Mã vận đơn (Tracking)</label>
+                        <input id="shippingTrackingInput" class="form-control" placeholder="Nhập mã vận đơn từ đơn vị vận chuyển..." />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Mã chuyến bàn giao</label>
+                        <input id="shippingManifestInput" class="form-control" placeholder="Nhập mã chuyến bàn giao nếu có..." />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Ghi chú bàn giao</label>
+                        <textarea id="shippingNoteInput" class="form-control" rows="3" placeholder="Ghi chú bàn giao vận chuyển, tình trạng kiện hàng..."></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="inline-feedback info">Sau khi xác nhận, phiếu sẽ chuyển sang trạng thái đã giao hàng và không thể hoàn tác.</div>
+        </div>
+        <div class="app-modal-footer action-bar">
+            <button type="button" class="btn btn-secondary" id="shippingCancelBtn"><i class="fas fa-times"></i> Hủy</button>
+            <button type="button" class="btn btn-primary" id="shippingSubmitBtn"><i class="fas fa-truck"></i> Xác nhận giao hàng</button>
+        </div>
+    </div>
+</div>
+
+<div id="packingModal" class="app-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="packingModalTitle">
+    <div class="app-modal modal-lg">
+        <div class="app-modal-header">
+            <div>
+                <h3 id="packingModalTitle" class="app-modal-title">Trạm đóng gói</h3>
+                <p class="app-modal-subtitle">Xác nhận đóng gói kiện xuất theo quy trình xuất kho chuẩn</p>
+            </div>
+        </div>
+        <div class="app-modal-body">
+            <div class="packing-grid">
+                <div class="form-section">
+                    <div class="form-section-header">Cấu hình kiện</div>
+                    <div class="form-section-body">
+                        <div class="form-group">
+                            <label class="form-label">Loại kiện đóng gói</label>
+                            <select id="packingPackageType" class="form-control">
+                                <option value="Thùng carton" selected>Thùng carton</option>
+                                <option value="Pallet">Pallet</option>
+                                <option value="Bao tải">Bao tải</option>
+                                <option value="Hộp nhựa">Hộp nhựa</option>
+                                <option value="Khác">Khác</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Số lượng kiện tạo</label>
+                            <input type="number" id="packingManualCount" class="form-control" value="1" min="0" />
+                        </div>
+                        @if (requiresCatchWeight)
+                        {
+                            <div class="form-group">
+                                <label class="form-label">Tổng cân thực tế</label>
+                                <input type="number" id="packingCatchWeight" class="form-control" min="0" step="0.0001" placeholder="Bắt buộc với cân trọng lượng thực tế" />
+                            </div>
+                        }
+                        <div class="form-group">
+                            <label class="form-label">Ghi chú đóng gói</label>
+                            <textarea id="packingNote" class="form-control" rows="3" placeholder="Chỉ dẫn đặc biệt, hướng dẫn xếp hàng, yêu cầu đóng gói..."></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-section">
+                    <div class="form-section-header">Mã kiện và tham chiếu</div>
+                    <div class="form-section-body">
+                        <div class="form-group">
+                            <label class="form-label">Mã kiện thủ công (mỗi dòng 1 mã)</label>
+                            <textarea id="packingPackageCodes" class="form-control" rows="3" placeholder="Để trống để hệ thống tự sinh mã"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Mã kiện tham chiếu (LPN, mỗi dòng 1 mã)</label>
+                            <textarea id="packingLpnCodes" class="form-control" rows="3" placeholder="Quét mã kiện (LPN) xuất nguyên kiện"></textarea>
+                        </div>
+                        <div class="inline-feedback info packing-summary" id="packingSummary">Loại kiện: Thùng carton · Số kiện tạo: 1 · Tổng mã quét: 0</div>
+                    </div>
+                </div>
+            </div>
+            <div id="packingValidation" class="inline-feedback error"></div>
+        </div>
+        <div class="app-modal-footer action-bar">
+            <button type="button" class="btn btn-secondary" id="packingCancelBtn"><i class="fas fa-times"></i> Hủy</button>
+            <button type="button" class="btn btn-primary" id="packingSubmitBtn"><i class="fas fa-box"></i> Xác nhận đóng gói</button>
+        </div>
+    </div>
+</div>
+
+
+@section Scripts {
+<script>
+    const modalFocusState = new Map();
+    function getFocusableElements(container) {
+        if (!container) return [];
+        return Array.from(container.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+            .filter(el => !el.hasAttribute('disabled') && el.offsetParent !== null);
+    }
+    function openAppModal(modalId, initialFocusId) {
+        const modal = document.getElementById(modalId);
+        if (!modal) return;
+        modalFocusState.set(modalId, document.activeElement);
+        modal.style.display = 'flex';
+        const focusTarget = initialFocusId ? document.getElementById(initialFocusId) : null;
+        const focusables = getFocusableElements(modal);
+        (focusTarget || focusables[0])?.focus();
+    }
+    function closeAppModal(modalId) {
+        const modal = document.getElementById(modalId);
+        if (!modal) return;
+        modal.style.display = 'none';
+        const previous = modalFocusState.get(modalId);
+        if (previous && typeof previous.focus === 'function') previous.focus();
+    }
+    function trapModalFocus(modalId, e) {
+        if (e.key !== 'Tab') return;
+        const modal = document.getElementById(modalId);
+        if (!modal || modal.style.display !== 'flex') return;
+        const focusables = getFocusableElements(modal);
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+        }
+    }
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            ['dockModal', 'rejectModal', 'shippingModal', 'packingModal'].forEach((id) => {
+                const modal = document.getElementById(id);
+                if (modal?.style.display === 'flex') closeAppModal(id);
+            });
+            return;
+        }
+        ['dockModal', 'rejectModal', 'shippingModal', 'packingModal'].forEach((id) => trapModalFocus(id, e));
+    });
+
+    // Kiểm kho & tăng tồn
+    document.getElementById('approveBtn')?.addEventListener('click', function() {
+        const rows = Array.from(document.querySelectorAll('table tbody tr'));
+        let totalTrans = 0;
+        let totalDefectTrans = 0;
+        let totalBase = 0;
+        let totalDefectBase = 0;
+        for (const r of rows) {
+            const cells = r.querySelectorAll('td');
+            if (!cells || cells.length === 0) continue;
+
+            // Ưu tiên lấy từ data attribute để tránh lệch khi format số.
+            const baseCell = r.querySelector('[data-base-qty]') || null;
+            const defectCell = r.querySelector('[data-defect-qty]') || null;
+            const transCell = r.querySelector('[data-trans-qty]') || null;
+            const defectTransCell = r.querySelector('[data-defect-trans-qty]') || null;
+            const parseNum = (t) => {
+                if (!t) return 0;
+                let s = ('' + t).trim();
+                if (!s) return 0;
+                // keep digits and common separators only
+                s = s.replace(/[^0-9,.\-]/g, '');
+                if (!s || s === '-' || s === ',' || s === '.') return 0;
+
+                const hasDot = s.indexOf('.') >= 0;
+                const hasComma = s.indexOf(',') >= 0;
+
+                // Decide decimal separator:
+                // - If both exist, the last one is assumed to be decimal
+                // - If only one exists:
+                //    - multiple occurrences => thousands separators
+                //    - single occurrence:
+                //        - 3 digits after => likely thousands
+                //        - otherwise => decimal
+                let normalized = s;
+                if (hasDot && hasComma) {
+                    const lastDot = s.lastIndexOf('.');
+                    const lastComma = s.lastIndexOf(',');
+                    const decIsDot = lastDot > lastComma;
+                    if (decIsDot) {
+                        normalized = s.replace(/,/g, '');
+                    } else {
+                        normalized = s.replace(/\./g, '').replace(',', '.');
+                    }
+                } else if (hasDot || hasComma) {
+                    const sep = hasDot ? '.' : ',';
+                    const parts = s.split(sep);
+                    if (parts.length > 2) {
+                        // many separators => thousands
+                        normalized = s.replace(/[.,]/g, '');
+                    } else {
+                        const frac = parts[1] || '';
+                        if (frac.length === 3 && parts[0].length >= 1) {
+                            // 1.000 / 10,000 => thousands
+                            normalized = s.replace(/[.,]/g, '');
+                        } else {
+                            // treat as decimal
+                            normalized = parts[0] + '.' + frac;
+                        }
+                    }
+                }
+
+                // remove any stray minus signs except leading
+                normalized = normalized.replace(/(?!^)-/g, '');
+                const n = parseFloat(normalized);
+                return isNaN(n) ? 0 : n;
+            };
+
+            const base = baseCell ? parseNum(baseCell.getAttribute('data-base-qty')) : 0;
+            const defectBase = defectCell ? parseNum(defectCell.getAttribute('data-defect-qty')) : 0;
+            const trans = transCell ? parseNum(transCell.getAttribute('data-trans-qty')) : 0;
+            const defectTrans = defectTransCell ? parseNum(defectTransCell.getAttribute('data-defect-trans-qty')) : 0;
+
+            totalBase += base;
+            totalDefectBase += defectBase;
+            totalTrans += trans;
+            totalDefectTrans += defectTrans;
+        }
+        const totalGoodTrans = Math.max(0, totalTrans - totalDefectTrans);
+        const totalGoodBase = Math.max(0, totalBase - totalDefectBase);
+        const hasConversion = Math.abs(totalBase - totalTrans) > 0.000001 || Math.abs(totalDefectBase - totalDefectTrans) > 0.000001;
+
+        Swal.fire({
+            title: 'Xác nhận tăng tồn?',
+            html: '<div class="voucher-review-confirm">' +
+                  '<div class="voucher-review-summary"><i class="fas fa-check-circle success-icon"></i> Hệ thống sẽ <b>cộng tồn kho</b> theo số lượng thực nhận.</div>' +
+                  '<div class="voucher-review-note">' +
+                  '<div><b>Tổng SL chứng từ:</b> ' + (totalTrans || 0).toLocaleString('vi-VN') + '</div>' +
+                  '<div><b>SL tăng tồn (ĐVT tồn):</b> <span class="voucher-review-good">' + (totalGoodBase || 0).toLocaleString('vi-VN') + '</span></div>' +
+                  (hasConversion
+                      ? ('<div class="voucher-review-muted">' +
+                         '<i class="fas fa-exchange-alt"></i> SL tăng tồn (ĐVT giao dịch): ' +
+                         (totalGoodTrans || 0).toLocaleString('vi-VN') +
+                         '</div>')
+                      : '') +
+                  '</div>' +
+                  '<div class="voucher-review-hint"><i class="fas fa-info-circle"></i> Sai lệch nếu có đã được nhập ở từng dòng bằng nút Lưu lệch.</div>' +
+                  '<div class="voucher-review-hint"><i class="fas fa-user-check"></i> Người kiểm phải khác người lập phiếu.</div>' +
+                  '</div>',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: '<i class="fas fa-check-double"></i> Xác nhận tăng tồn',
+            cancelButtonText: '<i class="fas fa-times"></i> Hủy',
+            confirmButtonColor: '#10b981',
+            cancelButtonColor: '#6b7280'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                const hasDefect = totalDefectBase > 0.000001 || totalDefectTrans > 0.000001;
+                const data = hasDefect
+                    ? {
+                        reviewResult: 3,
+                        responsibilityScore: 1,
+                        reviewNote: 'Đã có sai lệch và đã lưu chỉnh tại dòng chi tiết trước khi tăng tồn.'
+                    }
+                    : {
+                        reviewResult: 2,
+                        responsibilityScore: 0,
+                        reviewNote: 'Đạt - không sai lệch.'
+                    };
+                const reviewResultInput = document.getElementById('reviewResultInput');
+                const responsibilityScoreInput = document.getElementById('responsibilityScoreInput');
+                const reviewNoteInput = document.getElementById('reviewNoteInput');
+                if (reviewResultInput) reviewResultInput.value = String(data.reviewResult);
+                if (responsibilityScoreInput) responsibilityScoreInput.value = String(data.responsibilityScore);
+                if (reviewNoteInput) reviewNoteInput.value = data.reviewNote || '';
+                document.getElementById('approveForm').submit();
+            }
+        });
+    });
+
+    // Toggle ô nhập lý do khi chọn "Lý do khác"
+    function toggleCancelReasonInput() {
+        const sel = document.getElementById('cancelReasonCodeSelect');
+        const inp = document.getElementById('cancelReasonInput');
+        if (sel && inp) {
+            inp.classList.toggle('d-none', sel.value !== '99');
+            if (sel.value !== '99') inp.value = '';
+        }
+    }
+    toggleCancelReasonInput();
+
+    // Hủy phiếu
+    document.getElementById('cancelBtn')?.addEventListener('click', function() {
+        const codeSelect = document.getElementById('cancelReasonCodeSelect');
+        const reason = document.getElementById('cancelReasonInput').value.trim();
+        // Chỉ bắt buộc nhập chi tiết khi chọn "Lý do khác"
+        if (codeSelect.value === '99' && !reason) {
+            Swal.fire({
+                title: 'Thiếu lý do!',
+                text: 'Bạn chọn "Lý do khác" — vui lòng nhập chi tiết lý do hủy.',
+                icon: 'warning',
+                confirmButtonText: 'Đã hiểu',
+                confirmButtonColor: '#f59e0b'
+            });
+            return;
+        }
+        Swal.fire({
+            title: 'Hủy phiếu này?',
+            html: '<div class="voucher-cancel-confirm">' +
+                  '<i class="fas fa-exclamation-triangle danger-icon"></i> Hủy phiếu sẽ <b>hoàn tác</b> toàn bộ tồn kho đã ghi nhận<br>' +
+                  '<i class="fas fa-undo warning-icon"></i> Tất cả số lượng sẽ được trả về trạng thái trước phiếu</div>',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: '<i class="fas fa-trash"></i> Xác nhận hủy',
+            cancelButtonText: '<i class="fas fa-times"></i> Không hủy',
+            confirmButtonColor: '#ef4444',
+            cancelButtonColor: '#6b7280'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                document.getElementById('cancelForm').submit();
+            }
+        });
+    });
+    const voucherActionUrls = {
+        rejectInbound: '@Url.Action("RejectInbound", "Vouchers")',
+        assignDock: '@Url.Action("AssignDock", "Vouchers")',
+        confirmPacking: '@Url.Action("ConfirmPacking", "Vouchers")',
+        confirmShipping: '@Url.Action("ConfirmShipping", "Vouchers")'
+    };
+
+    // Từ chối phiếu nhập bằng hộp thoại chuẩn
+    function openRejectDialog() {
+        const input = document.getElementById('rejectReasonInput');
+        const validation = document.getElementById('rejectValidation');
+        if (validation) validation.textContent = '';
+        if (input) input.value = '';
+        openAppModal('rejectModal', 'rejectReasonInput');
+    }
+    function closeRejectDialog() {
+        closeAppModal('rejectModal');
+    }
+    function appendHiddenInput(form, name, value) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = name;
+        input.value = value ?? '';
+        form.appendChild(input);
+    }
+    function submitRejectDialog() {
+        const reason = document.getElementById('rejectReasonInput')?.value?.trim() || '';
+        const validation = document.getElementById('rejectValidation');
+        if (!reason) {
+            if (validation) validation.textContent = 'Vui lòng nhập lý do từ chối.';
+            return;
+        }
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = voucherActionUrls.rejectInbound;
+        const token = document.querySelector('input[name=__RequestVerificationToken]').value;
+        appendHiddenInput(form, '__RequestVerificationToken', token);
+        appendHiddenInput(form, 'id', '@Model.VoucherId');
+        appendHiddenInput(form, 'rejectionReason', reason);
+        document.body.appendChild(form);
+        form.submit();
+    }
+    document.getElementById('rejectBtn')?.addEventListener('click', openRejectDialog);
+    document.getElementById('rejectCancelBtn')?.addEventListener('click', closeRejectDialog);
+    document.getElementById('rejectSubmitBtn')?.addEventListener('click', submitRejectDialog);
+    document.getElementById('rejectModal')?.addEventListener('click', function(e) { if (e.target === this) closeRejectDialog(); });
+
+    // Gán cửa nhận hàng bằng hộp thoại chuẩn
+    const dockSeed = {
+        expectedArrivalAt: '@((Model.ExpectedArrivalAt?.ToString("yyyy-MM-ddTHH:mm")) ?? "")',
+        dockAppointmentStart: '@((Model.DockAppointmentStart?.ToString("yyyy-MM-ddTHH:mm")) ?? "")',
+        dockAppointmentEnd: '@((Model.DockAppointmentEnd?.ToString("yyyy-MM-ddTHH:mm")) ?? "")',
+        dockDoor: '@(Model.DockDoor ?? "")',
+        carrierName: '@(Model.CarrierName ?? "")',
+        vehicleNumber: '@(Model.VehicleNumber ?? "")',
+        driverName: '@(Model.DriverName ?? "")',
+        driverPhone: '@(Model.DriverPhone ?? "")'
+    };
+    function openDockDialog() {
+        Object.keys(dockSeed).forEach((k) => {
+            const input = document.getElementById(`dock-${k}`);
+            if (input) input.value = dockSeed[k] || '';
+        });
+        document.getElementById('dockValidation').textContent = '';
+        openAppModal('dockModal', 'dock-expectedArrivalAt');
+    }
+    function closeDockDialog() {
+        closeAppModal('dockModal');
+    }
+    function submitDockDialog() {
+        const expectedArrivalAt = document.getElementById('dock-expectedArrivalAt').value;
+        const dockAppointmentStart = document.getElementById('dock-dockAppointmentStart').value;
+        const dockAppointmentEnd = document.getElementById('dock-dockAppointmentEnd').value;
+        const dockDoor = document.getElementById('dock-dockDoor').value;
+        const carrierName = document.getElementById('dock-carrierName').value;
+        const vehicleNumber = document.getElementById('dock-vehicleNumber').value;
+        const driverName = document.getElementById('dock-driverName').value;
+        const driverPhone = document.getElementById('dock-driverPhone').value;
+        const validation = document.getElementById('dockValidation');
+        validation.textContent = '';
+
+        if (!expectedArrivalAt) {
+            validation.textContent = 'Vui lòng nhập giờ xe đến dự kiến.';
+            return;
+        }
+        if ((dockAppointmentStart && !dockAppointmentEnd) || (!dockAppointmentStart && dockAppointmentEnd)) {
+            validation.textContent = 'Khung giờ nhận hàng phải có đủ giờ bắt đầu và giờ kết thúc.';
+            return;
+        }
+
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = voucherActionUrls.assignDock;
+        const token = document.querySelector('input[name=__RequestVerificationToken]').value;
+        appendHiddenInput(form, '__RequestVerificationToken', token);
+        appendHiddenInput(form, 'id', '@Model.VoucherId');
+        appendHiddenInput(form, 'expectedArrivalAt', expectedArrivalAt);
+        appendHiddenInput(form, 'dockAppointmentStart', dockAppointmentStart);
+        appendHiddenInput(form, 'dockAppointmentEnd', dockAppointmentEnd);
+        appendHiddenInput(form, 'dockDoor', dockDoor);
+        appendHiddenInput(form, 'carrierName', carrierName);
+        appendHiddenInput(form, 'vehicleNumber', vehicleNumber);
+        appendHiddenInput(form, 'driverName', driverName);
+        appendHiddenInput(form, 'driverPhone', driverPhone);
+        document.body.appendChild(form);
+        form.submit();
+    }
+    document.getElementById('assignDockBtn')?.addEventListener('click', openDockDialog);
+    document.getElementById('dockModal')?.addEventListener('click', function(e) { if (e.target === this) closeDockDialog(); });
+    document.getElementById('dockCancelBtn')?.addEventListener('click', closeDockDialog);
+    document.getElementById('dockSubmitBtn')?.addEventListener('click', submitDockDialog);
+
+    // Đóng gói
+    function openPackingDialog() {
+        const validation = document.getElementById('packingValidation');
+        if (validation) validation.textContent = '';
+        openAppModal('packingModal', 'packingPackageType');
+        updatePackingSummary();
+        return false;
+    }
+    function closePackingDialog() {
+        closeAppModal('packingModal');
+    }
+    function updatePackingSummary() {
+        const packageType = document.getElementById('packingPackageType')?.value || 'Thùng carton';
+        const manualCount = parseInt(document.getElementById('packingManualCount')?.value || '0', 10);
+        const packageCodes = document.getElementById('packingPackageCodes')?.value || '';
+        const lpnCodes = document.getElementById('packingLpnCodes')?.value || '';
+        const countLines = (str) => str.trim() ? str.trim().split(/\r?\n/).filter(l => l.trim().length > 0).length : 0;
+        const totalCodes = countLines(packageCodes) + countLines(lpnCodes);
+        const summary = document.getElementById('packingSummary');
+        if (summary) summary.textContent = `Loại kiện: ${packageType} · Số kiện tạo: ${Math.max(0, manualCount)} · Tổng mã quét: ${totalCodes}`;
+    }
+    function submitPackingDialog() {
+        const manualPackageCount = parseInt(document.getElementById('packingManualCount')?.value || '0', 10);
+        const packageCodes = document.getElementById('packingPackageCodes')?.value || '';
+        const lpnCodes = document.getElementById('packingLpnCodes')?.value || '';
+        const packageType = document.getElementById('packingPackageType')?.value || '';
+        const packingNote = document.getElementById('packingNote')?.value || '';
+        const actualCatchWeight = document.getElementById('packingCatchWeight')?.value || '';
+        const requiresCatchWeight = @(requiresCatchWeight ? "true" : "false");
+        const validation = document.getElementById('packingValidation');
+        if (validation) validation.textContent = '';
+        if (requiresCatchWeight && (!(parseFloat(actualCatchWeight) > 0))) {
+            if (validation) validation.textContent = 'Phiếu có hàng cân trọng lượng thực tế, vui lòng nhập tổng cân thực tế.';
+            return;
+        }
+
+        if (manualPackageCount < 0) {
+            if (validation) validation.textContent = 'Số kiện thủ công không được âm.';
+            return;
+        }
+        if (manualPackageCount === 0 && !lpnCodes.trim()) {
+            if (validation) validation.textContent = 'Vui lòng nhập ít nhất 1 kiện thủ công hoặc 1 mã kiện (LPN).';
+            return;
+        }
+
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = voucherActionUrls.confirmPacking;
+        const token = document.querySelector('input[name=__RequestVerificationToken]').value;
+        appendHiddenInput(form, '__RequestVerificationToken', token);
+        appendHiddenInput(form, 'id', '@Model.VoucherId');
+        appendHiddenInput(form, 'manualPackageCount', manualPackageCount);
+        appendHiddenInput(form, 'packageType', packageType);
+        appendHiddenInput(form, 'packageCodes', packageCodes);
+        appendHiddenInput(form, 'lpnCodes', lpnCodes);
+        appendHiddenInput(form, 'packingNote', packingNote);
+        appendHiddenInput(form, 'actualCatchWeight', actualCatchWeight);
+        document.body.appendChild(form);
+        form.submit();
+    }
+    document.getElementById('packingPackageType')?.addEventListener('change', updatePackingSummary);
+    document.getElementById('packingManualCount')?.addEventListener('input', updatePackingSummary);
+    document.getElementById('packingPackageCodes')?.addEventListener('input', updatePackingSummary);
+    document.getElementById('packingLpnCodes')?.addEventListener('input', updatePackingSummary);
+    document.getElementById('packingCancelBtn')?.addEventListener('click', closePackingDialog);
+    document.getElementById('packingSubmitBtn')?.addEventListener('click', submitPackingDialog);
+    document.getElementById('packingModal')?.addEventListener('click', function(e) { if (e.target === this) closePackingDialog(); });
+
+    // Giao hàng bằng hộp thoại chuẩn
+    function openShippingDialog() {
+        openAppModal('shippingModal', 'shippingTrackingInput');
+    }
+    function closeShippingDialog() {
+        closeAppModal('shippingModal');
+    }
+    function submitShippingDialog() {
+        const tracking = document.getElementById('shippingTrackingInput')?.value || '';
+        const manifest = document.getElementById('shippingManifestInput')?.value || '';
+        const handoverNote = document.getElementById('shippingNoteInput')?.value || '';
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = voucherActionUrls.confirmShipping;
+        const token = document.querySelector('input[name=__RequestVerificationToken]').value;
+        appendHiddenInput(form, '__RequestVerificationToken', token);
+        appendHiddenInput(form, 'id', '@Model.VoucherId');
+        appendHiddenInput(form, 'trackingNumber', tracking);
+        appendHiddenInput(form, 'manifestCode', manifest);
+        appendHiddenInput(form, 'handoverNote', handoverNote);
+        document.body.appendChild(form);
+        form.submit();
+    }
+    document.getElementById('shipBtn')?.addEventListener('click', openShippingDialog);
+    document.getElementById('shippingCancelBtn')?.addEventListener('click', closeShippingDialog);
+    document.getElementById('shippingSubmitBtn')?.addEventListener('click', submitShippingDialog);
+    document.getElementById('shippingModal')?.addEventListener('click', function(e) { if (e.target === this) closeShippingDialog(); });
+
+</script>
+}

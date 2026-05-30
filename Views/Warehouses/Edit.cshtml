@@ -1,0 +1,53 @@
+@model WMS.Models.Warehouse
+@{
+    ViewData["Title"] = "Sửa kho";
+    var statusLabel = Model.IsActive ? "Đang hoạt động" : "Đã ẩn";
+    var statusClass = Model.IsActive ? "badge-success" : "badge-secondary";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Sửa kho @Model.WarehouseCode</h1>
+        <p class="page-subtitle">Cập nhật thông tin kho mà không làm thay đổi dữ liệu tồn kho, vị trí hoặc lịch sử giao dịch đã phát sinh.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Warehouses" asp-action="Details" asp-route-id="@Model.WarehouseId" class="btn btn-secondary"><i class="fas fa-diagram-project"></i> Xem sơ đồ kho</a>
+        <a asp-controller="Warehouses" asp-action="Index" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Quay lại</a>
+    </div>
+</div>
+
+<div class="enterprise-form-layout">
+    <div class="card enterprise-form-card">
+        <div class="card-header">
+            <span class="card-title"><i class="fas fa-warehouse text-accent"></i> Thông tin kho</span>
+            <span class="badge @statusClass">@statusLabel</span>
+        </div>
+        <div class="card-body">
+            @await Html.PartialAsync("_Form", Model)
+        </div>
+    </div>
+
+    <aside class="enterprise-form-aside">
+        <div class="card">
+            <div class="card-header"><span class="card-title">Lưu ý vận hành</span></div>
+            <div class="card-body">
+                <ol class="audit-checklist">
+                    <li>Đổi mã kho sẽ ảnh hưởng cách người dùng tìm kiếm và đọc chứng từ.</li>
+                    <li>Đổi người quản lý chỉ thay đổi trách nhiệm hiện tại, không sửa lịch sử thao tác.</li>
+                    <li>Nếu cần thay đổi khu vực hoặc vị trí, dùng màn sơ đồ kho để kiểm soát chi tiết.</li>
+                </ol>
+                <div class="soft-divider"></div>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <div class="detail-label">Mã bản ghi</div>
+                        <div class="detail-value">@Model.WarehouseId</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Ngày tạo</div>
+                        <div class="detail-value">@Model.CreatedAt.ToString("dd/MM/yyyy")</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </aside>
+</div>

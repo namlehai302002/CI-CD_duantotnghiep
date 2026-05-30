@@ -1,0 +1,112 @@
+@model WMS.ViewModels.SemanticBiDashboardViewModel
+@using WMS.Models
+@{
+    ViewData["Title"] = "Báo cáo quản trị dữ liệu";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Báo cáo quản trị dữ liệu</h1>
+        <p class="page-subtitle">Lớp chỉ số chuẩn cho tồn kho, đơn hàng, lao động, chi phí và cam kết dịch vụ.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-secondary" asp-action="PredictiveAlerts"><i class="fas fa-triangle-exclamation"></i> Cảnh báo dự báo</a>
+        @if (Model.CanSeeFinancial)
+        {
+            <a class="btn btn-primary" asp-action="FinancialCostDashboard"><i class="fas fa-coins"></i> Chi phí</a>
+        }
+    </div>
+</div>
+
+<form method="get" class="filter-panel">
+    <div>
+        <label>Kho</label>
+        <select class="form-control" name="warehouseId">
+            <option value="">Tất cả kho</option>
+            @foreach (var wh in Model.Warehouses)
+            {
+                <option value="@wh.WarehouseId" selected="@(Model.WarehouseId == wh.WarehouseId)">@wh.WarehouseCode - @wh.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div>
+        <label>Số ngày</label>
+        <input class="form-control" type="number" name="days" value="@Model.Days" min="1" max="365" />
+    </div>
+    <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc</button>
+</form>
+
+<div class="metric-grid">
+    @foreach (var snapshot in Model.Snapshots.Take(5))
+    {
+        <div class="metric-card">
+            <div class="metric-value">@snapshot.MetricValue.ToString("N2")</div>
+            <div class="metric-label">@snapshot.MetricDefinition.MetricName</div>
+            <div class="metric-sub">@snapshot.MetricDefinition.Unit</div>
+        </div>
+    }
+</div>
+
+<section class="enterprise-section">
+    <div class="enterprise-section-header">
+        <div>
+            <div class="enterprise-section-title">Danh mục chỉ số chuẩn</div>
+            <div class="enterprise-section-subtitle">Mỗi chỉ số có công thức và nguồn dữ liệu để đối chiếu.</div>
+        </div>
+        <span class="status-badge">Lớp chỉ số đã kiểm soát</span>
+    </div>
+    <div class="table-responsive semantic-bi-snapshot-wrap">
+        <table class="data-table">
+            <thead><tr><th>Mã chỉ số</th><th>Tên</th><th>Nhóm</th><th>Đơn vị</th><th>Công thức</th><th>Nguồn</th></tr></thead>
+            <tbody>
+                @if (!Model.Definitions.Any())
+                {
+                    <tr><td colspan="6" class="empty-state">Chưa có chỉ số chuẩn.</td></tr>
+                }
+                @foreach (var metric in Model.Definitions)
+                {
+                    <tr>
+                        <td class="td-code">@metric.MetricCode</td>
+                        <td>@metric.MetricName</td>
+                        <td><span class="status-badge">@metric.Category</span></td>
+                        <td>@metric.Unit</td>
+                        <td>@metric.Formula</td>
+                        <td>@metric.SourceLabel</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="enterprise-section">
+    <div class="enterprise-section-header">
+        <div>
+            <div class="enterprise-section-title">Bản ghi chỉ số gần nhất</div>
+            <div class="enterprise-section-subtitle">Dữ liệu được phân phạm vi theo kho/chủ hàng và dùng làm nguồn trích dẫn cho trợ lý nội bộ.</div>
+        </div>
+    </div>
+    <div class="skeleton-line" aria-hidden="true"></div>
+    <div class="table-responsive semantic-bi-snapshot-wrap">
+        <table class="data-table">
+            <thead><tr><th>Ngày</th><th>Chỉ số</th><th>Giá trị</th><th>Phạm vi</th><th>Nguồn</th><th>Số dòng nguồn</th></tr></thead>
+            <tbody>
+                @if (!Model.Snapshots.Any())
+                {
+                    <tr><td colspan="6" class="empty-state">Chưa có bản ghi chỉ số phù hợp bộ lọc.</td></tr>
+                }
+                @foreach (var row in Model.Snapshots)
+                {
+                    <tr>
+                        <td>@row.MetricDate.ToString("dd/MM/yyyy")</td>
+                        <td>@row.MetricDefinition.MetricName</td>
+                        <td class="td-number">@row.MetricValue.ToString("N2") @row.MetricDefinition.Unit</td>
+                        <td>@row.ScopeKey</td>
+                        <td>@row.SourceCitation</td>
+                        <td class="td-number">@row.SourceCount</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

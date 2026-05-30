@@ -1,0 +1,169 @@
+﻿@model List<WMS.ViewModels.ReplenishmentSuggestionRow>
+@{
+    ViewData["Title"] = "Bổ sung vị trí lấy hàng";
+
+    string PriorityLabel(WMS.Models.MovementTaskPriorityEnum priority) => priority switch
+    {
+        WMS.Models.MovementTaskPriorityEnum.Low => "Thấp",
+        WMS.Models.MovementTaskPriorityEnum.Normal => "Bình thường",
+        WMS.Models.MovementTaskPriorityEnum.High => "Cao",
+        WMS.Models.MovementTaskPriorityEnum.Urgent => "Khẩn cấp",
+        _ => "Không áp dụng"
+    };
+
+    string TriggerLabel(WMS.Models.ReplenishmentTriggerTypeEnum trigger) => trigger switch
+    {
+        WMS.Models.ReplenishmentTriggerTypeEnum.Threshold => "Theo ngưỡng",
+        WMS.Models.ReplenishmentTriggerTypeEnum.Demand => "Theo nhu cầu",
+        WMS.Models.ReplenishmentTriggerTypeEnum.Forecast => "Theo dự báo",
+        WMS.Models.ReplenishmentTriggerTypeEnum.Hybrid => "Kết hợp",
+        _ => "Không áp dụng"
+    };
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Bổ sung vị trí lấy hàng</h1>
+        <p class="page-subtitle">Gợi ý kéo hàng từ vị trí chứa tổng về vị trí lấy hàng khi tồn xuống dưới ngưỡng, giúp người lấy hàng không bị đứt mạch thao tác.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Operations" asp-action="ExceptionCenter" class="btn btn-secondary"><i class="fas fa-triangle-exclamation"></i> Xem bất thường</a>
+        <a asp-controller="Operations" asp-action="RfPicking" class="btn btn-secondary"><i class="fas fa-mobile-alt"></i> Quét lấy hàng</a>
+        <a asp-controller="Operations" asp-action="MovementTasks" class="btn btn-secondary"><i class="fas fa-list-check"></i> Nhiệm vụ luân chuyển</a>
+        <a asp-controller="Operations" asp-action="RfMovement" class="btn btn-secondary"><i class="fas fa-mobile-screen"></i> Quét di dời bằng điện thoại</a>
+        <form method="post" asp-controller="Operations" asp-action="RunReplenishmentAutomation" class="enterprise-inline-controls">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="warehouseId" value="@ViewBag.WarehouseId" />
+            <input type="hidden" name="search" value="@ViewBag.Search" />
+            <input type="number" name="maxTasks" min="1" max="200" value="50" class="form-control w-84" />
+            <button class="btn btn-primary" type="submit"><i class="fas fa-bolt"></i> Tự tạo nhiệm vụ</button>
+        </form>
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-layer-group"></i> Cách hiểu nhanh</div>
+    <div class="step-list">
+        <span class="step-chip"><i class="fas fa-arrow-down"></i> 1) Vị trí lấy hàng xuống dưới ngưỡng</span>
+        <span class="step-chip"><i class="fas fa-arrows-left-right"></i> 2) Hệ thống gợi ý nguồn chứa tổng phù hợp</span>
+        <span class="step-chip"><i class="fas fa-list-check"></i> 3) Tạo nhiệm vụ bổ sung; màn quét xác nhận xong mới cập nhật tồn</span>
+    </div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select class="form-control" name="warehouseId">
+            <option value="">Tất cả</option>
+            @foreach (var w in (List<WMS.Models.Warehouse>)ViewBag.Warehouses)
+            {
+                <option value="@w.WarehouseId" selected="@(ViewBag.WarehouseId != null && (int)ViewBag.WarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Tìm nhanh</label>
+        <input type="text" class="form-control" name="search" value="@ViewBag.Search" placeholder="Vật tư, vị trí, lô..." />
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc dữ liệu</button>
+    </div>
+</form>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Vật tư</th>
+                <th>Kho</th>
+                <th>Vị trí lấy hàng</th>
+                <th>Nguồn chứa tổng</th>
+                <th class="cell-right">Tồn vị trí lấy hàng</th>
+                <th class="cell-right">Nguồn khả dụng</th>
+                <th class="cell-right">Ngưỡng / mục tiêu</th>
+                <th class="cell-right">SL đề nghị</th>
+                <th class="w-160">Sức chứa hiện tại</th>
+                <th>Ghi chú</th>
+                <th>Nhu cầu</th>
+                <th>Dự báo</th>
+                <th>Ưu tiên</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @if (!Model.Any())
+        {
+            <tr>
+                <td colspan="14" class="cell-empty cell-empty-md">Hiện chưa có gợi ý bổ sung nào.</td>
+            </tr>
+        }
+        else
+        {
+            foreach (var row in Model)
+            {
+                <tr>
+                    <td>
+                        <div class="fw-700">@row.ItemCode</div>
+                        <div class="text-muted fs-sm">@row.ItemName</div>
+                    </td>
+                    <td>@row.WarehouseName</td>
+                    <td>@row.DefaultLocationCode</td>
+                    <td>
+                        <div>@row.SourceLocationCode</div>
+                        <div class="text-muted fs-sm">
+                            @((row.LotNumber ?? "---") + (row.ExpiryDate.HasValue ? $" / {row.ExpiryDate.Value:dd/MM/yyyy}" : ""))
+                        </div>
+                    </td>
+                    <td class="td-number">@row.PickFaceQty.ToString("N2")</td>
+                    <td class="td-number">@row.SourceAvailableQty.ToString("N2")</td>
+                    <td class="td-number">@row.TriggerQty.ToString("N2") / @row.TargetQty.ToString("N2")</td>
+                    <td class="td-number text-accent">@row.SuggestedQty.ToString("N2")</td>
+                    <td>
+                        @{
+                            var percent = row.LocationMaxCapacity > 0 ? (row.LocationCurrentLoad / row.LocationMaxCapacity) * 100 : 0;
+                            var colorClass = percent >= 90 ? "bg-danger" : (percent >= 75 ? "bg-warning" : "bg-success");
+                        }
+                        <div class="fs-sm mb-1">
+                            @row.LocationCurrentLoad.ToString("N2") / @row.LocationMaxCapacity.ToString("N2") @row.CapacityUnit
+                        </div>
+                        <div class="progress">
+                            <div class="progress-bar @colorClass" role="progressbar" data-progress-width="@($"{Math.Min(100, percent):0.##}%")" aria-valuenow="@percent" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                    </td>
+                    <td class="fs-body-sm">
+                        @row.SuggestionReason
+                        @if (row.HasActiveLpn)
+                        {
+                            <div class="text-warning mt-1"><i class="fas fa-tags"></i> Cần xử lý theo mã kiện (LPN) để giữ truy vết</div>
+                        }
+                    </td>
+                    <td class="td-number">@row.DemandQty.ToString("N2")</td>
+                    <td class="td-number">@row.ForecastQty.ToString("N2")</td>
+                    <td>
+                        <span class="badge @(row.Priority == WMS.Models.MovementTaskPriorityEnum.Urgent ? "badge-danger" : row.Priority == WMS.Models.MovementTaskPriorityEnum.High ? "badge-warning" : "badge-info")">@PriorityLabel(row.Priority)</span>
+                        <div class="text-muted fs-xs">@TriggerLabel(row.TriggerType) / @row.RoutePriorityScore</div>
+                    </td>
+                    <td class="td-actions">
+                        @if (row.CanExecute)
+                        {
+                            <form method="post" asp-controller="Operations" asp-action="ExecuteReplenishment" class="enterprise-inline-controls" data-enterprise-confirm="Tạo nhiệm vụ bổ sung hàng cho dòng này?" data-enterprise-confirm-ok="Tạo nhiệm vụ">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="sourceItemLocationId" value="@row.SourceItemLocationId" />
+                                <input type="hidden" name="itemId" value="@row.ItemId" />
+                                <input type="hidden" name="toLocationId" value="@row.DefaultLocationId" />
+                                <input class="form-control w-110" type="number" name="qty" step="0.0001" min="0.0001" max="@row.SuggestedQty.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)" value="@row.SuggestedQty.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)" />
+                                <button class="btn btn-primary" type="submit"><i class="fas fa-list-check"></i> Tạo nhiệm vụ bổ sung</button>
+                            </form>
+                        }
+                        else
+                        {
+                            <span class="badge badge-warning">Xử lý theo mã kiện</span>
+                        }
+                    </td>
+                </tr>
+            }
+        }
+        </tbody>
+    </table>
+</div>

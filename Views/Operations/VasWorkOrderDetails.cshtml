@@ -1,0 +1,313 @@
+﻿@model WMS.Models.VasWorkOrder
+@using WMS.Models
+@{
+    ViewData["Title"] = $"Lệnh gia công phụ trợ {Model.WorkOrderCode}";
+    var canManage = User.IsInRole("Admin") || User.IsInRole("Manager");
+    var canSeeCost = canManage;
+
+    string TypeText(VasOperationTypeEnum type) => type switch
+    {
+        VasOperationTypeEnum.LightAssembly => "Lắp ráp nhẹ",
+        VasOperationTypeEnum.CoPacking => "Đóng gói phối hợp",
+        VasOperationTypeEnum.Repack => "Đóng gói lại",
+        VasOperationTypeEnum.Relabel => "Dán nhãn lại",
+        _ => "Không áp dụng"
+    };
+
+    string StatusText(VasWorkOrderStatusEnum status) => status switch
+    {
+        VasWorkOrderStatusEnum.Draft => "Nháp",
+        VasWorkOrderStatusEnum.Reserved => "Đã giữ chỗ",
+        VasWorkOrderStatusEnum.InProgress => "Đang thực hiện",
+        VasWorkOrderStatusEnum.QcPending => "Chờ kiểm tra chất lượng",
+        VasWorkOrderStatusEnum.Completed => "Hoàn tất",
+        VasWorkOrderStatusEnum.Cancelled => "Đã hủy",
+        _ => "Không áp dụng"
+    };
+
+    string MaterialStatusText(VasMaterialLineStatusEnum status) => status switch
+    {
+        VasMaterialLineStatusEnum.Draft => "Dự kiến",
+        VasMaterialLineStatusEnum.Reserved => "Đã giữ chỗ",
+        VasMaterialLineStatusEnum.Consumed => "Đã tiêu hao",
+        VasMaterialLineStatusEnum.Released => "Đã giải phóng",
+        _ => "Không áp dụng"
+    };
+
+    string QcText(VasQcResultEnum result) => result switch
+    {
+        VasQcResultEnum.Pending => "Chưa kiểm tra",
+        VasQcResultEnum.Passed => "Đạt",
+        VasQcResultEnum.Failed => "Không đạt",
+        VasQcResultEnum.ReworkRequired => "Cần xử lý lại",
+        _ => "Không áp dụng"
+    };
+
+    string StatusBadge(VasWorkOrderStatusEnum status) => status switch
+    {
+        VasWorkOrderStatusEnum.Reserved => "badge-info",
+        VasWorkOrderStatusEnum.InProgress => "badge-warning",
+        VasWorkOrderStatusEnum.QcPending => "badge-primary",
+        VasWorkOrderStatusEnum.Completed => "badge-success",
+        VasWorkOrderStatusEnum.Cancelled => "badge-danger",
+        _ => "badge-secondary"
+    };
+
+    string QcBadge(VasQcResultEnum result) => result switch
+    {
+        VasQcResultEnum.Passed => "badge-success",
+        VasQcResultEnum.Failed => "badge-danger",
+        VasQcResultEnum.ReworkRequired => "badge-warning",
+        _ => "badge-secondary"
+    };
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-screwdriver-wrench text-accent"></i> @Model.WorkOrderCode</h1>
+        <p class="page-subtitle">Theo dõi lắp ráp nhẹ, đóng gói phối hợp, đóng gói lại và dán nhãn lại từ lúc giữ chỗ vật tư đến kiểm tra chất lượng và hoàn tất.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-secondary" asp-controller="Operations" asp-action="VasWorkOrders"><i class="fas fa-arrow-left"></i> Danh sách</a>
+    </div>
+</div>
+
+<div class="detail-grid mb-4">
+    <div class="detail-item">
+        <div class="detail-label">Loại thao tác</div>
+        <div class="detail-value">@TypeText(Model.OperationType)</div>
+    </div>
+    <div class="detail-item">
+        <div class="detail-label">Trạng thái</div>
+        <div class="detail-value"><span class="badge @StatusBadge(Model.Status)">@StatusText(Model.Status)</span></div>
+    </div>
+    <div class="detail-item">
+        <div class="detail-label">Kết quả kiểm tra</div>
+        <div class="detail-value"><span class="badge @QcBadge(Model.QcResult)">@QcText(Model.QcResult)</span></div>
+    </div>
+    <div class="detail-item">
+        <div class="detail-label">Kho</div>
+        <div class="detail-value">@Model.Warehouse?.WarehouseCode - @Model.Warehouse?.WarehouseName</div>
+    </div>
+    <div class="detail-item">
+        <div class="detail-label">Khách hàng</div>
+        <div class="detail-value">@(Model.Partner == null ? "Nội bộ" : $"{Model.Partner.PartnerCode} - {Model.Partner.PartnerName}")</div>
+    </div>
+    <div class="detail-item">
+        <div class="detail-label">Phiếu liên kết</div>
+        <div class="detail-value">@(Model.Voucher == null ? "---" : $"{Model.Voucher.VoucherCode}")</div>
+    </div>
+    <div class="detail-item">
+        <div class="detail-label">Mã hàng chính</div>
+        <div class="detail-value">@Model.PrimaryItem?.ItemCode - @Model.PrimaryItem?.ItemName</div>
+    </div>
+    <div class="detail-item">
+        <div class="detail-label">Số lượng</div>
+        <div class="detail-value">@Model.CompletedQty.ToString("N4") / @Model.PlannedQty.ToString("N4") @Model.PrimaryItem?.BaseUom?.UomCode</div>
+    </div>
+    <div class="detail-item">
+        <div class="detail-label">Phút lao động</div>
+        <div class="detail-value">@Model.ActualLaborMinutes.ToString("N2")</div>
+    </div>
+    @if (canSeeCost)
+    {
+        <div class="detail-item">
+            <div class="detail-label">Chi phí vật tư</div>
+            <div class="detail-value">@Model.MaterialCost.ToString("N0")</div>
+        </div>
+        <div class="detail-item">
+            <div class="detail-label">Chi phí nhân công</div>
+            <div class="detail-value">@Model.LaborCost.ToString("N0")</div>
+        </div>
+        <div class="detail-item">
+            <div class="detail-label">Tổng chi phí</div>
+            <div class="detail-value">@Model.TotalCost.ToString("N0")</div>
+        </div>
+    }
+    <div class="detail-item">
+        <div class="detail-label">Ghi chú</div>
+        <div class="detail-value">@(string.IsNullOrWhiteSpace(Model.Notes) ? "---" : Model.Notes)</div>
+    </div>
+</div>
+
+<div class="enterprise-card mb-4">
+    <div class="enterprise-card-header">
+        <div>
+            <h3 class="enterprise-card-title">Thao tác lệnh gia công</h3>
+            <p class="enterprise-card-subtitle">Các bước được khóa theo trạng thái để tránh tiêu hao vật tư khi chưa đủ giữ chỗ, thời gian nhân công hoặc kết quả kiểm tra chất lượng.</p>
+        </div>
+    </div>
+    <div class="enterprise-card-body enterprise-inline-controls align-start">
+        @if (Model.Status == VasWorkOrderStatusEnum.Draft)
+        {
+            <form method="post" asp-controller="Operations" asp-action="ReserveVasWorkOrder" data-enterprise-confirm="Giữ chỗ vật tư cho lệnh gia công này?">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.VasWorkOrderId" />
+                <button class="btn btn-primary" type="submit"><i class="fas fa-lock"></i> Giữ chỗ vật tư</button>
+            </form>
+        }
+
+        @if (Model.Status == VasWorkOrderStatusEnum.Reserved)
+        {
+            <form method="post" asp-controller="Operations" asp-action="StartVasWorkOrder" data-enterprise-confirm="Bắt đầu lệnh gia công phụ trợ này?">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.VasWorkOrderId" />
+                <button class="btn btn-primary" type="submit"><i class="fas fa-play"></i> Bắt đầu</button>
+            </form>
+        }
+
+        @if (Model.Status == VasWorkOrderStatusEnum.InProgress)
+        {
+            var nextOperation = Model.Operations.OrderBy(o => o.StepNumber).FirstOrDefault(o => !o.CompletedAt.HasValue);
+            if (nextOperation != null)
+            {
+                <form method="post" asp-controller="Operations" asp-action="CompleteVasOperation" class="enterprise-inline-controls"
+                      data-enterprise-confirm="Ghi nhận hoàn tất bước gia công phụ trợ này?"
+                      data-enterprise-confirm-title="Xác nhận ghi nhận thao tác"
+                      data-enterprise-confirm-ok="Ghi nhận">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="operationId" value="@nextOperation.VasOperationId" />
+                    <input class="form-control w-150" type="number" step="0.01" min="0.01" name="actualMinutes" placeholder="Phút thực tế" aria-label="Phút thực tế" required />
+                    <input class="form-control w-220" name="notes" placeholder="Ghi chú thao tác" aria-label="Ghi chú thao tác" />
+                    <button class="btn btn-success" type="submit"><i class="fas fa-stopwatch"></i> Ghi nhận thao tác</button>
+                </form>
+            }
+
+            <form method="post" asp-controller="Operations" asp-action="SubmitVasQc" class="enterprise-inline-controls" data-enterprise-confirm="Gửi lệnh sang bước kiểm tra chất lượng?">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.VasWorkOrderId" />
+                <input class="form-control w-160" type="number" step="0.0001" min="0.0001" max="@Model.PlannedQty" name="completedQty" value="@(Model.CompletedQty > 0 ? Model.CompletedQty : Model.PlannedQty)" aria-label="Số lượng hoàn tất gửi kiểm tra" required />
+                <button class="btn btn-warning" type="submit"><i class="fas fa-clipboard-check"></i> Gửi kiểm tra</button>
+            </form>
+        }
+
+        @if (Model.Status == VasWorkOrderStatusEnum.QcPending)
+        {
+            <form method="post" asp-controller="Operations" asp-action="RecordVasQc" class="vas-qc-grid">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.VasWorkOrderId" />
+                <select class="form-control" name="result" aria-label="Kết quả kiểm tra chất lượng" required>
+                    <option value="@VasQcResultEnum.Passed">Đạt</option>
+                    <option value="@VasQcResultEnum.Failed">Không đạt</option>
+                    <option value="@VasQcResultEnum.ReworkRequired">Cần xử lý lại</option>
+                </select>
+                <input class="form-control" type="number" step="0.0001" min="0" name="passedQty" value="@Model.CompletedQty" placeholder="Số đạt" aria-label="Số lượng đạt" required />
+                <input class="form-control" type="number" step="0.0001" min="0" name="failedQty" value="0" placeholder="Số lỗi" aria-label="Số lượng lỗi" required />
+                <input class="form-control" name="note" placeholder="Ghi chú kiểm tra" aria-label="Ghi chú kiểm tra chất lượng" />
+                <button class="btn btn-primary" type="submit"><i class="fas fa-check-double"></i> Ghi nhận kiểm tra</button>
+            </form>
+
+            @if (Model.QcResult == VasQcResultEnum.Passed)
+            {
+                <form method="post" asp-controller="Operations" asp-action="CompleteVasWorkOrder" data-enterprise-confirm="Hoàn tất lệnh gia công phụ trợ này?">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="id" value="@Model.VasWorkOrderId" />
+                    <button class="btn btn-success" type="submit"><i class="fas fa-circle-check"></i> Hoàn tất</button>
+                </form>
+            }
+        }
+
+        @if (canManage && Model.Status is not VasWorkOrderStatusEnum.Completed and not VasWorkOrderStatusEnum.Cancelled)
+        {
+            <form method="post" asp-controller="Operations" asp-action="CancelVasWorkOrder" class="enterprise-inline-controls" data-enterprise-confirm="Hủy lệnh gia công phụ trợ này?">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.VasWorkOrderId" />
+                <input class="form-control w-240" name="reason" placeholder="Lý do hủy" aria-label="Lý do hủy lệnh gia công phụ trợ" required />
+                <button class="btn btn-danger" type="submit"><i class="fas fa-ban"></i> Hủy</button>
+            </form>
+        }
+    </div>
+</div>
+
+<div class="enterprise-card mb-4">
+    <div class="enterprise-card-header">
+        <div>
+            <h3 class="enterprise-card-title">Các bước thao tác</h3>
+            <p class="enterprise-card-subtitle">Ghi nhận người thực hiện, thời gian và phút lao động thực tế cho từng bước gia công phụ trợ.</p>
+        </div>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Bước</th>
+                    <th>Tên bước</th>
+                    <th>Người thực hiện</th>
+                    <th>Bắt đầu</th>
+                    <th>Kết thúc</th>
+                    <th class="td-number">Phút thực tế</th>
+                    <th>Ghi chú</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var operation in Model.Operations.OrderBy(o => o.StepNumber))
+            {
+                <tr>
+                    <td>@operation.StepNumber</td>
+                    <td>@operation.OperationName</td>
+                    <td>@(operation.PerformedBy ?? "---")</td>
+                    <td>@(operation.StartedAt.HasValue ? operation.StartedAt.Value.ToString("dd/MM/yyyy HH:mm") : "---")</td>
+                    <td>@(operation.CompletedAt.HasValue ? operation.CompletedAt.Value.ToString("dd/MM/yyyy HH:mm") : "---")</td>
+                    <td class="td-number">@operation.ActualMinutes.ToString("N2")</td>
+                    <td>@operation.Notes</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="enterprise-card">
+    <div class="enterprise-card-header">
+        <div>
+            <h3 class="enterprise-card-title">Vật tư phụ</h3>
+            <p class="enterprise-card-subtitle">Nguồn vật tư được phân bổ theo nguyên tắc hạn dùng gần nhất xuất trước và chỉ lấy tồn khả dụng.</p>
+        </div>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Vật tư</th>
+                    <th>Vị trí nguồn</th>
+                    <th>Lô/HSD</th>
+                    <th class="td-number">Cần</th>
+                    <th class="td-number">Giữ chỗ</th>
+                    <th class="td-number">Tiêu hao</th>
+                    <th class="td-number">Giải phóng</th>
+                    @if (canSeeCost)
+                    {
+                        <th class="td-number">Đơn giá</th>
+                        <th class="td-number">Chi phí</th>
+                    }
+                    <th>Trạng thái</th>
+                    <th>Ghi chú</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var line in Model.MaterialLines.OrderBy(l => l.MaterialItem?.ItemCode).ThenBy(l => l.ExpiryDate).ThenBy(l => l.SourceLocation?.LocationCode))
+            {
+                <tr>
+                    <td>
+                        <div class="fw-700">@line.MaterialItem?.ItemCode</div>
+                        <div class="text-muted fs-sm">@line.MaterialItem?.ItemName</div>
+                    </td>
+                    <td><span class="td-code">@(line.SourceLocation?.LocationCode ?? "Chưa phân bổ")</span></td>
+                    <td>@(line.LotNumber ?? "---") @(line.ExpiryDate.HasValue ? $" / {line.ExpiryDate:dd/MM/yyyy}" : "")</td>
+                    <td class="td-number">@line.RequiredQty.ToString("N4")</td>
+                    <td class="td-number">@line.ReservedQty.ToString("N4")</td>
+                    <td class="td-number">@line.ConsumedQty.ToString("N4")</td>
+                    <td class="td-number">@line.ReleasedQty.ToString("N4")</td>
+                    @if (canSeeCost)
+                    {
+                        <td class="td-number">@line.UnitCostSnapshot.ToString("N0")</td>
+                        <td class="td-number">@line.ConsumedCost.ToString("N0")</td>
+                    }
+                    <td><span class="badge badge-secondary">@MaterialStatusText(line.Status)</span></td>
+                    <td class="fs-sm">@line.Notes</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>

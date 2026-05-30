@@ -1,0 +1,195 @@
+@model List<WMS.ViewModels.InboundReceivingRow>
+@{
+    ViewData["Title"] = "Quét nhận hàng";
+    var canComplete = User.IsInRole("Admin") || User.IsInRole("Manager");
+    var search = (string?)ViewBag.Search ?? "";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Quét nhận hàng</h1>
+        <p class="page-subtitle">Màn thao tác nhanh cho khu nhận hàng: nhìn đúng xe, đúng cửa nhận hàng và biết ngay phiếu nào còn thiếu số sê-ri.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Operations" asp-action="RfPicking" class="btn btn-secondary"><i class="fas fa-list-check"></i> Quét lấy hàng</a>
+        <a asp-controller="Operations" asp-action="Receiving" class="btn btn-secondary"><i class="fas fa-table-list"></i> Xem bảng đầy đủ</a>
+    </div>
+</div>
+
+<form method="get" class="card mb-3 mobile-scan-card mobile-filter-card" id="receiving-filter-form">
+    <div class="mobile-filter-row">
+        <div class="mobile-filter-primary">
+            <label class="form-label">Quét hoặc nhập mã phiếu / lịch nhận / xe / cửa nhận hàng</label>
+            <div class="scan-input-row">
+                <input class="form-control rf-scan-input" id="receiving-search-input" name="search" value="@search" placeholder="Quét mã rồi nhấn Enter để lọc" autocomplete="off" />
+                <button type="button" class="btn btn-secondary scan-camera-btn" data-wms-call="scanReceivingSearch" title="Mở camera quét mã">
+                    <i class="fas fa-camera"></i>
+                </button>
+            </div>
+        </div>
+        <div class="mobile-filter-secondary">
+            <label class="form-label">Chọn cửa nhận hàng bạn đang đứng</label>
+            <select class="form-control" name="dock" data-wms-submit-form="true">
+                <option value="">-- Tất cả cửa nhận hàng --</option>
+                @if (ViewBag.ActiveDocks != null)
+                {
+                    foreach (var d in (List<string>)ViewBag.ActiveDocks)
+                    {
+                        <option value="@d" selected="@(ViewBag.CurrentDock == d)">Cửa nhận hàng: @d</option>
+                    }
+                }
+            </select>
+        </div>
+        <div class="mobile-help-text">
+            Lọc phiếu theo cửa nhận hàng để thao tác nhanh hơn, tránh nhầm xe và nhầm phiếu.
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Lọc phiếu</button>
+    </div>
+</form>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-mobile-screen"></i> Cách làm nhanh</div>
+    <div class="step-list">
+        <span class="step-chip"><i class="fas fa-truck"></i> 1) Đối chiếu xe và mã lịch nhận hàng</span>
+        <span class="step-chip"><i class="fas fa-door-open"></i> 2) Kiểm tra đúng cửa nhận hàng</span>
+        <span class="step-chip"><i class="fas fa-fingerprint"></i> 3) Nếu hàng có số sê-ri thì quét số sê-ri trước</span>
+        <span class="step-chip"><i class="fas fa-flag-checkered"></i> 4) Hoàn tất khi đã đủ kiểm tra và đủ số sê-ri</span>
+    </div>
+</div>
+
+@if (!Model.Any())
+{
+    <div class="card">
+        <div class="card-body text-center text-muted mobile-empty-panel">
+            Hiện chưa có phiếu nhập kho nào đang chờ nhận trong kho của bạn.
+        </div>
+    </div>
+}
+else
+{
+    <div class="rf-card-grid">
+        @foreach (var row in Model)
+        {
+            var statusLabel = row.InboundStatus switch
+            {
+                WMS.Models.InboundStatusEnum.Approved => "Sẵn sàng nhận",
+                WMS.Models.InboundStatusEnum.Receiving => "Đang nhận hàng",
+                _ => "Không xác định"
+            };
+            var statusBadge = row.InboundStatus switch
+            {
+                WMS.Models.InboundStatusEnum.Approved => "badge-accent",
+                WMS.Models.InboundStatusEnum.Receiving => "badge-warning",
+                _ => "badge-secondary"
+            };
+
+            <div class="card rf-task-card">
+                <div class="card-header rf-task-card-header">
+                    <span class="card-title">@row.VoucherCode</span>
+                    <span class="badge @statusBadge">@statusLabel</span>
+                </div>
+                <div class="card-body">
+                    <div class="rf-meta"><strong>Mã lịch nhận hàng:</strong> @(row.AsnCode ?? "Chưa cập nhật")</div>
+                    <div class="rf-meta"><strong>Đối tác:</strong> @(row.PartnerName ?? "Chưa cập nhật")</div>
+                    <div class="rf-meta"><strong>Kho:</strong> @row.WarehouseName</div>
+                    <div class="rf-meta"><strong>Xe:</strong> @(row.VehicleNumber ?? "Chưa cập nhật")</div>
+                    <div class="rf-meta"><strong>Đơn vị vận chuyển:</strong> @(row.CarrierName ?? "Chưa cập nhật")</div>
+                    <div class="rf-meta"><strong>Cửa nhận hàng:</strong> @(row.DockDoor ?? "Chưa cập nhật")</div>
+                    <div class="rf-meta"><strong>Giờ xe đến:</strong> @(row.ExpectedArrivalAt?.ToString("dd/MM HH:mm") ?? "Chưa cập nhật")</div>
+                    <div class="rf-meta"><strong>Khung giờ nhận hàng:</strong> @(row.DockAppointmentStart.HasValue && row.DockAppointmentEnd.HasValue ? $"{row.DockAppointmentStart:HH:mm} - {row.DockAppointmentEnd:HH:mm}" : "Chưa cập nhật")</div>
+                    <div class="rf-meta"><strong>Số dòng hàng:</strong> @row.TotalLines</div>
+                    <div class="rf-meta">
+                        <strong>Số sê-ri:</strong>
+                        @if (!row.HasSerialTrackedLines)
+                        {
+                            <span class="text-muted">Không dùng số sê-ri</span>
+                        }
+                        else if (row.PendingSerialCount <= 0)
+                        {
+                            <span class="text-success">Đã đủ @row.RequiredSerialCount/@row.RequiredSerialCount số sê-ri</span>
+                        }
+                        else
+                        {
+                            <span class="text-warning">Còn thiếu @row.PendingSerialCount/@row.RequiredSerialCount số sê-ri</span>
+                        }
+                    </div>
+
+                    <div class="rf-action-row">
+                        @if (row.InboundStatus == WMS.Models.InboundStatusEnum.Approved)
+                        {
+                            <form method="post" asp-controller="Vouchers" asp-action="ConfirmReceiving"
+                                  data-offline-queue="true"
+                                  data-offline-operation-type="Bắt đầu nhận hàng"
+                                  data-offline-description="Bắt đầu nhận phiếu @row.VoucherCode">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="id" value="@row.VoucherId" />
+                                <button class="btn btn-primary" type="submit"><i class="fas fa-play"></i> Bắt đầu nhận</button>
+                            </form>
+                        }
+                        @if (row.HasSerialTrackedLines)
+                        {
+                            <a asp-controller="Operations" asp-action="SerialReceiving" asp-route-id="@row.VoucherId" class="btn btn-info"><i class="fas fa-fingerprint"></i> Nhận số sê-ri</a>
+                        }
+                        @if (row.InboundStatus == WMS.Models.InboundStatusEnum.Receiving && canComplete)
+                        {
+                            <form method="post" asp-controller="Vouchers" asp-action="CompleteInbound" data-enterprise-confirm="Hoàn tất nhập kho cho phiếu này?">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="id" value="@row.VoucherId" />
+                                <button class="btn btn-success" type="submit"><i class="fas fa-check-double"></i> Hoàn tất nhập</button>
+                            </form>
+                        }
+                        <a asp-controller="Vouchers" asp-action="Details" asp-route-id="@row.VoucherId" class="btn btn-secondary"><i class="fas fa-eye"></i> Mở phiếu</a>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+@section Scripts {
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const firstScan = document.querySelector('.rf-scan-input');
+    if (firstScan) {
+        firstScan.focus();
+        firstScan.select();
+    }
+
+    // Hiệu ứng đèn xanh khi TempData success
+    @if (TempData["Success"] != null) {
+        <text>playBeep(true);</text>
+    }
+    @if (TempData["Error"] != null) {
+        <text>playBeep(false);</text>
+    }
+});
+
+document.getElementById('receiving-search-input')?.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        document.getElementById('receiving-filter-form')?.submit();
+    }
+});
+
+function scanReceivingSearch() {
+    window.wmsScanner.scanToField('receiving-search-input', {
+        closeOnSuccess: true,
+        submitForm: true
+    });
+}
+
+function playBeep(success) {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.value = success ? 880 : 330;
+        gain.gain.value = 0.15;
+        osc.start();
+        osc.stop(ctx.currentTime + (success ? 0.12 : 0.35));
+    } catch(e) {}
+}
+</script>
+}

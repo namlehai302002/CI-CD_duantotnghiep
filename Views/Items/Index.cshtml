@@ -1,0 +1,222 @@
+@model List<WMS.Models.Item>
+@{ ViewData["Title"] = "Vật Tư / Hàng Hóa"; }
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Vật Tư / Hàng Hóa</h1>
+        <p class="page-subtitle">Quản lý danh sách nguyên vật liệu và thành phẩm</p>
+    </div>
+    @if (User.IsInRole("Admin") || User.IsInRole("Manager"))
+    {
+        <div class="page-actions">
+            <a asp-controller="Items" asp-action="Create" class="btn btn-primary"><i class="fas fa-plus"></i> Thêm Mới</a>
+        </div>
+    }
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-circle-info"></i> Mẹo dùng nhanh</div>
+    <div class="user-guide-text">Tìm theo tên/mã vật tư, bấm vào mã để xem chi tiết. Chỉ xóa khi chắc chắn không còn sử dụng.</div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Tìm kiếm</label>
+        <input type="text" name="search" class="form-control" placeholder="Ví dụ: Bulong, VT-001..." value="@ViewBag.Search" />
+    </div>
+    <div class="form-group">
+        <label class="form-label">Danh mục</label>
+        <select name="categoryId" class="form-control">
+            <option value="">Tất cả</option>
+            @foreach (var cat in (List<WMS.Models.ItemCategory>)ViewBag.Categories)
+            {
+                <option value="@cat.CategoryId" selected="@(ViewBag.CategoryId != null && (int)ViewBag.CategoryId == cat.CategoryId)">@cat.CategoryName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Loại</label>
+        <select name="itemType" class="form-control">
+            <option value="">Tất cả</option>
+            <option value="1" selected="@(ViewBag.ItemType != null && (byte)ViewBag.ItemType == 1)">Nguyên Vật Liệu</option>
+            <option value="6" selected="@(ViewBag.ItemType != null && (byte)ViewBag.ItemType == 6)">Hóa chất</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Trạng thái</label>
+        <select name="stockStatus" class="form-control">
+            <option value="">Tất cả</option>
+            <option value="low" selected="@(ViewBag.StockStatus == "low")">Sắp Hết</option>
+            <option value="out" selected="@(ViewBag.StockStatus == "out")">Hết Hàng</option>
+            <option value="over" selected="@(ViewBag.StockStatus == "over")">Vượt Định Mức</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Tìm dữ liệu</button>
+    </div>
+</form>
+
+<div class="table-actions enterprise-inline-controls">
+    <input type="text" id="itemClientSearch" class="form-control max-w-320" placeholder="Lọc nhanh trên bảng hiện tại..." />
+    <button type="button" id="btnBatchPrint" class="btn btn-info d-none" data-wms-call="goToPrintSetup">
+        <i class="fas fa-print"></i> In Nhãn (<span id="selectedCount">0</span>)
+    </button>
+</div>
+
+<div class="table-container">
+    <table id="itemTable">
+        <thead>
+            <tr>
+                <th class="table-col-check"><input type="checkbox" id="checkAll" title="Chọn tất cả" /></th>
+                <th class="table-col-image">Ảnh</th>
+                <th>Mã</th><th>Tên Vật Tư</th><th>Danh Mục</th><th>Loại</th>
+                <th>ĐVT</th><th class="cell-right">Tồn Kho</th><th>Trạng Thái</th><th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!Model.Any())
+            {
+                <tr><td colspan="10" class="cell-empty cell-empty-lg">Không có dữ liệu</td></tr>
+            }
+            @foreach (var item in Model)
+            {
+                <tr>
+                    <td><input type="checkbox" class="item-check" value="@item.ItemId" /></td>
+                    <td class="item-image-cell">
+                        @if (!string.IsNullOrWhiteSpace(item.ImageUrl))
+                        {
+                            <img src="@item.ImageUrl" alt="Ảnh @item.ItemName" class="item-thumb item-thumb-table" loading="lazy" />
+                        }
+                        else
+                        {
+                            <span class="item-thumb item-thumb-empty item-thumb-table" aria-hidden="true"><i class="fas fa-box"></i></span>
+                        }
+                    </td>
+                    <td><a asp-controller="Items" asp-action="Details" asp-route-id="@item.ItemId" class="td-code link-clean">@item.ItemCode</a></td>
+                    <td class="td-name">@item.ItemName</td>
+                    <td>@item.Category?.CategoryName</td>
+                    <td><span class="badge badge-purple">@item.ItemTypeName</span></td>
+                    <td>@item.BaseUom?.UomCode</td>
+                    <td class="td-number fw-600">@item.CurrentStock.ToString("N0")</td>
+                    <td>
+                        @{ var ss = item.StockStatus; }
+                        <span class="badge @(ss == "Hết Hàng" ? "badge-danger" : ss == "Sắp Hết" ? "badge-warning" : ss == "Vượt Định Mức" ? "badge-info" : "badge-success")">@ss</span>
+                    </td>
+                    <td class="td-actions">
+                        @if (User.IsInRole("Admin") || User.IsInRole("Manager"))
+                        {
+                            <a asp-controller="Items" asp-action="Edit" asp-route-id="@item.ItemId" class="btn btn-sm btn-secondary" title="Sửa"><i class="fas fa-edit"></i></a>
+                        }
+                        @if (User.IsInRole("Admin"))
+                        {
+                            <form method="post" asp-controller="Items" asp-action="Delete" asp-route-id="@item.ItemId" class="form-delete d-inline"
+                                  data-enterprise-confirm="Xóa vật tư @item.ItemCode? Chỉ nên thao tác khi vật tư chưa còn tồn hoặc chứng từ liên quan."
+                                  data-enterprise-confirm-title="Xác nhận xóa vật tư"
+                                  data-enterprise-confirm-icon="warning"
+                                  data-enterprise-confirm-ok="Xóa vật tư">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="btn btn-sm btn-danger" title="Xóa"><i class="fas fa-trash"></i></button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+<p class="text-muted mt-2 fs-sm">Hiển thị @Model.Count mục</p>
+<div class="table-pagination" id="itemPager"></div>
+
+@section Scripts {
+<script>
+(() => {
+    const table = document.getElementById('itemTable');
+    const pager = document.getElementById('itemPager');
+    const search = document.getElementById('itemClientSearch');
+    if (!table || !pager || !search) return;
+
+    const rows = Array.from(table.querySelectorAll('tbody tr')).filter(r => r.querySelectorAll('td').length > 1);
+    const pageSize = 12;
+    let currentPage = 1;
+    let filtered = rows;
+
+    function render() {
+        const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+        if (currentPage > totalPages) currentPage = totalPages;
+
+        rows.forEach(r => r.style.display = 'none');
+        filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize).forEach(r => r.style.display = '');
+
+        let emptyRow = table.querySelector('tbody tr.client-empty-row');
+        if (!emptyRow) {
+            emptyRow = document.createElement('tr');
+            emptyRow.className = 'client-empty-row';
+            emptyRow.innerHTML = '<td colspan="10" class="cell-empty cell-empty-md">Không tìm thấy vật tư phù hợp trên bảng hiện tại</td>';
+            table.querySelector('tbody').appendChild(emptyRow);
+        }
+        emptyRow.style.display = filtered.length === 0 ? '' : 'none';
+
+        pager.innerHTML = '';
+        const prev = document.createElement('button');
+        prev.className = 'btn btn-sm btn-secondary';
+        prev.textContent = 'Trước';
+        prev.disabled = currentPage === 1;
+        prev.addEventListener('click', () => { currentPage--; render(); });
+
+        const next = document.createElement('button');
+        next.className = 'btn btn-sm btn-secondary';
+        next.textContent = 'Sau';
+        next.disabled = currentPage === totalPages;
+        next.addEventListener('click', () => { currentPage++; render(); });
+
+        const info = document.createElement('span');
+        info.className = 'step-chip';
+        info.textContent = `Trang ${currentPage}/${totalPages}`;
+        pager.append(prev, info, next);
+    }
+
+    search.addEventListener('input', () => {
+        const q = search.value.trim().toLowerCase();
+        filtered = rows.filter(r => r.innerText.toLowerCase().includes(q));
+        currentPage = 1;
+        render();
+    });
+
+    render();
+
+    const checkAll = document.getElementById('checkAll');
+    const btnBatch = document.getElementById('btnBatchPrint');
+    const countSpan = document.getElementById('selectedCount');
+
+    function updateBatchBtn() {
+        const checked = document.querySelectorAll('.item-check:checked').length;
+        countSpan.textContent = checked;
+        btnBatch.classList.toggle('d-none', checked === 0);
+    }
+
+    if (checkAll) {
+        checkAll.addEventListener('change', () => {
+            const visibleRows = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+            visibleRows.forEach(r => {
+                const cb = r.querySelector('.item-check');
+                if (cb) cb.checked = checkAll.checked;
+            });
+            updateBatchBtn();
+        });
+    }
+
+    table.addEventListener('change', (e) => {
+        if (e.target.classList.contains('item-check')) updateBatchBtn();
+    });
+})();
+
+function goToPrintSetup() {
+    const ids = Array.from(document.querySelectorAll('.item-check:checked')).map(c => c.value);
+    if (ids.length === 0) return;
+    const url = new URL('@Url.Action("PrintSetup", "Items")', window.location.origin);
+    url.searchParams.set('ids', ids.join(','));
+    window.location.href = url.toString();
+}
+</script>
+}

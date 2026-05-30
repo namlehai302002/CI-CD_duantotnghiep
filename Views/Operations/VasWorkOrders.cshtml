@@ -1,0 +1,141 @@
+﻿@model WMS.ViewModels.VasWorkOrderPageViewModel
+@using WMS.Models
+@{
+    ViewData["Title"] = "Lệnh gia công phụ trợ";
+    string StatusText(VasWorkOrderStatusEnum status) => status switch
+    {
+        VasWorkOrderStatusEnum.Draft => "Nháp",
+        VasWorkOrderStatusEnum.Reserved => "Đã giữ chỗ",
+        VasWorkOrderStatusEnum.InProgress => "Đang thực hiện",
+        VasWorkOrderStatusEnum.QcPending => "Chờ kiểm tra chất lượng",
+        VasWorkOrderStatusEnum.Completed => "Hoàn tất",
+        VasWorkOrderStatusEnum.Cancelled => "Đã hủy",
+        _ => "Không áp dụng"
+    };
+    string TypeText(VasOperationTypeEnum type) => type switch
+    {
+        VasOperationTypeEnum.LightAssembly => "Lắp ráp nhẹ",
+        VasOperationTypeEnum.CoPacking => "Đóng gói phối hợp",
+        VasOperationTypeEnum.Repack => "Đóng gói lại",
+        VasOperationTypeEnum.Relabel => "Dán nhãn lại",
+        _ => "Không áp dụng"
+    };
+    string Badge(VasWorkOrderStatusEnum status) => status switch
+    {
+        VasWorkOrderStatusEnum.Reserved => "badge-info",
+        VasWorkOrderStatusEnum.InProgress => "badge-warning",
+        VasWorkOrderStatusEnum.QcPending => "badge-accent",
+        VasWorkOrderStatusEnum.Completed => "badge-success",
+        VasWorkOrderStatusEnum.Cancelled => "badge-danger",
+        _ => "badge-secondary"
+    };
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-screwdriver-wrench text-accent"></i> Lệnh gia công phụ trợ</h1>
+        <p class="page-subtitle">Quản lý lắp ráp nhẹ, đóng gói phối hợp, đóng gói lại và dán nhãn lại với vật tư giữ chỗ, thời gian nhân công, kiểm tra chất lượng và chi phí.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-primary" asp-controller="Operations" asp-action="CreateVasWorkOrder"><i class="fas fa-plus"></i> Tạo lệnh gia công</a>
+    </div>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card"><div class="stat-value">@Model.DraftCount</div><div class="stat-label">Nháp</div></div>
+    <div class="stat-card info"><div class="stat-value">@Model.ReservedCount</div><div class="stat-label">Đã giữ chỗ</div></div>
+    <div class="stat-card warning"><div class="stat-value">@Model.InProgressCount</div><div class="stat-label">Đang thực hiện</div></div>
+    <div class="stat-card accent"><div class="stat-value">@Model.QcPendingCount</div><div class="stat-label">Chờ kiểm tra</div></div>
+    <div class="stat-card success"><div class="stat-value">@Model.CompletedCount</div><div class="stat-label">Hoàn tất</div></div>
+    <div class="stat-card danger"><div class="stat-value">@Model.CancelledCount</div><div class="stat-label">Đã hủy</div></div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select class="form-control" name="warehouseId">
+            <option value="">Tất cả</option>
+            @foreach (var w in Model.Warehouses)
+            {
+                <option value="@w.WarehouseId" selected="@(Model.WarehouseId == w.WarehouseId)">@w.WarehouseCode - @w.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Loại thao tác</label>
+        <select class="form-control" name="operationType">
+            <option value="">Tất cả</option>
+            @foreach (VasOperationTypeEnum t in Enum.GetValues<VasOperationTypeEnum>())
+            {
+                <option value="@t" selected="@(Model.OperationType == t)">@TypeText(t)</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Trạng thái</label>
+        <select class="form-control" name="status">
+            <option value="">Tất cả</option>
+            @foreach (VasWorkOrderStatusEnum s in Enum.GetValues<VasWorkOrderStatusEnum>())
+            {
+                <option value="@s" selected="@(Model.Status == s)">@StatusText(s)</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Tìm nhanh</label>
+        <input class="form-control" name="search" value="@Model.Search" placeholder="mã lệnh, mã hàng, khách hàng, phiếu..." />
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc</button>
+    </div>
+</form>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Lệnh</th>
+                <th>Loại thao tác</th>
+                <th>Mã hàng chính</th>
+                <th>Kho</th>
+                <th>Khách hàng/Phiếu</th>
+                <th class="td-number">Số lượng</th>
+                <th>Kiểm tra</th>
+                <th>Trạng thái</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @if (!Model.WorkOrders.Any())
+        {
+            <tr><td colspan="9" class="cell-empty cell-empty-md">Chưa có lệnh gia công phụ trợ nào theo bộ lọc hiện tại.</td></tr>
+        }
+        @foreach (var order in Model.WorkOrders)
+        {
+            <tr>
+                <td>
+                    <div class="td-code">@order.WorkOrderCode</div>
+                    <div class="table-subtext-sm">@order.CreatedAt.ToString("dd/MM/yyyy HH:mm")</div>
+                </td>
+                <td>@TypeText(order.OperationType)</td>
+                <td>
+                    <div class="fw-700">@order.PrimaryItem?.ItemCode</div>
+                    <div class="table-subtext-sm">@order.PrimaryItem?.ItemName</div>
+                </td>
+                <td>@order.Warehouse?.WarehouseCode</td>
+                <td>
+                    <div>@(order.Partner?.PartnerName ?? "---")</div>
+                    <div class="table-subtext-sm">@(order.Voucher?.VoucherCode ?? "Không gắn phiếu")</div>
+                </td>
+                <td class="td-number">@order.CompletedQty.ToString("N2") / @order.PlannedQty.ToString("N2")</td>
+                <td>@order.QcResultName</td>
+                <td><span class="badge @Badge(order.Status)">@StatusText(order.Status)</span></td>
+                <td class="td-actions">
+                    <a class="btn btn-sm btn-primary" asp-controller="Operations" asp-action="VasWorkOrderDetails" asp-route-id="@order.VasWorkOrderId"><i class="fas fa-eye"></i> Chi tiết</a>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>

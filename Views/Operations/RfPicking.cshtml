@@ -1,0 +1,277 @@
+@model List<WMS.ViewModels.PickTaskBoardRow>
+@{
+    ViewData["Title"] = "Quét lấy hàng";
+    var actor = (string?)ViewBag.Actor ?? User.Identity?.Name ?? "";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Quét lấy hàng</h1>
+        <p class="page-subtitle">Thực hiện lấy hàng, lấy tổng hai bước và phân loại đơn bằng điện thoại hoặc máy quét.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Operations" asp-action="RfReceiving" class="btn btn-secondary"><i class="fas fa-truck-loading"></i> Quét nhận hàng</a>
+        <a asp-controller="Operations" asp-action="PickTasks" class="btn btn-secondary"><i class="fas fa-table-list"></i> Xem bảng đầy đủ</a>
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-mobile-screen-button"></i> Quy trình thao tác</div>
+    <div class="step-list">
+        <span class="step-chip"><i class="fas fa-location-dot"></i> 1) Quét đúng vị trí</span>
+        <span class="step-chip"><i class="fas fa-barcode"></i> 2) Quét mã hàng hoặc số lô</span>
+        <span class="step-chip"><i class="fas fa-boxes-stacked"></i> 3) Lấy tổng hoặc phân loại</span>
+        <span class="step-chip"><i class="fas fa-check-double"></i> 4) Xác nhận số lượng</span>
+    </div>
+</div>
+
+@if (!Model.Any())
+{
+    <div class="card">
+        <div class="card-body text-center text-muted mobile-empty-panel">
+            Hiện chưa có nhiệm vụ lấy hàng phù hợp cho @actor.
+        </div>
+    </div>
+}
+else
+{
+    <div class="rf-card-grid">
+        @foreach (var task in Model)
+        {
+            var remaining = task.TargetQty - task.PickedQty;
+            var statusLabel = task.Status switch
+            {
+                WMS.Models.PickTaskStatusEnum.Pending => "Chờ xử lý",
+                WMS.Models.PickTaskStatusEnum.Assigned => "Đã gán",
+                WMS.Models.PickTaskStatusEnum.InProgress => "Đang thực hiện",
+                WMS.Models.PickTaskStatusEnum.WaitingForBulk => "Chờ lấy tổng",
+                _ => "Không xác định"
+            };
+            var statusBadge = task.Status switch
+            {
+                WMS.Models.PickTaskStatusEnum.Pending => "badge-secondary",
+                WMS.Models.PickTaskStatusEnum.Assigned => "badge-info",
+                WMS.Models.PickTaskStatusEnum.InProgress => "badge-warning",
+                WMS.Models.PickTaskStatusEnum.WaitingForBulk => "badge-secondary",
+                _ => "badge-secondary"
+            };
+            var modeLabel = task.PickTaskMode switch
+            {
+                WMS.Models.PickTaskModeEnum.Bulk => "Lấy tổng",
+                WMS.Models.PickTaskModeEnum.Sort => "Phân loại",
+                _ => "Lấy hàng"
+            };
+            var confirmLabel = task.PickTaskMode switch
+            {
+                WMS.Models.PickTaskModeEnum.Bulk => "Xác nhận lấy tổng",
+                WMS.Models.PickTaskModeEnum.Sort => "Xác nhận phân loại",
+                _ => "Xác nhận lấy"
+            };
+            var sourceLabel = task.PickTaskMode == WMS.Models.PickTaskModeEnum.Sort ? "Vị trí tập kết" : "Vị trí nguồn";
+            var targetLabel = task.PickTaskMode == WMS.Models.PickTaskModeEnum.Bulk ? "Vị trí tập kết" : "Vị trí phân loại";
+
+            <div class="card rf-task-card">
+                <div class="card-header rf-task-card-header">
+                    <span class="card-title">
+                        @task.TaskCode
+                        <span class="badge badge-accent">@modeLabel</span>
+                        @if (task.IsBatchPick)
+                        {
+                            <span class="badge badge-info" title="Nhiệm vụ gom @task.AllocationCount dòng giữ chỗ">Gom hàng</span>
+                        }
+                    </span>
+                    <span class="badge @statusBadge">@statusLabel</span>
+                </div>
+                <div class="card-body">
+                    <div class="rf-meta"><strong>Phiếu:</strong> @task.VoucherCode</div>
+                    <div class="rf-meta"><strong>Hàng hóa:</strong> @task.ItemCode - @(task.ItemName ?? "---")</div>
+                    <div class="rf-meta"><strong>@sourceLabel:</strong> @task.LocationCode @(!string.IsNullOrWhiteSpace(task.ZoneCode) ? $"[{task.ZoneCode}]" : "")</div>
+                    @if (!string.IsNullOrWhiteSpace(task.TargetLocationCode))
+                    {
+                        <div class="rf-meta"><strong>@targetLabel:</strong> @task.TargetLocationCode</div>
+                    }
+                    <div class="rf-meta"><strong>Phải làm:</strong> @task.TargetQty.ToString("N2") | <strong>Đã xác nhận:</strong> @task.PickedQty.ToString("N2")</div>
+                    <div class="rf-meta"><strong>Còn lại:</strong> <span class="text-accent">@remaining.ToString("N2")</span></div>
+                    @if (!string.IsNullOrWhiteSpace(task.AssignedTo))
+                    {
+                        <div class="rf-meta"><strong>Người làm:</strong> @task.AssignedTo</div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(task.LotNumber))
+                    {
+                        <div class="rf-meta"><strong>Số lô:</strong> @task.LotNumber</div>
+                    }
+                    @if (task.TrackSerial)
+                    {
+                        <div class="rf-meta"><strong>Số sê-ri đã quét:</strong> @task.PickedSerialCount / @task.RequiredSerialCount</div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(task.ToteCode))
+                    {
+                        <div class="rf-meta rf-meta-highlight">
+                            <i class="fas fa-box-open"></i>
+                            <strong>Khay hàng:</strong> <span class="text-accent">@task.ToteCode</span>
+                            @if (!string.IsNullOrWhiteSpace(task.CartCode))
+                            {
+                                <span> - Xe: <strong>@task.CartCode</strong></span>
+                            }
+                        </div>
+                    }
+
+                    <form method="post" asp-controller="Vouchers" asp-action="ConfirmPickTask" class="rf-form" id="pick-form-@task.PickTaskId"
+                          data-offline-queue="true"
+                          data-offline-operation-type="Xác nhận lấy hàng"
+                          data-offline-description="Xác nhận lấy hàng @task.TaskCode - @task.ItemCode">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="id" value="@task.PickTaskId" />
+                        <input type="hidden" name="queuedBaselinePickedQty" value="@task.PickedQty.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)" />
+                        <div class="form-group">
+                            <label class="form-label">Mã quét hoặc số lô</label>
+                            <div class="scan-input-row">
+                                <input class="form-control rf-scan-input" id="scan-@task.PickTaskId" name="scanValue" value="@task.PreferredScanValue" placeholder="Quét mã rồi nhấn Enter" />
+                                <button type="button" class="btn btn-secondary scan-camera-btn" data-wms-call="openTaskScanner" data-wms-arg="@task.PickTaskId" title="Mở camera quét mã">
+                                    <i class="fas fa-camera"></i>
+                                </button>
+                            </div>
+                        </div>
+                        @if (task.PickTaskMode is WMS.Models.PickTaskModeEnum.Bulk or WMS.Models.PickTaskModeEnum.Sort)
+                        {
+                            <div class="form-group">
+                                <label class="form-label">Quét @sourceLabel.ToLowerInvariant()</label>
+                                <div class="scan-input-row">
+                                    <input class="form-control" id="source-location-@task.PickTaskId" name="sourceLocationCode" value="@task.LocationCode" required />
+                                    <button type="button" class="btn btn-secondary scan-camera-btn" data-wms-call="scanPickField" data-wms-arg="source-location-@task.PickTaskId" title="Mở camera quét vị trí">
+                                        <i class="fas fa-camera"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                        @if (task.PickTaskMode == WMS.Models.PickTaskModeEnum.Bulk)
+                        {
+                            <div class="form-group">
+                                <label class="form-label">Quét vị trí tập kết</label>
+                                <div class="scan-input-row">
+                                    <input class="form-control" id="target-location-@task.PickTaskId" name="targetLocationCode" value="@task.TargetLocationCode" required />
+                                    <button type="button" class="btn btn-secondary scan-camera-btn" data-wms-call="scanPickField" data-wms-arg="target-location-@task.PickTaskId" title="Mở camera quét vị trí tập kết">
+                                        <i class="fas fa-camera"></i>
+                                    </button>
+                                </div>
+                                <div class="form-help rf-form-help">Tồn thực tế sẽ được chuyển sang vị trí tập kết sau khi xác nhận.</div>
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(task.ToteCode))
+                        {
+                            <div class="form-group">
+                                <label class="form-label"><i class="fas fa-box-open"></i> Quét khay hàng</label>
+                                <div class="scan-input-row">
+                                    <input class="form-control" id="tote-code-@task.PickTaskId" name="toteCode" placeholder="Quét mã khay hàng trước khi xác nhận" required />
+                                    <button type="button" class="btn btn-secondary scan-camera-btn" data-wms-call="scanPickField" data-wms-arg="tote-code-@task.PickTaskId" title="Mở camera quét khay hàng">
+                                        <i class="fas fa-camera"></i>
+                                    </button>
+                                </div>
+                                <div class="form-help rf-form-help">Bỏ hàng đúng khay <strong>@task.ToteCode</strong> rồi quét mã khay.</div>
+                            </div>
+                        }
+                        @if (task.TrackSerial)
+                        {
+                            <div class="form-group">
+                                <label class="form-label">Số sê-ri vừa xử lý</label>
+                                <div class="scan-input-row align-start">
+                                    <textarea class="form-control" id="serial-input-@task.PickTaskId" name="serialInput" rows="3" placeholder="Mỗi số sê-ri một dòng hoặc ngăn cách bằng dấu phẩy"></textarea>
+                                    <button type="button" class="btn btn-secondary scan-camera-btn" data-wms-call="scanPickSerial" data-wms-arg="@task.PickTaskId" title="Mở camera quét số sê-ri">
+                                        <i class="fas fa-camera"></i>
+                                    </button>
+                                </div>
+                                <div class="form-help rf-form-help">Số số sê-ri quét phải đúng bằng số lượng xác nhận trong lần này.</div>
+                            </div>
+                        }
+                        <div class="form-group">
+                            <label class="form-label">Số lượng xác nhận</label>
+                            <input class="form-control" type="number" step="0.0001" min="0.0001" max="@remaining.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)" name="qty" value="@remaining.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)" />
+                        </div>
+                        <div class="rf-action-row">
+                            @if (task.PickTaskMode != WMS.Models.PickTaskModeEnum.Bulk)
+                            {
+                                <button class="btn btn-warning" type="submit" name="reportShort" value="true"><i class="fas fa-triangle-exclamation"></i> Báo thiếu</button>
+                            }
+                            <button class="btn btn-primary" type="submit"><i class="fas fa-check"></i> @confirmLabel</button>
+                            <a asp-controller="Vouchers" asp-action="Details" asp-route-id="@task.VoucherId" class="btn btn-secondary"><i class="fas fa-eye"></i> Mở phiếu</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        }
+    </div>
+}
+@section Scripts {
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const firstScan = document.querySelector('.rf-scan-input');
+    if (firstScan) {
+        firstScan.focus();
+        firstScan.select();
+    }
+
+    document.querySelectorAll('.rf-scan-input').forEach(function(input) {
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const form = input.closest('.rf-form');
+                const qtyInput = form?.querySelector('input[name="qty"]');
+                if (qtyInput) {
+                    qtyInput.focus();
+                    qtyInput.select();
+                    playBeep(true);
+                }
+            }
+        });
+    });
+
+    @if (TempData["Success"] != null) {
+        <text>playBeep(true);</text>
+    }
+    @if (TempData["Error"] != null) {
+        <text>playBeep(false);</text>
+    }
+});
+
+function playBeep(success) {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.value = success ? 880 : 330;
+        gain.gain.value = 0.15;
+        osc.start();
+        osc.stop(ctx.currentTime + (success ? 0.12 : 0.35));
+    } catch (e) {}
+}
+
+function openTaskScanner(taskId) {
+    openScannerModal(async (decodedText) => {
+        const input = document.getElementById(`scan-${taskId}`);
+        if (input) {
+            input.value = decodedText;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            input.focus();
+            playBeep(true);
+        }
+    }, { closeOnSuccess: true });
+}
+
+function scanPickField(fieldId) {
+    window.wmsScanner.scanToField(fieldId, {
+        closeOnSuccess: true
+    });
+}
+
+function scanPickSerial(taskId) {
+    window.wmsScanner.scanToField('serial-input-' + taskId, {
+        append: true,
+        closeOnSuccess: false
+    });
+}
+</script>
+}

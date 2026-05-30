@@ -1,0 +1,14 @@
+@model WMS.ViewModels.ItemFormViewModel
+@{ ViewData["Title"] = "Chỉnh sửa Vật Tư"; }
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Chỉnh sửa: @Model.Item.ItemCode</h1>
+        <p class="page-subtitle">@Model.Item.ItemName</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Items" asp-action="Details" asp-route-id="@Model.Item.ItemId" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Hủy & Quay lại</a>
+    </div>
+</div>
+
+@await Html.PartialAsync("Create", Model)

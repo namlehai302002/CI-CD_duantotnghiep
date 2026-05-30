@@ -1,0 +1,39 @@
+@model WMS.Models.Partner
+@{
+    ViewData["Title"] = "Thêm đối tác";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Thêm đối tác</h1>
+        <p class="page-subtitle">Tạo hồ sơ nhà cung cấp, khách hàng hoặc chủ thể giao dịch để dùng thống nhất trong phiếu và đối soát.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Partners" asp-action="Index" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Quay lại</a>
+    </div>
+</div>
+
+<div class="enterprise-form-layout">
+    <div class="card enterprise-form-card">
+        <div class="card-header">
+            <span class="card-title"><i class="fas fa-handshake text-accent"></i> Hồ sơ đối tác mới</span>
+        </div>
+        <div class="card-body">
+            @await Html.PartialAsync("_Form", Model)
+        </div>
+    </div>
+
+    <aside class="enterprise-form-aside">
+        <div class="card">
+            <div class="card-header"><span class="card-title">Kiểm tra dữ liệu</span></div>
+            <div class="card-body">
+                <ol class="audit-checklist">
+                    <li>Mã đối tác không trùng và dễ tìm trong chứng từ.</li>
+                    <li>Tên đối tác nên là tên pháp lý hoặc tên giao dịch chính thức.</li>
+                    <li>Địa chỉ và liên hệ giúp giảm lỗi khi giao nhận hoặc bàn giao vận chuyển.</li>
+                    <li>Hạng nhà cung cấp ảnh hưởng tần suất kiểm tra chất lượng khi nhập kho.</li>
+                </ol>
+            </div>
+        </div>
+    </aside>
+</div>

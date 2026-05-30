@@ -1,0 +1,134 @@
+@model WMS.ViewModels.SerialReceivingPageViewModel
+@{
+    ViewData["Title"] = "Quét mã định danh nhận hàng";
+    var canComplete = User.IsInRole("Admin") || User.IsInRole("Manager");
+    string InboundStatusText(WMS.Models.InboundStatusEnum status) => status switch
+    {
+        WMS.Models.InboundStatusEnum.Draft => "Nháp",
+        WMS.Models.InboundStatusEnum.PendingApproval => "Chờ duyệt",
+        WMS.Models.InboundStatusEnum.Approved => "Đã duyệt",
+        WMS.Models.InboundStatusEnum.Receiving => "Đang nhận hàng",
+        WMS.Models.InboundStatusEnum.Completed => "Hoàn tất",
+        WMS.Models.InboundStatusEnum.Rejected => "Từ chối",
+        _ => "Không áp dụng"
+    };
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Quét mã định danh nhận hàng</h1>
+        <p class="page-subtitle">Đăng ký số sê-ri cho từng dòng nhập kho trước khi hoàn tất, giúp truy vết đúng chuẩn doanh nghiệp.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Operations" asp-action="Receiving" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Quay lại bảng nhận hàng</a>
+        <a asp-controller="Vouchers" asp-action="Details" asp-route-id="@Model.VoucherId" class="btn btn-secondary"><i class="fas fa-eye"></i> Mở phiếu</a>
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-fingerprint"></i> Cách làm nhanh</div>
+    <div class="step-list">
+        <span class="step-chip"><i class="fas fa-check-circle"></i> 1) Kiểm tra đúng dòng vật tư có quản lý số sê-ri</span>
+        <span class="step-chip"><i class="fas fa-qrcode"></i> 2) Quét số sê-ri, mỗi mã một dòng hoặc ngăn cách bằng dấu phẩy</span>
+        <span class="step-chip"><i class="fas fa-lock"></i> 3) Chỉ hoàn tất nhập kho khi tất cả dòng đã đủ số sê-ri</span>
+    </div>
+</div>
+
+<div class="grid-2 serial-summary-grid">
+    <div class="card">
+        <div class="card-body">
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <div class="detail-label">Phiếu nhập</div>
+                    <div class="detail-value">@Model.VoucherCode</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Kho</div>
+                    <div class="detail-value">@Model.WarehouseName</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Đối tác</div>
+                    <div class="detail-value">@(Model.PartnerName ?? "---")</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Trạng thái</div>
+                <div class="detail-value">@InboundStatusText(Model.InboundStatus)</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    @if (canComplete)
+    {
+        <div class="card">
+            <div class="card-body serial-action-panel">
+                <div class="text-muted">Khi tất cả dòng đã đủ số sê-ri, bạn có thể quay lại Quét nhận hàng để hoàn tất nhập.</div>
+                <a asp-controller="Operations" asp-action="RfReceiving" class="btn btn-primary"><i class="fas fa-mobile-screen"></i> Quay về Quét nhận hàng</a>
+            </div>
+        </div>
+    }
+</div>
+
+@if (!Model.Lines.Any())
+{
+    <div class="card">
+        <div class="card-body text-center text-muted serial-empty">
+            Phiếu này không có dòng nào bật quản lý số sê-ri.
+        </div>
+    </div>
+}
+else
+{
+    <div class="serial-grid">
+        @foreach (var line in Model.Lines)
+        {
+            <div class="card serial-card">
+                <div class="card-header serial-card-header">
+                    <span class="card-title">@line.ItemCode - @line.ItemName</span>
+                    @if (line.RemainingSerialCount <= 0)
+                    {
+                        <span class="badge badge-success">Đã đủ số sê-ri</span>
+                    }
+                    else
+                    {
+                        <span class="badge badge-warning">Còn thiếu @line.RemainingSerialCount</span>
+                    }
+                </div>
+                <div class="card-body serial-card-body">
+                    <div class="rf-meta"><strong>Vị trí cất hàng:</strong> @(line.LocationCode ?? "---")</div>
+                    <div class="rf-meta"><strong>Số lượng thực nhập:</strong> @line.RequiredQty.ToString("N0") @line.UomCode</div>
+                    <div class="rf-meta"><strong>Đã đăng ký:</strong> @line.RegisteredSerialCount / @line.RequiredSerialCount số sê-ri</div>
+                    <div class="rf-meta"><strong>Lô / HSD:</strong> @((line.LotNumber ?? "---") + (line.ExpiryDate.HasValue ? $" / {line.ExpiryDate.Value:dd/MM/yyyy}" : ""))</div>
+
+                    <form method="post" asp-controller="Operations" asp-action="RegisterSerials">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="voucherId" value="@Model.VoucherId" />
+                        <input type="hidden" name="voucherDetailId" value="@line.VoucherDetailId" />
+                        <label class="form-label">Quét / nhập số sê-ri</label>
+                        <div class="scan-input-row align-start">
+                            <textarea id="serial-codes-@line.VoucherDetailId" name="serialCodes" class="form-control" rows="4" placeholder="Mỗi số sê-ri một dòng hoặc ngăn cách bằng dấu phẩy" @(line.RemainingSerialCount <= 0 ? "disabled" : null)></textarea>
+                            <button type="button" class="btn btn-secondary scan-camera-btn" data-wms-call="scanInboundSerial" data-wms-arg="@line.VoucherDetailId" @(line.RemainingSerialCount <= 0 ? "disabled" : null) title="Mở camera quét số sê-ri">
+                                <i class="fas fa-camera"></i>
+                            </button>
+                        </div>
+                        <div class="form-help serial-help">Mẹo: máy quét thường tự xuống dòng, bạn chỉ cần quét liên tục rồi bấm lưu.</div>
+                        <div class="serial-form-footer">
+                            <div class="text-muted serial-existing">Số sê-ri đã có: @(line.ExistingSerials.Any() ? string.Join(", ", line.ExistingSerials.Take(6)) + (line.ExistingSerials.Count > 6 ? "..." : "") : "Chưa có")</div>
+                            <button class="btn btn-primary" type="submit" @(line.RemainingSerialCount <= 0 ? "disabled" : null)><i class="fas fa-save"></i> Lưu số sê-ri</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@section Scripts {
+<script>
+function scanInboundSerial(detailId) {
+    window.wmsScanner.scanToField('serial-codes-' + detailId, {
+        append: true,
+        closeOnSuccess: false
+    });
+}
+</script>
+}

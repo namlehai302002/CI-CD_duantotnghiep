@@ -1,0 +1,246 @@
+@model List<WMS.Models.ScheduledReport>
+@{
+    ViewData["Title"] = "Lịch Báo Cáo Tự Động";
+    var warehouses = ViewBag.Warehouses as List<WMS.Models.Warehouse> ?? new();
+    int? warehouseId = ViewBag.WarehouseId;
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-calendar-check text-accent"></i> Lịch Báo Cáo Tự Động</h1>
+        <p class="page-subtitle">Cấu hình báo cáo định kỳ để hệ thống tự tạo và gửi đúng lịch.</p>
+    </div>
+    <button class="btn btn-primary" data-wms-call="openScheduledReportModal">
+        <i class="fas fa-plus"></i> Thêm lịch báo cáo
+    </button>
+</div>
+
+<div class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select class="form-control" id="filterWarehouse">
+            <option value="">— Tất cả —</option>
+            @foreach (var w in warehouses)
+            {
+                <option value="@w.WarehouseId" selected="@(warehouseId == w.WarehouseId)">@w.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" data-wms-call="applyFilter"><i class="fas fa-filter"></i> Lọc</button>
+    </div>
+</div>
+
+@if (Model.Count == 0)
+{
+    <div class="empty-state">
+        <div class="empty-icon"><i class="fas fa-calendar-check"></i></div>
+        <div class="empty-text">Chưa có lịch báo cáo nào</div>
+        <div class="empty-sub">Nhấn "Thêm lịch báo cáo" để cấu hình báo cáo tự động định kỳ.</div>
+    </div>
+}
+else
+{
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-label">Tổng lịch</div>
+            <div class="stat-value">@Model.Count</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Đang hoạt động</div>
+            <div class="stat-value text-success">@Model.Count(r => r.IsActive)</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Tạm dừng</div>
+            <div class="stat-value text-warning">@Model.Count(r => !r.IsActive)</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Tổng đã chạy</div>
+            <div class="stat-value">@Model.Sum(r => r.RunCount)</div>
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Tên báo cáo</th>
+                    <th>Loại</th>
+                    <th>Lịch</th>
+                    <th>Giờ chạy</th>
+                    <th>Định dạng</th>
+                    <th>Kho</th>
+                    <th>Lần chạy cuối</th>
+                    <th>Số lần chạy</th>
+                    <th>Trạng thái</th>
+                    <th class="table-actions-col"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in Model)
+                {
+                    var scheduleName = r.Schedule switch
+                    {
+                        "Daily" => "Hàng ngày",
+                        "Weekly" => $"Hàng tuần (T{r.DayOfWeek})",
+                        "Monthly" => $"Hàng tháng (ngày {r.DayOfMonth})",
+                        "Quarterly" => "Hàng quý",
+                        _ => r.Schedule
+                    };
+                    var typeName = r.ReportType switch
+                    {
+                        "StockSnapshot" => "Tồn kho",
+                        "OpsKpi" => "Chỉ số vận hành",
+                        "ExpiryAlert" => "Cảnh báo hết hạn",
+                        "AbcAnalysis" => "Phân nhóm quan trọng",
+                        "DockToStock" => "Thời gian từ cửa nhận đến tồn kho",
+                        "SpaceUtil" => "Sử dụng không gian",
+                        _ => r.ReportType
+                    };
+                    <tr>
+                        <td><strong>@r.ReportName</strong></td>
+                        <td><span class="badge badge-info">@typeName</span></td>
+                        <td>@scheduleName</td>
+                        <td class="td-number">@r.RunAtHour:00</td>
+                        <td><span class="badge badge-outline">@r.OutputFormat</span></td>
+                        <td>@(r.Warehouse?.WarehouseName ?? "Tất cả")</td>
+                        <td>@(r.LastRunAt?.ToString("dd/MM HH:mm") ?? "—")</td>
+                        <td class="td-number">@r.RunCount</td>
+                        <td>
+                            @if (r.IsActive)
+                            {
+                                <span class="badge badge-success">Hoạt động</span>
+                            }
+                            else
+                            {
+                                <span class="badge badge-warning">Tạm dừng</span>
+                            }
+                        </td>
+                        <td>
+                            <form method="post" asp-action="ToggleScheduledReport" class="d-inline">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="id" value="@r.ScheduledReportId" />
+                                <button type="submit" class="btn btn-sm btn-outline" title="@(r.IsActive ? "Tạm dừng" : "Kích hoạt")" aria-label="@(r.IsActive ? "Tạm dừng lịch báo cáo" : "Kích hoạt lịch báo cáo") @r.ReportName">
+                                    <i class="fas fa-@(r.IsActive ? "pause" : "play")"></i>
+                                </button>
+                            </form>
+                            <form method="post" asp-action="DeleteScheduledReport" class="d-inline"
+                                  data-enterprise-confirm="Xóa lịch gửi báo cáo này?"
+                                  data-enterprise-confirm-title="Xác nhận xóa lịch báo cáo"
+                                  data-enterprise-confirm-icon="warning"
+                                  data-enterprise-confirm-ok="Xóa">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="id" value="@r.ScheduledReportId" />
+                                <button type="submit" class="btn btn-sm btn-outline" title="Xóa" aria-label="Xóa lịch báo cáo @r.ReportName">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+<!-- Hộp thoại thêm lịch báo cáo -->
+<div id="rptModal" class="modal-backdrop">
+    <div class="modal-content modal-content-sm">
+        <div class="modal-header">
+            <h3>Thêm Lịch Báo Cáo</h3>
+            <button class="modal-close" data-wms-call="closeScheduledReportModal" aria-label="Đóng hộp thoại thêm lịch báo cáo">&times;</button>
+        </div>
+        <form method="post" asp-action="SaveScheduledReport">
+            @Html.AntiForgeryToken()
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Tên báo cáo *</label>
+                    <input name="reportName" class="form-control" placeholder="VD: Báo cáo tồn kho hàng ngày" required />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Loại báo cáo *</label>
+                    <select name="reportType" class="form-control" required>
+                        <option value="StockSnapshot">Chốt tồn kho</option>
+                        <option value="OpsKpi">Chỉ số vận hành</option>
+                        <option value="ExpiryAlert">Cảnh báo hết hạn</option>
+                        <option value="AbcAnalysis">Phân nhóm quan trọng</option>
+                        <option value="DockToStock">Thời gian từ cửa nhận đến tồn kho</option>
+                        <option value="SpaceUtil">Sử dụng không gian</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tần suất</label>
+                    <select name="schedule" class="form-control" id="scheduleType" data-wms-change-call="toggleScheduleFields">
+                        <option value="Daily">Hàng ngày</option>
+                        <option value="Weekly">Hàng tuần</option>
+                        <option value="Monthly">Hàng tháng</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Giờ chạy (0-23)</label>
+                    <input name="runAtHour" type="number" min="0" max="23" class="form-control" value="6" required />
+                </div>
+                <div class="form-group d-none" id="weeklyField">
+                    <label class="form-label">Ngày trong tuần (1=T2, 7=CN)</label>
+                    <input name="dayOfWeek" type="number" min="1" max="7" class="form-control" value="1" />
+                </div>
+                <div class="form-group d-none" id="monthlyField">
+                    <label class="form-label">Ngày trong tháng (1-28)</label>
+                    <input name="dayOfMonth" type="number" min="1" max="28" class="form-control" value="1" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Thư điện tử người nhận (cách bởi ;)</label>
+                    <input name="recipients" class="form-control" placeholder="nguoidung1@congty.vn;nguoidung2@congty.vn" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Định dạng xuất</label>
+                    <select name="outputFormat" class="form-control">
+                        <option value="Excel">Bảng tính</option>
+                        <option value="PDF">Tài liệu cố định</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Kho áp dụng</label>
+                    <select name="warehouseId" class="form-control">
+                        <option value="">— Tất cả —</option>
+                        @foreach (var w in warehouses)
+                        {
+                            <option value="@w.WarehouseId">@w.WarehouseName</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Mô tả</label>
+                    <textarea name="description" class="form-control" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" data-wms-call="closeScheduledReportModal">Hủy</button>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Lưu</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    function applyFilter() {
+        var wh = document.getElementById('filterWarehouse').value;
+        var url = new URL('@Url.Action("ScheduledReports", "Reports")', window.location.origin);
+        if (wh) url.searchParams.set('warehouseId', wh);
+        location.href = url.toString();
+    }
+    function openScheduledReportModal() {
+        document.getElementById('rptModal')?.classList.add('is-open');
+    }
+    function closeScheduledReportModal() {
+        document.getElementById('rptModal')?.classList.remove('is-open');
+    }
+    function toggleScheduleFields() {
+        var v = document.getElementById('scheduleType').value;
+        document.getElementById('weeklyField').classList.toggle('d-none', v !== 'Weekly');
+        document.getElementById('monthlyField').classList.toggle('d-none', v !== 'Monthly');
+    }
+</script>
+}

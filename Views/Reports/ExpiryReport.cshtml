@@ -1,0 +1,101 @@
+@{
+    ViewData["Title"] = "Báo cáo hàng sắp hết hạn";
+    var data = (IEnumerable<dynamic>?)ViewBag.Data;
+    var summary = ViewBag.Summary as dynamic;
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">@ViewData["Title"]</h1>
+        <p class="page-subtitle">Theo dõi hàng hóa có hạn sử dụng trong vòng 90 ngày tới.</p>
+    </div>
+</div>
+
+<div class="filter-bar mb-3">
+    <form method="get" class="enterprise-inline-controls w-100">
+        <div class="form-group mb-0 min-w-220">
+            <label class="form-label">Kho</label>
+            <select name="warehouseId" class="form-control" data-wms-submit-form="true">
+                <option value="">-- Tất cả kho --</option>
+                @foreach (var wh in (IEnumerable<WMS.Models.Warehouse>?)ViewBag.Warehouses ?? Array.Empty<WMS.Models.Warehouse>())
+                {
+                    <option value="@wh.WarehouseId" selected="@(ViewBag.WarehouseId != null && (int)ViewBag.WarehouseId == wh.WarehouseId)">@wh.WarehouseCode - @wh.WarehouseName</option>
+                }
+            </select>
+        </div>
+    </form>
+</div>
+
+@if (data != null && data.Any() && summary != null)
+{
+    <div class="stats-grid">
+        <div class="stat-card danger">
+            <div class="stat-value text-danger">@summary!.Expired</div>
+            <div class="stat-label">Đã hết hạn</div>
+        </div>
+        <div class="stat-card warning">
+            <div class="stat-value text-warning">@summary!.Within30</div>
+            <div class="stat-label">&lt;= 30 ngày</div>
+        </div>
+        <div class="stat-card info">
+            <div class="stat-value text-info">@summary!.Within60</div>
+            <div class="stat-label">31-60 ngày</div>
+        </div>
+        <div class="stat-card success">
+            <div class="stat-value text-success">@summary!.Within90</div>
+            <div class="stat-label">61-90 ngày</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body cell-compact">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Mã VT</th>
+                        <th>Tên vật tư</th>
+                        <th>Vị trí</th>
+                        <th>Lô</th>
+                        <th>Ngày hết hạn</th>
+                        <th>Còn lại</th>
+                        <th class="cell-right">SL tồn</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var d in data!)
+                    {
+                        var urgencyClass = d.DaysToExpiry < 0 ? "text-danger fw-700" :
+                            d.DaysToExpiry <= 30 ? "text-warning fw-600" : "";
+                        <tr>
+                            <td><strong>@d.ItemCode</strong></td>
+                            <td>@d.ItemName</td>
+                            <td><span class="badge">@d.LocationCode</span></td>
+                            <td>@(d.LotNumber ?? "-")</td>
+                            <td class="@urgencyClass">@(d.ExpiryDate?.ToString("dd/MM/yyyy") ?? "-")</td>
+                            <td class="@urgencyClass">
+                                @if (d.DaysToExpiry < 0)
+                                {
+                                    <span>Đã hết hạn</span>
+                                }
+                                else
+                                {
+                                    <span>@d.DaysToExpiry ngày</span>
+                                }
+                            </td>
+                            <td class="cell-right">@d.Quantity.ToString("N2")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body cell-empty cell-empty-lg">
+            <i class="fas fa-check-circle empty-success-icon"></i>
+            <p class="mt-2">Không có hàng hóa nào sắp hết hạn trong 90 ngày tới.</p>
+        </div>
+    </div>
+}

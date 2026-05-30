@@ -1,0 +1,132 @@
+@model WMS.ViewModels.PrintLabelBatchViewModel
+@{
+    ViewData["Title"] = "Cấu Hình In Nhãn";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-tags"></i> Cấu Hình In Nhãn</h1>
+        <p class="page-subtitle">Thiết lập số lượng tem và khổ giấy trước khi in</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Items" asp-action="Index" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Quay lại</a>
+    </div>
+</div>
+
+        <form method="post" asp-controller="Items" asp-action="PrintLabels" target="_blank">
+    @Html.AntiForgeryToken()
+
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title"><i class="fas fa-cogs"></i> Tùy Chọn In</span>
+        </div>
+        <div class="card-body">
+            <div class="grid-2 gap-3">
+                <div class="form-group">
+                    <label class="form-label">Khổ Tem Nhãn</label>
+                    <select name="LabelSize" class="form-control" id="selLabelSize">
+                        <option value="50x30" selected>50 × 30 mm (Decal cuộn - Xprinter, TSC)</option>
+                        <option value="100x50">100 × 50 mm (Decal cuộn lớn - Zebra)</option>
+                        <option value="a4grid">A4 chia ô (65 nhãn/trang - 38.1 × 21.2 mm)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Loại Mã</label>
+                    <select name="CodeType" class="form-control">
+                        <option value="barcode" selected>Mã vạch (Code128)</option>
+                        <option value="qr">QR Code</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mt-3">
+        <div class="card-header enterprise-table-tools">
+            <span class="card-title"><i class="fas fa-list"></i> Danh Sách Vật Tư Sẽ In</span>
+            <div class="tool-group">
+                <label class="form-label mb-0 text-nowrap fs-body-sm">Đặt tất cả =</label>
+                <input type="number" id="setAllQty" class="form-control w-80" value="1" min="1" max="500" />
+                <button type="button" class="btn btn-sm btn-secondary" data-wms-call="setAllQuantities">Áp dụng</button>
+            </div>
+        </div>
+        <div class="table-container flat">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="col-row-number">#</th>
+                        <th>Mã VT</th>
+                        <th>Tên Vật Tư</th>
+                        <th>Mã vạch</th>
+                        <th>ĐVT</th>
+                        <th>Vị Trí Kho</th>
+                        <th class="col-qty-print">Số Lượng Tem</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (int i = 0; i < Model.Items.Count; i++)
+                    {
+                        var item = Model.Items[i];
+                        <tr>
+                            <td class="text-muted">@(i + 1)</td>
+                            <td class="td-code text-accent">@item.ItemCode</td>
+                            <td class="td-name">@item.ItemName</td>
+                            <td><code class="fs-sm">@item.Barcode</code></td>
+                            <td>@item.Unit</td>
+                            <td>@item.LocationCode</td>
+                            <td class="cell-center">
+                                <input type="hidden" name="Items[@i].ItemId" value="@item.ItemId" />
+                                <input type="hidden" name="Items[@i].ItemCode" value="@item.ItemCode" />
+                                <input type="hidden" name="Items[@i].ItemName" value="@item.ItemName" />
+                                <input type="hidden" name="Items[@i].Barcode" value="@item.Barcode" />
+                                <input type="hidden" name="Items[@i].SkuCode" value="@item.SkuCode" />
+                                <input type="hidden" name="Items[@i].Unit" value="@item.Unit" />
+                                <input type="hidden" name="Items[@i].LocationCode" value="@item.LocationCode" />
+                                <input type="number" name="Items[@i].PrintQuantity" class="form-control qty-input qty-input-print" 
+                                       value="@item.PrintQuantity" min="1" max="500"
+                                       />
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr class="table-total-row">
+                        <td colspan="6" class="cell-right fw-700">Tổng số tem sẽ in:</td>
+                        <td class="cell-center fw-700 fs-lg text-accent" id="totalLabels">
+                            @Model.Items.Sum(i => i.PrintQuantity)
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    <div class="print-submit-panel">
+        <button type="submit" class="btn btn-success btn-lg-action">
+            <i class="fas fa-print"></i> Xem Trước & In Nhãn
+        </button>
+        <p class="text-muted mt-2 fs-sm">
+            Trang in sẽ mở trong tab mới. Nút In sẽ tự động xuất hiện trên trang đó.
+        </p>
+    </div>
+</form>
+
+@section Scripts {
+<script>
+    function setAllQuantities() {
+        const val = parseInt(document.getElementById('setAllQty').value) || 1;
+        document.querySelectorAll('.qty-input').forEach(input => { input.value = val; });
+        updateTotal();
+    }
+
+    function updateTotal() {
+        let sum = 0;
+        document.querySelectorAll('.qty-input').forEach(input => { sum += parseInt(input.value) || 0; });
+        document.getElementById('totalLabels').textContent = sum;
+    }
+
+    document.querySelectorAll('.qty-input').forEach(input => {
+        input.addEventListener('input', updateTotal);
+    });
+</script>
+}

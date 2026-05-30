@@ -1,0 +1,205 @@
+@model WMS.ViewModels.AutomationEnterpriseDashboardViewModel
+@using WMS.Models
+@using WMS.ViewModels
+@{
+    ViewData["Title"] = "Tự động hóa thiết bị";
+    var selectedWarehouseId = Model.WarehouseId ?? Model.Warehouses.FirstOrDefault()?.WarehouseId ?? 0;
+    string CommandSourceLabel(MheCommand command)
+    {
+        var sourceType = EnterpriseUiLabels.AutomationSourceType(command.SourceType);
+        var sourceCode = EnterpriseUiLabels.AutomationScenarioText(command.SourceCode);
+        return string.IsNullOrWhiteSpace(command.SourceCode) ? sourceType : $"{sourceType} / {sourceCode}";
+    }
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Tự động hóa thiết bị</h1>
+        <p class="page-subtitle">Điều phối WCS/WES, bộ kết nối MHE, tín hiệu thiết bị, mô phỏng và thao tác ghi đè có kiểm soát.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-secondary" asp-action="MheDashboard"><i class="fas fa-robot"></i> Bảng điều phối MHE</a>
+    </div>
+</div>
+
+<form method="get" asp-action="AutomationDashboard" class="filter-panel">
+    <div>
+        <label>Kho</label>
+        <select name="warehouseId" class="form-control" data-wms-submit-form="true">
+            <option value="">Tất cả kho</option>
+            @foreach (var wh in Model.Warehouses)
+            {
+                <option value="@wh.WarehouseId" selected="@(Model.WarehouseId == wh.WarehouseId)">@wh.WarehouseCode - @wh.WarehouseName</option>
+            }
+        </select>
+    </div>
+</form>
+
+<div class="metric-grid">
+    <div class="metric-card"><div class="metric-value">@Model.AdapterProfiles.Count</div><div class="metric-label">Bộ kết nối</div></div>
+    <div class="metric-card"><div class="metric-value">@Model.TelemetryEvents.Count(x => x.TelemetryType == AutomationTelemetryTypeEnum.Heartbeat)</div><div class="metric-label">Nhịp thiết bị</div></div>
+    <div class="metric-card"><div class="metric-value">@Model.Commands.Count(x => x.Status == MheCommandStatusEnum.Failed || x.Status == MheCommandStatusEnum.DeadLetter)</div><div class="metric-label">Lệnh lỗi</div></div>
+    <div class="metric-card"><div class="metric-value">@Model.SimulatorRuns.Sum(x => x.ExceptionsOpened)</div><div class="metric-label">Ngoại lệ tự mở</div></div>
+</div>
+
+<div class="enterprise-workbench">
+    <section class="enterprise-section">
+        <div class="enterprise-section-header">
+            <div>
+                <div class="enterprise-section-title">Bộ kết nối thiết bị</div>
+                <div class="enterprise-section-subtitle">Khai báo đầu nối tự động hóa để gửi nhận lệnh từ WCS/WES và thiết bị hiện trường.</div>
+            </div>
+        </div>
+        <form method="post" asp-action="SaveMheAdapterProfile" class="enterprise-form-grid">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="warehouseId" value="@selectedWarehouseId" />
+            <div class="form-group">
+                <label class="form-label">Mã bộ kết nối</label>
+                <input class="form-control" name="adapterCode" placeholder="VD: AUTO-01" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Tên bộ kết nối</label>
+                <input class="form-control" name="adapterName" placeholder="VD: Dây chuyền phân loại xuất hàng" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Loại thiết bị</label>
+                <select class="form-control" name="adapterType">
+                    @foreach (MheSystemTypeEnum value in Enum.GetValues<MheSystemTypeEnum>())
+                    {
+                        <option value="@value">@EnterpriseUiLabels.MheSystemType(value)</option>
+                    }
+                </select>
+            </div>
+            <label class="enterprise-choice-tile"><input type="checkbox" name="isSimulator" value="true" /> <span>Dùng cho mô phỏng</span></label>
+            <div class="enterprise-form-actions">
+                <button class="btn btn-primary" type="submit"><i class="fas fa-save"></i> Lưu bộ kết nối</button>
+            </div>
+        </form>
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead><tr><th>Mã</th><th>Loại</th><th>Tình trạng</th><th>Nhịp cuối</th><th>Mô phỏng</th></tr></thead>
+                <tbody>
+                    @if (!Model.AdapterProfiles.Any())
+                    {
+                        <tr><td colspan="5" class="empty-state">Chưa có bộ kết nối thiết bị.</td></tr>
+                    }
+                    @foreach (var adapter in Model.AdapterProfiles)
+                    {
+                        <tr><td class="td-code">@adapter.AdapterCode</td><td>@EnterpriseUiLabels.MheSystemType(adapter.AdapterType)</td><td><span class="status-badge">@EnterpriseUiLabels.AdapterHealth(adapter.HealthStatus)</span></td><td>@(adapter.LastHeartbeatAt?.ToString("dd/MM HH:mm") ?? "---")</td><td>@(adapter.IsSimulator ? "Có" : "Không")</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+    <section class="enterprise-section">
+        <div class="enterprise-section-header">
+            <div>
+                <div class="enterprise-section-title">Mô phỏng và ghi tín hiệu</div>
+                <div class="enterprise-section-subtitle">Theo dõi tình huống kiểm thử, nhịp kết nối và trạng thái hoạt động của thiết bị.</div>
+            </div>
+        </div>
+        <div class="enterprise-admin-grid">
+            <form method="post" asp-action="RunWcsSimulator" class="enterprise-form-card">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="warehouseId" value="@selectedWarehouseId" />
+                <h3>Chạy mô phỏng WCS</h3>
+                <div class="form-group">
+                    <label class="form-label">Kịch bản</label>
+                    <select class="form-control" name="scenario">
+                        @foreach (WcsSimulatorScenarioEnum value in Enum.GetValues<WcsSimulatorScenarioEnum>())
+                        {
+                            <option value="@value">@EnterpriseUiLabels.AutomationScenario(value)</option>
+                        }
+                    </select>
+                </div>
+                <div class="enterprise-form-actions">
+                    <button class="btn btn-secondary" type="submit"><i class="fas fa-play"></i> Chạy mô phỏng</button>
+                </div>
+            </form>
+            <form method="post" asp-action="RecordMheTelemetry" class="enterprise-form-card">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="warehouseId" value="@selectedWarehouseId" />
+                <h3>Ghi nhận tín hiệu thiết bị</h3>
+                <div class="form-group">
+                    <label class="form-label">Mã thiết bị</label>
+                    <input class="form-control" name="equipmentCode" placeholder="VD: SIMULATOR" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Loại tín hiệu</label>
+                    <select class="form-control" name="telemetryType">
+                        @foreach (AutomationTelemetryTypeEnum value in Enum.GetValues<AutomationTelemetryTypeEnum>())
+                        {
+                            <option value="@value">@EnterpriseUiLabels.AutomationTelemetryType(value)</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Trạng thái</label>
+                    <input class="form-control" name="statusText" placeholder="VD: Bình thường hoặc mất kết nối" />
+                </div>
+                <div class="enterprise-form-actions">
+                    <button class="btn btn-secondary" type="submit"><i class="fas fa-heartbeat"></i> Ghi tín hiệu</button>
+                </div>
+            </form>
+        </div>
+    </section>
+</div>
+
+<div class="enterprise-section">
+    <h2>Vòng đời lệnh và ghi đè</h2>
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead><tr><th>Lệnh</th><th>Trạng thái</th><th>Nguồn</th><th>Lần thử lại</th><th>Lỗi</th><th>Ghi đè</th></tr></thead>
+            <tbody>
+                @if (!Model.Commands.Any())
+                {
+                    <tr><td colspan="6" class="empty-state">Chưa có lệnh tự động hóa.</td></tr>
+                }
+                @foreach (var command in Model.Commands)
+                {
+                    <tr>
+                        <td>@command.CommandCode</td>
+                        <td><span class="status-badge @EnterpriseUiLabels.MheCommandStatusClass(command.Status)">@EnterpriseUiLabels.MheCommandStatus(command.Status)</span></td>
+                        <td>@CommandSourceLabel(command)</td>
+                        <td>@command.RetryCount</td>
+                        <td>@(string.IsNullOrWhiteSpace(command.LastError) ? "---" : EnterpriseUiLabels.AutomationScenarioText(command.LastError))</td>
+                        <td>
+                            <form method="post" asp-action="OverrideMheCommand" class="enterprise-inline-table-form">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="commandId" value="@command.MheCommandId" />
+                                <input type="hidden" name="warehouseId" value="@command.WarehouseId" />
+                                <select class="form-control" name="action">
+                                    @foreach (AutomationOverrideActionEnum value in Enum.GetValues<AutomationOverrideActionEnum>())
+                                    {
+                                        <option value="@value">@EnterpriseUiLabels.AutomationOverrideAction(value)</option>
+                                    }
+                                </select>
+                                <input class="form-control" name="reason" placeholder="Lý do ghi đè của quản lý" />
+                                <button class="btn btn-sm btn-warning" type="submit">Ghi đè</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="enterprise-section">
+    <h2>Tín hiệu thiết bị gần nhất</h2>
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead><tr><th>Thời gian</th><th>Thiết bị</th><th>Loại</th><th>Trạng thái</th><th>Năng suất</th><th>Dừng máy</th><th>Thông báo</th></tr></thead>
+            <tbody>
+                @if (!Model.TelemetryEvents.Any())
+                {
+                    <tr><td colspan="7" class="empty-state">Chưa có tín hiệu thiết bị.</td></tr>
+                }
+                @foreach (var e in Model.TelemetryEvents.Take(50))
+                {
+                    <tr><td>@e.EventAt.ToString("dd/MM HH:mm")</td><td class="td-code">@e.EquipmentCode</td><td>@EnterpriseUiLabels.AutomationTelemetryType(e.TelemetryType)</td><td>@EnterpriseUiLabels.TelemetryStatus(e.StatusText)</td><td>@e.ThroughputPerHour</td><td>@e.DowntimeMinutes</td><td>@(string.IsNullOrWhiteSpace(e.Message) ? "---" : EnterpriseUiLabels.AutomationScenarioText(e.Message))</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

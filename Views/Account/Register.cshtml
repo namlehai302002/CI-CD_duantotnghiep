@@ -1,0 +1,53 @@
+@model WMS.ViewModels.RegisterViewModel
+@{
+    ViewData["Title"] = "Đăng ký tài khoản";
+    Layout = "_Layout";
+}
+
+<div class="auth-shell">
+    <div class="auth-card">
+        <div class="auth-brand">
+            <div class="logo-icon"><img src="~/images/logo.svg" asp-append-version="true" alt="Biểu trưng WMS Pro" class="brand-mark-img" /></div>
+            <h1>Đăng ký tài khoản WMS Pro</h1>
+            <p>Tạo tài khoản nội bộ có kiểm soát quyền vận hành.</p>
+        </div>
+
+        <div class="user-guide mb-12">
+            <div class="user-guide-text">Tài khoản dùng để truy cập hệ thống quản lý kho. Sau khi tạo, quản trị viên cần gán vai trò và kho thao tác phù hợp.</div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(Model?.ErrorMessage))
+        {
+            <div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> @Model.ErrorMessage</div>
+        }
+
+            <form method="post" asp-controller="Account" asp-action="Register">
+            @Html.AntiForgeryToken()
+            <div class="form-group">
+                <label class="form-label" for="FullName">Họ và tên *</label>
+                <input id="FullName" type="text" name="FullName" class="form-control" autocomplete="off" required value="@Model?.FullName" placeholder="Tên hiển thị trong hệ thống" />
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="UserName">Tên đăng nhập *</label>
+                <input id="UserName" type="text" name="UserName" class="form-control" autocomplete="off" required value="@Model?.UserName" placeholder="vd: nvan.a" />
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="Email">Thư điện tử</label>
+                <input id="Email" type="email" name="Email" class="form-control" autocomplete="off" value="@Model?.Email" placeholder="ten@congty.vn" />
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="Password">Mật khẩu *</label>
+                <input id="Password" type="password" name="Password" class="form-control" required autocomplete="new-password" />
+                <span class="field-hint">Dùng mật khẩu mạnh và đổi lại sau khi bàn giao cho người dùng.</span>
+            </div>
+            <button type="submit" class="btn btn-primary btn-lg full-width-action">
+                <i class="fas fa-user-plus"></i> Đăng ký tài khoản
+            </button>
+        </form>
+
+        <div class="soft-divider"></div>
+        <div class="text-center text-sm">
+                Đã có tài khoản? <a asp-controller="Account" asp-action="Login" class="text-accent">Đăng nhập</a>
+        </div>
+    </div>
+</div>

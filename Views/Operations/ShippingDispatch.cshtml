@@ -1,0 +1,205 @@
+@model WMS.ViewModels.ShippingDispatchViewModel
+@{
+    ViewData["Title"] = "Bảng điều phối vận chuyển";
+    var canManage = User.IsInRole("Admin") || User.IsInRole("Manager");
+    string BadgeClass(WMS.Models.CarrierShipmentStatusEnum? status) => status switch
+    {
+        WMS.Models.CarrierShipmentStatusEnum.Created => "badge-success",
+        WMS.Models.CarrierShipmentStatusEnum.Delivered => "badge-success",
+        WMS.Models.CarrierShipmentStatusEnum.Failed => "badge-danger",
+        WMS.Models.CarrierShipmentStatusEnum.DeliveryFailed => "badge-danger",
+        WMS.Models.CarrierShipmentStatusEnum.Cancelled => "badge-secondary",
+        WMS.Models.CarrierShipmentStatusEnum.Queued => "badge-info",
+        WMS.Models.CarrierShipmentStatusEnum.Pending => "badge-warning",
+        _ => "badge-secondary"
+    };
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Bảng điều phối vận chuyển</h1>
+        <p class="page-subtitle">Theo dõi vận đơn theo từng kiện xuất, gửi lại lỗi kết nối, hủy hoặc đồng bộ trạng thái từ đơn vị vận chuyển.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-controller="Operations" asp-action="DeliveryReconciliation" class="btn btn-secondary"><i class="fas fa-clipboard-check"></i> Đối soát giao hàng</a>
+        @if (canManage)
+        {
+            <a asp-controller="Operations" asp-action="CarrierConnectors" class="btn btn-secondary"><i class="fas fa-plug-circle-bolt"></i> Bộ kết nối vận tải</a>
+        }
+        <a asp-controller="Operations" asp-action="ShipmentLoads" class="btn btn-secondary"><i class="fas fa-truck-ramp-box"></i> Bảng chuyến xe</a>
+    </div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select name="warehouseId" class="form-control">
+            <option value="">Tất cả</option>
+            @foreach (var wh in Model.Warehouses)
+            {
+                <option value="@wh.WarehouseId" selected="@(Model.WarehouseId == wh.WarehouseId)">@wh.WarehouseCode - @wh.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Đơn vị vận chuyển</label>
+        <select name="carrierConnectorId" class="form-control">
+            <option value="">Tất cả</option>
+            @foreach (var c in Model.Connectors)
+            {
+                <option value="@c.CarrierConnectorId" selected="@(Model.CarrierConnectorId == c.CarrierConnectorId)">@c.CarrierCode - @c.CarrierName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Trạng thái vận đơn</label>
+        <select name="status" class="form-control">
+            <option value="">Tất cả</option>
+            @foreach (WMS.Models.CarrierShipmentStatusEnum s in Enum.GetValues<WMS.Models.CarrierShipmentStatusEnum>())
+            {
+                <option value="@s" selected="@(Model.Status == s)">@WMS.ViewModels.CarrierStatusLabels.GetLabel(s)</option>
+            }
+        </select>
+    </div>
+    <div class="form-group form-span-2">
+        <label class="form-label">Tìm nhanh</label>
+        <input name="search" class="form-control" value="@Model.Search" placeholder="Mã phiếu, mã kiện, mã vận đơn, mã chuyến, đối tác..." />
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-filter"></i> Lọc dữ liệu</button>
+    </div>
+</form>
+
+<div class="stats-grid mb-3">
+    <div class="stat-card accent"><div class="stat-value">@Model.Rows.Count</div><div class="stat-label">Kiện cần theo dõi</div></div>
+    <div class="stat-card success"><div class="stat-value">@Model.Rows.Count(r => r.CarrierStatus == WMS.Models.CarrierShipmentStatusEnum.Created || r.CarrierStatus == WMS.Models.CarrierShipmentStatusEnum.Delivered)</div><div class="stat-label">Đã có vận đơn</div></div>
+    <div class="stat-card warning"><div class="stat-value">@Model.Rows.Count(r => !r.CarrierShipmentId.HasValue)</div><div class="stat-label">Chưa gửi hãng</div></div>
+    <div class="stat-card danger"><div class="stat-value">@Model.Rows.Count(r => r.CarrierStatus == WMS.Models.CarrierShipmentStatusEnum.Failed || r.CarrierStatus == WMS.Models.CarrierShipmentStatusEnum.DeliveryFailed)</div><div class="stat-label">Lỗi vận chuyển</div></div>
+</div>
+
+<div class="table-container">
+    <div class="enterprise-table-tools justify-content-end">
+        <button class="btn-export" data-wms-export-table="table" data-wms-export-filename="bang_dieu_phoi_van_chuyen"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Phiếu / kiện</th>
+                <th>Kho</th>
+                <th>Đối tác</th>
+                <th>Chuyến xe</th>
+                <th>Đơn vị vận chuyển</th>
+                <th>Trạng thái</th>
+                <th>Mã vận đơn</th>
+                <th>Lỗi gần nhất</th>
+                <th class="cell-right">Thử lại</th>
+                <th class="no-export"></th>
+            </tr>
+        </thead>
+        <tbody>
+        @if (!Model.Rows.Any())
+        {
+            <tr><td colspan="10" class="cell-empty"><div class="empty-state"><div class="empty-icon"><i class="fas fa-truck-fast"></i></div><div class="empty-text">Không có kiện xuất phù hợp bộ lọc</div></div></td></tr>
+        }
+        else
+        {
+            foreach (var row in Model.Rows)
+            {
+                <tr>
+                    <td>
+                        <a class="td-code" asp-controller="Vouchers" asp-action="Details" asp-route-id="@row.VoucherId">@row.VoucherCode</a>
+                        <div><span class="badge badge-accent font-mono">@row.PackageCode</span></div>
+                        <div class="text-muted fs-xs">Đóng gói: @row.PackedAt.ToString("dd/MM HH:mm")</div>
+                    </td>
+                    <td>@row.WarehouseName</td>
+                    <td>@(row.PartnerName ?? "Chưa cập nhật")</td>
+                    <td>
+                        @if (!string.IsNullOrWhiteSpace(row.LoadCode))
+                        {
+                            <span class="font-mono">@row.LoadCode</span>
+                            <div class="text-muted fs-sm">@row.LoadStatus</div>
+                        }
+                        else
+                        {
+                            <span class="text-muted">Chưa xếp chuyến</span>
+                        }
+                    </td>
+                    <td>
+                        @if (row.CarrierShipmentId.HasValue)
+                        {
+                            <div>@(row.CarrierName ?? "Chưa cập nhật")</div>
+                            <div class="text-muted font-mono fs-xs">@(row.CarrierCode ?? "Chưa cập nhật")</div>
+                        }
+                        else
+                        {
+                            <span class="text-muted">Chưa chọn</span>
+                        }
+                    </td>
+                    <td><span class="badge @BadgeClass(row.CarrierStatus)">@row.CarrierStatusLabel</span></td>
+                    <td>
+                        <div class="font-mono">@(row.CarrierTrackingNumber ?? row.PackageTrackingNumber ?? "Chưa cập nhật")</div>
+                        @if (!string.IsNullOrWhiteSpace(row.LabelUrl))
+                        {
+                            <a href="@row.LabelUrl" class="text-info fs-sm">Mở nhãn vận chuyển</a>
+                        }
+                    </td>
+                    <td class="max-w-260">@(string.IsNullOrWhiteSpace(row.LastError) ? "Không có lỗi" : row.LastError)</td>
+                    <td class="td-number">@row.RetryCount</td>
+                    <td class="td-actions no-export">
+                        <form method="post" asp-controller="Labels" asp-action="PrintShippingPackage" class="d-inline">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="outboundPackageId" value="@row.OutboundPackageId" />
+                            <button class="btn btn-sm btn-success" type="submit"><i class="fas fa-print"></i> Nhãn vận chuyển</button>
+                        </form>
+                        @if (canManage)
+                        {
+                            @if (row.CanCreate)
+                            {
+                                <form method="post" asp-action="CreateCarrierShipment" class="d-inline-flex gap-4" data-enterprise-confirm="Tạo vận đơn cho kiện xuất này?">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="voucherId" value="@row.VoucherId" />
+                                    <select name="carrierConnectorId" class="form-control w-160">
+                                        @foreach (var c in Model.Connectors.Where(c => c.WarehouseId == row.WarehouseId && c.IsActive))
+                                        {
+                                            <option value="@c.CarrierConnectorId">@c.CarrierCode</option>
+                                        }
+                                    </select>
+                                    <button class="btn btn-sm btn-primary" type="submit"><i class="fas fa-paper-plane"></i> Tạo</button>
+                                </form>
+                            }
+                            @if (row.CarrierShipmentId.HasValue)
+                            {
+                                @if (row.CanRetry)
+                                {
+                                    <form method="post" asp-action="RetryCarrierShipment" class="d-inline" data-enterprise-confirm="Gửi lại vận đơn lỗi?">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="carrierShipmentId" value="@row.CarrierShipmentId" />
+                                        <button class="btn btn-sm btn-warning" type="submit"><i class="fas fa-rotate"></i> Gửi lại</button>
+                                    </form>
+                                }
+                                @if (row.CanSync)
+                                {
+                                    <form method="post" asp-action="SyncCarrierShipment" class="d-inline" data-enterprise-confirm="Đồng bộ trạng thái vận đơn này?">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="carrierShipmentId" value="@row.CarrierShipmentId" />
+                                        <button class="btn btn-sm btn-info" type="submit"><i class="fas fa-arrows-rotate"></i> Đồng bộ</button>
+                                    </form>
+                                }
+                                @if (row.CanCancel)
+                                {
+                                    <form method="post" asp-action="CancelCarrierShipment" class="d-inline" data-enterprise-confirm="Hủy vận đơn này?">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="carrierShipmentId" value="@row.CarrierShipmentId" />
+                                        <button class="btn btn-sm btn-secondary" type="submit"><i class="fas fa-ban"></i> Hủy</button>
+                                    </form>
+                                }
+                            }
+                        }
+                    </td>
+                </tr>
+            }
+        }
+        </tbody>
+    </table>
+</div>

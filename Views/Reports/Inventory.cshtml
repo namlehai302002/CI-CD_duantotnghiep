@@ -1,0 +1,205 @@
+﻿@model List<WMS.Models.Item>
+@{
+    ViewData["Title"] = "Báo cáo tồn kho hiện tại";
+    var canSeeFinancial = (bool)(ViewBag.CanSeeFinancial ?? false);
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Báo cáo tồn kho</h1>
+        <p class="page-subtitle">Tổng hợp số lượng và giá trị hàng hóa đang lưu trữ theo kho hoặc theo danh mục.</p>
+    </div>
+    <div class="page-actions">
+        @if (canSeeFinancial)
+        {
+            <a asp-controller="Reports" asp-action="ExportInventory" asp-route-warehouseId="@ViewBag.WarehouseId" asp-route-categoryId="@ViewBag.CategoryId" class="btn btn-success">
+                <i class="fas fa-file-excel"></i> Xuất bảng tính
+            </a>
+        }
+    </div>
+</div>
+
+<div class="user-guide">
+    <div class="user-guide-title"><i class="fas fa-circle-info"></i> Cách xem tồn kho nhanh</div>
+    <div class="user-guide-text">Chọn kho cần xem, có thể lọc thêm theo danh mục. Dùng ô tìm nhanh để tra mã hoặc tên vật tư trực tiếp trên bảng.</div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label class="form-label">Kho</label>
+        <select name="warehouseId" class="form-control">
+            <option value="">Tất cả kho (tổng hợp)</option>
+            @foreach (var w in (List<WMS.Models.Warehouse>)ViewBag.Warehouses)
+            {
+                <option value="@w.WarehouseId" selected="@(ViewBag.WarehouseId != null && (int)ViewBag.WarehouseId == w.WarehouseId)">@w.WarehouseName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Danh mục</label>
+        <select name="categoryId" class="form-control">
+            <option value="">Tất cả danh mục</option>
+            @foreach (var c in (List<WMS.Models.ItemCategory>)ViewBag.Categories)
+            {
+                <option value="@c.CategoryId" selected="@(ViewBag.CategoryId != null && (int)ViewBag.CategoryId == c.CategoryId)">@c.CategoryName</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label">&nbsp;</label>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Xem tồn kho</button>
+    </div>
+</form>
+
+<div class="table-actions">
+    <input type="text" id="inventoryClientSearch" class="form-control max-w-320" placeholder="Tìm vật tư theo mã hoặc tên..." />
+</div>
+
+<div class="grid-3 mb-3">
+    <div class="stat-card accent">
+        <div class="stat-value">@Model.Count()</div>
+        <div class="stat-label">Tổng số mã vật tư</div>
+    </div>
+    @if (canSeeFinancial)
+    {
+        <div class="stat-card success">
+            <div class="stat-value">@Model.Sum(x => x.TotalStockValue).ToString("N0")</div>
+            <div class="stat-label">Tổng giá trị lưu trữ (VNĐ)</div>
+        </div>
+    }
+    <div class="stat-card warning">
+        <div class="stat-value">@Model.Count(x => x.CurrentStock <= x.MinThreshold)</div>
+        <div class="stat-label">Vật tư sắp / đã hết</div>
+    </div>
+</div>
+
+<div class="mobile-table-card-list">
+    @foreach (var i in Model)
+    {
+        <div class="mobile-table-card">
+            <div class="mobile-table-card-title">
+                <div class="mobile-table-card-title-main">
+                <a asp-controller="Items" asp-action="Details" asp-route-id="@i.ItemId" class="td-code link-clean">@i.ItemCode</a>
+                    <div>@i.ItemName</div>
+                </div>
+                <span class="badge badge-purple">@i.ItemTypeName</span>
+            </div>
+            <div class="mobile-table-card-row"><span class="mobile-table-card-label">Danh mục</span><span class="mobile-table-card-value">@(i.Category?.CategoryName ?? "---")</span></div>
+            <div class="mobile-table-card-row"><span class="mobile-table-card-label">ĐVT</span><span class="mobile-table-card-value">@i.BaseUom?.UomCode</span></div>
+            <div class="mobile-table-card-row"><span class="mobile-table-card-label">Tồn kho</span><span class="mobile-table-card-value text-accent">@i.CurrentStock.ToString("#,##0.##")</span></div>
+            @if (canSeeFinancial)
+            {
+                <div class="mobile-table-card-row"><span class="mobile-table-card-label">Giá vốn BQ</span><span class="mobile-table-card-value">@i.UnitCost.ToString("N0")</span></div>
+                <div class="mobile-table-card-row"><span class="mobile-table-card-label">Thành tiền</span><span class="mobile-table-card-value text-success">@i.TotalStockValue.ToString("N0")</span></div>
+            }
+        </div>
+    }
+</div>
+
+<div class="table-container mobile-table-card-source">
+    <table id="inventoryTable">
+        <thead>
+            <tr>
+                <th>Mã</th>
+                <th>Tên vật tư / hàng hóa</th>
+                <th>Loại</th>
+                <th>Danh mục</th>
+                <th>ĐVT</th>
+                <th class="cell-right">Tồn kho hiện tại</th>
+                @if (canSeeFinancial)
+                {
+                    <th class="cell-right">Giá vốn BQ</th>
+                    <th class="cell-right">Thành tiền (VNĐ)</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @if (!Model.Any())
+            {
+                <tr>
+                    <td colspan="@(canSeeFinancial ? 8 : 6)" class="text-center text-muted cell-empty cell-empty-lg">Không có dữ liệu tồn kho phù hợp</td>
+                </tr>
+            }
+            else
+            {
+                @foreach (var i in Model)
+                {
+                    <tr>
+                    <td><a asp-controller="Items" asp-action="Details" asp-route-id="@i.ItemId" class="td-code link-clean">@i.ItemCode</a></td>
+                        <td class="td-name fw-600">@i.ItemName</td>
+                        <td><span class="badge badge-purple">@i.ItemTypeName</span></td>
+                        <td>@(i.Category?.CategoryName ?? "---")</td>
+                        <td>@i.BaseUom?.UomCode</td>
+                        <td class="td-number text-accent fw-700">@i.CurrentStock.ToString("#,##0.##")</td>
+                        @if (canSeeFinancial)
+                        {
+                            <td class="td-number">@i.UnitCost.ToString("N0")</td>
+                            <td class="td-number text-success fw-600">@i.TotalStockValue.ToString("N0")</td>
+                        }
+                    </tr>
+                }
+            }
+        </tbody>
+        <tfoot>
+            @if (canSeeFinancial)
+            {
+                <tr>
+                    <td colspan="7" class="text-right fw-700">TỔNG CỘNG:</td>
+                    <td class="td-number text-success fw-700 fs-lg">@Model.Sum(x => x.TotalStockValue).ToString("N0")</td>
+                </tr>
+            }
+            else
+            {
+                <tr>
+                    <td colspan="6" class="text-right fw-700">TỔNG CỘNG:</td>
+                </tr>
+            }
+        </tfoot>
+    </table>
+</div>
+<div class="table-pagination" id="inventoryPager"></div>
+
+@section Scripts {
+<script>
+(() => {
+    const table = document.getElementById('inventoryTable');
+    const pager = document.getElementById('inventoryPager');
+    const search = document.getElementById('inventoryClientSearch');
+    if (!table || !pager || !search) return;
+    const rows = Array.from(table.querySelectorAll('tbody tr')).filter(r => r.querySelectorAll('td').length > 1);
+    const pageSize = 15;
+    let currentPage = 1;
+    let filtered = rows;
+
+    function render() {
+        const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+        if (currentPage > totalPages) currentPage = totalPages;
+        rows.forEach(r => r.style.display = 'none');
+        filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize).forEach(r => r.style.display = '');
+        pager.innerHTML = '';
+        const prev = document.createElement('button');
+        prev.className = 'btn btn-sm btn-secondary';
+        prev.textContent = 'Trước';
+        prev.disabled = currentPage === 1;
+        prev.addEventListener('click', () => { currentPage--; render(); });
+        const next = document.createElement('button');
+        next.className = 'btn btn-sm btn-secondary';
+        next.textContent = 'Sau';
+        next.disabled = currentPage === totalPages;
+        next.addEventListener('click', () => { currentPage++; render(); });
+        const info = document.createElement('span');
+        info.className = 'step-chip';
+        info.textContent = `Trang ${currentPage}/${totalPages}`;
+        pager.append(prev, info, next);
+    }
+
+    search.addEventListener('input', () => {
+        const q = search.value.trim().toLowerCase();
+        filtered = rows.filter(r => r.innerText.toLowerCase().includes(q));
+        currentPage = 1;
+        render();
+    });
+    render();
+})();
+</script>
+}
